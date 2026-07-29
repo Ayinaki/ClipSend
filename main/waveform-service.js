@@ -20,6 +20,7 @@ function setCache(key, value) {
 
   // Reject caching single items larger than maximum cache capacity
   if (valueBytes > MAX_CACHE_BYTES) {
+    console.warn(`[waveform-service] Waveform size (${(valueBytes / 1024 / 1024).toFixed(2)} MB) exceeds maximum cache capacity (${(MAX_CACHE_BYTES / 1024 / 1024).toFixed(2)} MB). Skipping cache.`);
     return;
   }
 

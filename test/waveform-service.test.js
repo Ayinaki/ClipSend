@@ -38,6 +38,14 @@ describe('waveform-service streaming & LRU cache', () => {
     expect(getCacheBytes()).toBe(4 * 1024 * 1024);
   });
 
+  test('allows items matching exact 5MB cap boundary', () => {
+    const array5MB = new Float32Array(1310720); // Exact 5MB (1310720 * 4 = 5242880 bytes)
+    setCache('exact5mb', array5MB);
+
+    expect(getCacheSize()).toBe(1);
+    expect(getCacheBytes()).toBe(5 * 1024 * 1024);
+  });
+
   test('refuses to cache oversized items exceeding 5MB cap', () => {
     const array6MB = new Float32Array(1572864); // 6MB (> 5MB cap)
     setCache('huge_item', array6MB);
