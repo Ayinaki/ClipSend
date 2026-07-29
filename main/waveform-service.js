@@ -8,19 +8,35 @@ if (ffmpegPath.includes('app.asar')) {
 }
 
 /**
- * Bounded LRU Cache for Waveforms (max 50 entries)
+ * Bounded LRU Cache for Waveforms (Max 50 entries, Max 5MB total memory)
  */
 const MAX_CACHE_SIZE = 50;
+const MAX_CACHE_BYTES = 5 * 1024 * 1024; // 5 MB
 const waveformCache = new Map();
+let currentCacheBytes = 0;
 
 function setCache(key, value) {
+  const valueBytes = value.byteLength || (value.length * 4);
+
   if (waveformCache.has(key)) {
+    const oldVal = waveformCache.get(key);
+    currentCacheBytes -= (oldVal.byteLength || (oldVal.length * 4));
     waveformCache.delete(key);
-  } else if (waveformCache.size >= MAX_CACHE_SIZE) {
+  }
+
+  // Evict until under byte limit and count limit
+  while (
+    (waveformCache.size >= MAX_CACHE_SIZE || currentCacheBytes + valueBytes > MAX_CACHE_BYTES) &&
+    waveformCache.size > 0
+  ) {
     const firstKey = waveformCache.keys().next().value;
+    const firstVal = waveformCache.get(firstKey);
+    currentCacheBytes -= (firstVal.byteLength || (firstVal.length * 4));
     waveformCache.delete(firstKey);
   }
+
   waveformCache.set(key, value);
+  currentCacheBytes += valueBytes;
 }
 
 function getCache(key) {
@@ -32,8 +48,10 @@ function getCache(key) {
 }
 
 /**
- * Extract waveform peaks from an audio track.
- * Returns a Float32Array directly for zero-copy IPC transmission.
+ * Extract waveform peaks using streaming intermediate bucket processing.
+ *
+ * Instead of accumulating millions of raw PCM bytes in memory, incoming audio
+ * is reduced on-the-fly into 80 peaks/sec intermediate buckets (98%+ memory reduction).
  *
  * @param {string} filePath Path to input media file
  * @param {number} [audioIndex=0] Audio track index
@@ -65,12 +83,44 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
     ];
 
     const child = spawn(ffmpegPath, args);
-    const chunks = [];
-    let totalBytes = 0;
+
+    // Intermediate streaming peak bucket (1 peak per 100 samples @ 8000Hz = 80 peaks/sec)
+    const CHUNK_BUCKET_SIZE = 100;
+    const intermediatePeaks = [];
+    let leftoverBuffer = Buffer.alloc(0);
+    let currentBucketMax = 0;
+    let currentBucketSamples = 0;
 
     child.stdout.on('data', (chunk) => {
-      chunks.push(chunk);
-      totalBytes += chunk.length;
+      let data = chunk;
+      if (leftoverBuffer.length > 0) {
+        data = Buffer.concat([leftoverBuffer, chunk]);
+        leftoverBuffer = Buffer.alloc(0);
+      }
+
+      // 16-bit mono = 2 bytes per sample
+      const sampleCount = Math.floor(data.length / 2);
+      const remainder = data.length % 2;
+
+      if (remainder > 0) {
+        leftoverBuffer = data.slice(data.length - remainder);
+      }
+
+      const samples = new Int16Array(data.buffer, data.byteOffset, sampleCount);
+
+      for (let i = 0; i < samples.length; i++) {
+        const val = Math.abs(samples[i]);
+        if (val > currentBucketMax) {
+          currentBucketMax = val;
+        }
+        currentBucketSamples++;
+
+        if (currentBucketSamples >= CHUNK_BUCKET_SIZE) {
+          intermediatePeaks.push(currentBucketMax / 32768.0);
+          currentBucketMax = 0;
+          currentBucketSamples = 0;
+        }
+      }
     });
 
     child.stderr.on('data', () => {
@@ -78,33 +128,30 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
     });
 
     child.on('close', (code) => {
-      if (totalBytes === 0) {
+      if (currentBucketSamples > 0) {
+        intermediatePeaks.push(currentBucketMax / 32768.0);
+      }
+
+      if (intermediatePeaks.length === 0) {
         return resolve(null);
       }
 
-      // Single buffer allocation
-      const rawData = Buffer.concat(chunks, totalBytes);
-      const samples = new Int16Array(rawData.buffer, rawData.byteOffset, Math.floor(rawData.byteLength / 2));
-      
-      if (samples.length === 0) {
-        return resolve(null);
-      }
-
-      const samplesPerPoint = Math.max(1, Math.floor(samples.length / numPoints));
+      // Resample intermediate peaks into exact numPoints
       const peaks = new Float32Array(numPoints);
+      const step = intermediatePeaks.length / numPoints;
 
       for (let i = 0; i < numPoints; i++) {
-        const start = i * samplesPerPoint;
-        const end = Math.min(start + samplesPerPoint, samples.length);
+        const start = Math.floor(i * step);
+        const end = Math.min(Math.floor((i + 1) * step), intermediatePeaks.length);
         let max = 0;
-        for (let j = start; j < end; j++) {
-          const val = Math.abs(samples[j]);
-          if (val > max) max = val;
+        for (let j = start; j < Math.max(start + 1, end); j++) {
+          if (intermediatePeaks[j] > max) {
+            max = intermediatePeaks[j];
+          }
         }
-        peaks[i] = max / 32768.0; // normalize to 0.0-1.0
+        peaks[i] = max;
       }
 
-      // Cache & return Float32Array directly (zero-copy IPC)
       setCache(cacheKey, peaks);
       resolve(peaks);
     });
@@ -117,14 +164,20 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
 
 function clearCache() {
   waveformCache.clear();
+  currentCacheBytes = 0;
 }
 
 function getCacheSize() {
   return waveformCache.size;
 }
 
+function getCacheBytes() {
+  return currentCacheBytes;
+}
+
 module.exports = {
   extractWaveform,
   clearCache,
-  getCacheSize
+  getCacheSize,
+  getCacheBytes
 };

@@ -1,14 +1,16 @@
-const { extractWaveform, clearCache, getCacheSize } = require('../main/waveform-service');
+const { extractWaveform, clearCache, getCacheSize, getCacheBytes } = require('../main/waveform-service');
 
-describe('waveform-service LRU cache & API', () => {
+describe('waveform-service streaming & LRU cache', () => {
   beforeEach(() => {
     clearCache();
   });
 
-  test('cache starts empty and clearCache works', () => {
+  test('cache starts empty and clearCache resets count & bytes', () => {
     expect(getCacheSize()).toBe(0);
+    expect(getCacheBytes()).toBe(0);
     clearCache();
     expect(getCacheSize()).toBe(0);
+    expect(getCacheBytes()).toBe(0);
   });
 
   test('rejects gracefully when ffmpeg binary missing or invalid file', async () => {
