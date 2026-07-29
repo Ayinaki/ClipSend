@@ -26,7 +26,6 @@ describe('waveform-service streaming & LRU cache', () => {
   });
 
   test('evicts oldest items when max byte size (5MB) is exceeded', () => {
-    // Insert 2MB arrays
     const array2MB = new Float32Array(524288); // 2MB
     setCache('item1', array2MB);
     setCache('item2', array2MB);
@@ -37,6 +36,15 @@ describe('waveform-service streaming & LRU cache', () => {
     setCache('item3', array2MB);
     expect(getCacheSize()).toBe(2); // item1 evicted
     expect(getCacheBytes()).toBe(4 * 1024 * 1024);
+  });
+
+  test('refuses to cache oversized items exceeding 5MB cap', () => {
+    const array6MB = new Float32Array(1572864); // 6MB (> 5MB cap)
+    setCache('huge_item', array6MB);
+
+    // Should be rejected from cache
+    expect(getCacheSize()).toBe(0);
+    expect(getCacheBytes()).toBe(0);
   });
 
   test('rejects gracefully when ffmpeg binary missing or invalid file', async () => {

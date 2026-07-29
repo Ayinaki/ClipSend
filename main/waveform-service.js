@@ -18,6 +18,11 @@ let currentCacheBytes = 0;
 function setCache(key, value) {
   const valueBytes = value.byteLength || (value.length * 4);
 
+  // Reject caching single items larger than maximum cache capacity
+  if (valueBytes > MAX_CACHE_BYTES) {
+    return;
+  }
+
   if (waveformCache.has(key)) {
     const oldVal = waveformCache.get(key);
     currentCacheBytes -= (oldVal.byteLength || (oldVal.length * 4));
