@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.5.1: Windows App Icon Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Added high-resolution Windows app icon (icon.ico) and un-ignored build assets directory so installer and executable display custom ClipSend branding."
+    ]
+  },
+  {
     "version": "v1.5.0: Performance & Stability Refactor",
     "date": "July 2026",
     "changes": [

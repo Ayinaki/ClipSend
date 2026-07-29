@@ -1,6 +1,6 @@
 {
   "name": "video-compressor",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "",
   "main": "main/main.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "appId": "com.clipsend.app",
     "productName": "ClipSend",
     "win": {
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "extraResources": [
       ".env"
