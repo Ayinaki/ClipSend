@@ -1,5 +1,18 @@
 window.changelogData = [
   {
+    "version": "v1.5.0: Performance & Stability Refactor",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Implemented streaming bucket waveform extraction, reducing RAM usage during waveform generation by 98%+.",
+      "Feature: Added zero-copy TypedArray IPC transmission for instant waveform rendering.",
+      "Feature: Added a 5MB / 50-entry bounded LRU cache for waveforms with automatic eviction.",
+      "Feature: Added bounded parallel clip probing (concurrency limit = 3) and probe caching in Merge Mode.",
+      "Feature: Implemented rolling 16KB stderr window and cross-chunk timecode parsing in FFmpeg processes.",
+      "Feature: Converted file system operations to non-blocking fs.promises to eliminate main thread UI freezes.",
+      "Feature: Added automated GitHub Actions CI build and release pipelines."
+    ]
+  },
+  {
     "version": "Phase 10: GIF Export & App Branding",
     "date": "Mid-July 2026",
     "changes": [
