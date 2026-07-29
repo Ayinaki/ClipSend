@@ -1,0 +1,45 @@
+{
+  "name": "video-compressor",
+  "version": "1.3.0",
+  "description": "",
+  "main": "main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder build --win",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "build": {
+    "appId": "com.clipsend.app",
+    "productName": "ClipSend",
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "extraResources": [
+      ".env"
+    ],
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "bin/**/*",
+      "preload.js",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "bin/**/*"
+    ],
+    "electronLanguages": ["en-US"]
+  },
+  "keywords": [],
+  "author": "Ayinaki",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
+    "jest": "^30.4.2"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "electron-store": "^8.1.0"
+  }
+}

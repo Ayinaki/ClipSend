@@ -1,0 +1,14 @@
+.env
+node_modules/
+build/
+dist/
+*.log
+*.mbtree
+test_tmp/
+output.mp4
+dummy.mkv
+temp.gif
+temp.y4m
+temp_pipe.gif
+bin/*.exe
+

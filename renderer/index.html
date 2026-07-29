@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClipSend</title>
+  <link rel="stylesheet" href="styles/index.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Custom Title Bar -->
+    <div class="titlebar">
+      <div class="titlebar-drag-region">
+        <span class="titlebar-title">ClipSend</span>
+        <span id="app-version" style="font-size: 10px; color: var(--text-muted); margin-left: 6px;"></span>
+      </div>
+      <div id="progress-container" class="titlebar-progress-container" style="display: none; -webkit-app-region: no-drag;">
+        <span id="progress-text" class="titlebar-progress-text">0%</span>
+        <div class="titlebar-progress-bar">
+          <div id="progress-fill" class="titlebar-progress-fill"></div>
+        </div>
+        <button id="cancel-btn" class="titlebar-cancel-btn win-btn" title="Cancel">&#xE711;</button>
+      </div>
+      <div class="titlebar-controls">
+        <button id="titlebar-warning-btn" class="win-btn" title="View Warnings" style="font-size: 13px; color: #ffeb3b; display: none; align-items: center; justify-content: center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
+        <button id="changelog-btn" class="win-btn" title="Changelog" style="font-size: 13px;">&#xE81C;</button>
+        <button id="feedback-btn" class="win-btn" title="Send Feedback" style="font-size: 13px;">&#xE939;</button>
+        <button id="settings-btn" class="win-btn" title="Settings" style="font-size: 12px;">&#xE713;</button>
+        <button id="win-min" class="win-btn" title="Minimize">&#xE921;</button>
+        <button id="win-close" class="win-btn win-close-btn" title="Close">&#xE8BB;</button>
+      </div>
+    </div>
+
+    <main class="workbench">
+      <!-- LEFT SIDEBAR -->
+      <aside class="sidebar" style="display: flex; flex-direction: column;">
+        <div class="sidebar-content" style="flex: 1; overflow-y: auto;">
+          <!-- TRIM SIDEBAR -->
+          <div id="trim-sidebar">
+            <div class="panel">
+          <div class="panel-header">Choose File</div>
+          <div class="panel-content">
+            <button id="open-file-btn" class="toolbar-btn primary-btn full-width">Browse...</button>
+          </div>
+        </div>
+
+        <div class="panel" id="audio-settings-panel">
+          <div class="panel-header collapsible-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="const p = this.parentElement; p.classList.toggle('collapsed'); const c = this.nextElementSibling; const isCollapsed = p.classList.contains('collapsed'); c.style.display = isCollapsed ? 'none' : 'block'; this.querySelector('.chevron').innerHTML = isCollapsed ? '&#xE70E;' : '&#xE70D;';">
+            Audio Settings
+            <span class="chevron" style="font-family: 'Segoe MDL2 Assets'; font-size: 10px;">&#xE70D;</span>
+          </div>
+          <div class="panel-content">
+            <select id="audio-track-select" class="track-select full-width">
+              <option value="">No audio tracks found</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="panel" id="trim-settings-panel">
+          <div class="panel-header">Trim Settings</div>
+          <div class="panel-content">
+            <div class="input-group">
+              <label class="custom-checkbox-label">
+                <input type="checkbox" id="multi-trim-enable" class="custom-checkbox-input" disabled>
+                <span class="custom-checkbox-box"></span>
+                Enable Multi-Trim
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel collapsed" id="cropping-settings-panel">
+          <div class="panel-header collapsible-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="const p = this.parentElement; p.classList.toggle('collapsed'); const c = this.nextElementSibling; const isCollapsed = p.classList.contains('collapsed'); c.style.display = isCollapsed ? 'none' : 'block'; this.querySelector('.chevron').innerHTML = isCollapsed ? '&#xE70E;' : '&#xE70D;';">
+            Cropping
+            <span class="chevron" style="font-family: 'Segoe MDL2 Assets'; font-size: 10px;">&#xE70E;</span>
+          </div>
+          <div class="panel-content" id="cropping-panel-content" style="display: none;">
+            <div class="input-group">
+              <label class="custom-checkbox-label">
+                <input type="checkbox" id="crop-enable" class="custom-checkbox-input" disabled>
+                <span class="custom-checkbox-box"></span>
+                Enable Cropping
+              </label>
+            </div>
+            
+            <div id="crop-controls" style="opacity: 0.5; pointer-events: none; margin-top: 15px;">
+              <div class="input-group">
+                <label>Pre-settings:</label>
+                <select id="crop-preset" class="track-select full-width">
+                  <option value="none">None</option>
+                  <option value="16:9">16:9 (Landscape)</option>
+                  <option value="9:16">9:16 (Vertical)</option>
+                  <option value="1:1">1:1 (Square)</option>
+                  <option value="4:3">4:3</option>
+                </select>
+              </div>
+              <button id="crop-recenter-btn" class="secondary-btn full-width" style="margin-top: 10px;">Re-center</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">Export Settings</div>
+          <div class="panel-content">
+            <div class="input-group" id="multi-export-mode-container" style="display: none; margin-bottom: 10px;">
+              <label for="export-mode-select">Output Mode:</label>
+              <select id="export-mode-select" class="track-select full-width">
+                <option value="merged" selected>Export as Merged Clip</option>
+                <option value="separate">Export as Separate Clips</option>
+              </select>
+            </div>
+            <div class="input-group" style="margin-bottom: 10px;">
+              <label for="format-select">Format:</label>
+              <select id="format-select" class="track-select full-width">
+                <option value="mp4">MP4 (Video)</option>
+                <option value="gif">GIF (Animated)</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label for="preset-select">Target Size:</label>
+              <select id="preset-select" class="track-select full-width">
+                <!-- Populated by JS -->
+              </select>
+            </div>
+            <div class="input-group" style="margin-top: 10px;">
+              <label for="resolution-select">Resolution:</label>
+              <select id="resolution-select" class="track-select full-width">
+                <option value="native">Native</option>
+              </select>
+            </div>
+            <button id="calculate-btn" class="secondary-btn full-width mt-10" style="margin-top: 15px;">Calculate Plan</button>
+          </div>
+        </div>
+
+
+
+        <div class="panel" id="export-plan-display" style="display: none;">
+          <div class="panel-header">Export Estimate</div>
+          <div class="panel-content">
+            <div class="plan-details">
+              <div class="plan-row"><span class="plan-label">Video:</span><span class="plan-val" id="plan-vbr">--</span></div>
+              <div class="plan-row"><span class="plan-label">Res:</span><span class="plan-val" id="plan-res">--</span></div>
+              <div class="plan-row"><span class="plan-label">Est:</span><span class="plan-val" id="plan-size">--</span></div>
+            </div>
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--panel-border);">
+              <button id="export-btn" class="primary-btn full-width">Start Export</button>
+            </div>
+          </div>
+        </div>
+        </div>
+
+          <!-- MERGE SIDEBAR -->
+          <div id="merge-sidebar" style="display: none; flex-direction: column; height: 100%; position: relative;">
+            <div id="merge-sidebar-drop-overlay" class="drop-overlay" style="display: none;">
+              <div class="drop-message">
+                <span class="icon">&#xE8E5;</span>
+                <p>Drop videos to add</p>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">Add Clips</div>
+              <div class="panel-content">
+                <button id="add-clips-btn" class="toolbar-btn primary-btn full-width">Add Clips...</button>
+              </div>
+            </div>
+
+            <div class="panel" style="flex: 1; display: flex; flex-direction: column;">
+              <div class="panel-header">Clip List</div>
+              <div class="panel-content" style="flex: 1; display: flex; flex-direction: column; min-height: 150px;">
+                <div id="merge-clip-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+                  <div id="merge-empty-list" style="display: flex; justify-content: center; align-items: center; height: 100%; border: 1px dashed var(--panel-border); border-radius: 4px; background: rgba(0,0,0,0.2);">
+                    <span style="color: var(--text-secondary); font-size: 13px;">No clips added yet</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button id="export-merged-btn" class="primary-btn full-width" disabled>Export Merged Video</button>
+            <div id="merge-warnings" class="warnings-container" style="display: none; margin-top: 10px;"></div>
+            <div class="progress-container" id="merge-progress-container" style="display: none; margin-top: 10px;">
+              <div class="progress-bar">
+                <div class="progress-fill" id="merge-progress-fill"></div>
+              </div>
+              <div class="progress-footer">
+                <span class="progress-text" id="merge-progress-text">0%</span>
+                <button id="merge-cancel-btn" class="cancel-btn">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODE TOGGLE -->
+        <div class="mode-toggle-container" style="padding: 15px 10px 10px 10px; margin-top: auto; border-top: 1px solid var(--panel-border);">
+          <div class="mode-toggle">
+            <button id="mode-trim-btn" class="toggle-btn active">Trim</button>
+            <button id="mode-merge-btn" class="toggle-btn">Merge</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- CENTER STAGE -->
+      <section class="stage">
+        
+        <!-- TRIM STAGE -->
+        <div id="trim-stage" style="height: 100%; display: flex; flex-direction: column; position: relative;">
+          <div id="trim-drop-overlay" class="drop-overlay" style="display: none;">
+            <div class="drop-message">
+              <span class="icon">&#xE8E5;</span>
+              <p>Drop video to load</p>
+            </div>
+          </div>
+          <div id="initial-state" class="state-view active empty-state drop-zone-hint">
+            <div class="empty-message">
+              <span class="icon">&#xE8E5;</span>
+              <p>Drag & drop a video file here,<br>or click Browse to select one.</p>
+            </div>
+          </div>
+        
+        <div id="error-state" class="state-view empty-state">
+          <div class="empty-message">
+            <h2 class="error-text">Error</h2>
+            <p id="error-message"></p>
+          </div>
+        </div>
+
+        <div id="ready-state" class="state-view">
+          <div class="video-container">
+            <video id="main-video" class="preview-video"></video>
+            <div id="crop-overlay-container" style="position: absolute; display: none; overflow: hidden;">
+              <div id="crop-box" style="position: absolute; border: 2px dashed rgba(255,255,255,0.8); box-shadow: 0 0 0 9999px rgba(0,0,0,0.6); pointer-events: auto; cursor: move; box-sizing: border-box;">
+                <div class="crop-handle nw" style="position: absolute; width: 10px; height: 10px; background: white; top: -5px; left: -5px; cursor: nwse-resize;"></div>
+                <div class="crop-handle ne" style="position: absolute; width: 10px; height: 10px; background: white; top: -5px; right: -5px; cursor: nesw-resize;"></div>
+                <div class="crop-handle sw" style="position: absolute; width: 10px; height: 10px; background: white; bottom: -5px; left: -5px; cursor: nesw-resize;"></div>
+                <div class="crop-handle se" style="position: absolute; width: 10px; height: 10px; background: white; bottom: -5px; right: -5px; cursor: nwse-resize;"></div>
+                <div class="crop-handle n" style="position: absolute; width: 10px; height: 10px; background: white; top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize;"></div>
+                <div class="crop-handle s" style="position: absolute; width: 10px; height: 10px; background: white; bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize;"></div>
+                <div class="crop-handle w" style="position: absolute; width: 10px; height: 10px; background: white; top: 50%; left: -5px; transform: translateY(-50%); cursor: ew-resize;"></div>
+                <div class="crop-handle e" style="position: absolute; width: 10px; height: 10px; background: white; top: 50%; right: -5px; transform: translateY(-50%); cursor: ew-resize;"></div>
+              </div>
+            </div>
+            <div id="preview-loading-overlay" class="loading-overlay" style="display: none;">
+              <div class="spinner"></div>
+              <span>Remuxing preview...</span>
+            </div>
+          </div>
+          
+          <div class="timeline-container" style="position: relative;">
+            <canvas id="timeline-canvas"></canvas>
+            <div id="waveform-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); color: #ccc; align-items: center; justify-content: center; font-size: 11px; pointer-events: none;">
+              Extracting waveform...
+            </div>
+          </div>
+
+          <div class="transport-bar" id="control-bar">
+            <!-- Left info (Timecode & Volume) -->
+            <div class="left-controls">
+              <div class="timecode-container">
+                <span class="time-display" contenteditable="true" spellcheck="false">00:00:00:00</span>
+              </div>
+              <div class="volume-container">
+                <button class="transport-btn mute-btn" id="mute-btn" title="Mute/Unmute">&#xE767;</button>
+                <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" step="0.01" value="0.6">
+              </div>
+            </div>
+            
+            <!-- Centered controls -->
+            <div class="transport-controls center-controls">
+              <button class="transport-btn jump-in-btn" title="Jump to In">&#xE892;</button>
+              <button class="transport-btn set-in-btn" title="Set In" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">[</button>
+              <button class="transport-btn play-btn" title="Play/Pause">&#xE768;</button>
+              <button class="transport-btn prev-frame-btn" title="Previous Frame" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">&lt;</button>
+              <button class="transport-btn next-frame-btn" title="Next Frame" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">&gt;</button>
+              <button class="transport-btn stop-btn" title="Stop">&#xE71A;</button>
+              <button class="transport-btn set-out-btn" title="Set Out" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">]</button>
+              <button class="transport-btn jump-out-btn" title="Jump to Out">&#xE893;</button>
+            </div>
+
+            <!-- Right info -->
+            <div class="trim-info" id="trim-info">
+              <span class="trim-label">In <span id="trim-in-display" class="trim-value">00:00:00:00</span></span>
+              <span class="trim-label">Out <span id="trim-out-display" class="trim-value">00:00:00:00</span></span>
+              <span class="trim-label trim-duration">Dur <span id="trim-duration-display" class="trim-value">00:00:00:00</span></span>
+            </div>
+          </div>
+        </div>
+        </div> <!-- End trim-stage -->
+
+        <!-- MERGE STAGE -->
+        <div id="merge-stage" style="height: 100%; display: none; flex-direction: column; position: relative;">
+          <div id="merge-drop-overlay" class="drop-overlay" style="display: none;">
+            <div class="drop-message">
+              <span class="icon">&#xE8E5;</span>
+              <p>Drop videos to add</p>
+            </div>
+          </div>
+          <div class="video-container merge-video-area" style="flex: 1; background: #000; position: relative; display: flex; justify-content: center; align-items: center;">
+            <video id="merge-video" style="object-fit: contain; width: 100%; height: 100%; display: none; background-color: #000;"></video>
+            <video id="merge-preload-video" style="display: none;" preload="metadata" muted></video>
+            <div id="merge-empty-stage" class="empty-state" style="position: absolute; inset: 0; display: flex; justify-content: center; align-items: center;">
+              <div class="empty-message">
+                <span class="icon">&#xE8B2;</span>
+                <p>Add clips to begin previewing.</p>
+              </div>
+            </div>
+          </div>
+          <div class="merge-scrubber-area">
+            <canvas id="merge-scrubber-canvas"></canvas>
+          </div>
+          <div class="merge-transport-bar">
+            <div class="left-controls">
+              <div class="merge-timecode-container">
+                <span class="merge-timecode" id="merge-timecode">00:00 / 00:00</span>
+              </div>
+              <div class="volume-container">
+                <button class="transport-btn mute-btn" id="merge-mute-btn" title="Mute/Unmute">&#xE767;</button>
+                <input type="range" id="merge-volume-slider" class="volume-slider" min="0" max="1" step="0.01" value="0.6">
+              </div>
+            </div>
+            <div class="merge-transport-controls">
+              <button class="transport-btn play-btn" id="merge-play-btn" title="Play/Pause">&#xE768;</button>
+            </div>
+            <span class="merge-clip-indicator" id="merge-clip-indicator"></span>
+          </div>
+          <div class="merge-timeline-container" style="height: 140px; display: flex; flex-direction: column; background: var(--bg-primary); border-top: 1px solid var(--panel-border);">
+            <div style="padding: 8px 12px; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between;">
+              <span>Merge Timeline</span>
+              <span id="merge-total-duration">Total: 00:00</span>
+            </div>
+            <div id="merge-timeline-strip" style="flex: 1; display: flex; align-items: center; padding: 12px 12px 10px 12px; gap: 6px; overflow: hidden;">
+              <div id="merge-empty-timeline" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; border: 2px dashed var(--panel-border); border-radius: 6px;">
+                <span style="color: var(--text-secondary);">Timeline will appear here</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- Settings Modal Overlay -->
+    <div id="settings-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content panel">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+          <span>Settings</span>
+          <button id="close-settings-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content">
+          <div class="input-group">
+            <label>Default Export Directory:</label>
+            <div style="display: flex; gap: 4px;">
+              <input type="text" id="setting-export-dir" readonly class="track-select" style="flex: 1; cursor: default;" placeholder="Not set (will prompt every time)">
+              <button id="browse-export-dir-btn" class="secondary-btn" style="white-space: nowrap;">Browse...</button>
+              <button id="clear-export-dir-btn" class="cancel-btn" style="white-space: nowrap;">Clear</button>
+            </div>
+          </div>
+          
+          <div class="input-group" style="margin-top: 10px;">
+            <label>Hardware Acceleration:</label>
+            <select id="setting-hw-accel" class="track-select">
+              <option value="auto">Auto</option>
+              <option value="nvenc">NVIDIA (NVENC)</option>
+              <option value="cpu">CPU (libx264)</option>
+            </select>
+          </div>
+          
+          <div class="input-group" style="margin-top: 15px;">
+            <label class="custom-checkbox-label">
+              <input type="checkbox" id="setting-max-quality" class="custom-checkbox-input">
+              <span class="custom-checkbox-box"></span>
+              Max Quality
+            </label>
+            <div style="font-size: 11px; color: var(--text-muted); margin-left: 24px; margin-top: 2px;">
+              Forces the highest-quality encoding preset. Significantly increases export time.
+            </div>
+          </div>
+          
+          <div class="input-group" style="margin-top: 15px;">
+            <label class="custom-checkbox-label">
+              <input type="checkbox" id="setting-show-waveform" class="custom-checkbox-input" checked>
+              <span class="custom-checkbox-box"></span>
+              Show Audio Waveform
+            </label>
+          </div>
+          
+          <div class="input-group" style="margin-top: 15px;">
+            <label class="custom-checkbox-label">
+              <input type="checkbox" id="setting-disable-downscale" class="custom-checkbox-input">
+              <span class="custom-checkbox-box"></span>
+              Disable Automatic Downscaling
+            </label>
+            <div style="font-size: 11px; color: var(--text-muted); margin-left: 24px; margin-top: 2px;">
+              Always export at source resolution, even if bitrate becomes very low.
+            </div>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+
+    <!-- Changelog Modal Overlay -->
+    <div id="changelog-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content panel" style="width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 15px; flex-shrink: 0;">
+          <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE81C;</span> What's New</span>
+          <button id="close-changelog-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content" id="changelog-content" style="overflow-y: auto; padding-right: 10px; flex-grow: 1;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Feedback Modal Overlay -->
+    <div id="feedback-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content panel" style="width: 450px;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 15px;">
+          <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE939;</span> Send Feedback</span>
+          <button id="close-feedback-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content">
+          <div class="input-group">
+            <label style="margin-bottom: 6px; display: block;">Feedback Type:</label>
+            <select id="feedback-type" class="form-input">
+              <option value="bug">Bug Report</option>
+              <option value="feature">Feature Request</option>
+              <option value="general">General Feedback</option>
+            </select>
+          </div>
+          
+          <div class="input-group" style="margin-top: 16px;">
+            <label style="margin-bottom: 6px; display: block;">Your Message:</label>
+            <textarea id="feedback-message" class="form-input" rows="5" maxlength="1000" placeholder="Describe the issue or feature request..." style="resize: vertical; min-height: 80px; max-height: 250px; font-family: var(--font-primary);"></textarea>
+            <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+              <span id="feedback-char-count" style="font-size: 11px; color: rgba(255, 255, 255, 0.3);">0 / 1000</span>
+            </div>
+          </div>
+
+          <div class="input-group" style="margin-top: 8px;">
+            <label style="margin-bottom: 6px; display: block;">Contact <span style="color: var(--text-muted); font-size: 11px;">(Optional)</span>:</label>
+            <input type="text" id="feedback-contact" class="form-input" placeholder="Discord username or email..." maxlength="100">
+          </div>
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
+            <span id="feedback-status" style="font-size: 12px; color: var(--text-muted);"></span>
+            <div style="display: flex; gap: 8px;">
+              <button id="cancel-feedback-btn" class="secondary-btn">Cancel</button>
+              <button id="send-feedback-btn" class="primary-btn" disabled>Send Feedback</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Export Complete Modal Overlay -->
+    <div id="export-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content panel">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+          <span>Export Complete</span>
+          <button id="close-export-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+          <div style="font-size: 14px; font-weight: 500;">Export completed successfully!</div>
+          <div id="export-saved-to" style="font-size: 12px; color: var(--text-secondary); word-break: break-all;">Saved to: </div>
+          <div id="export-final-size" style="font-size: 12px; color: var(--text-secondary);">Final size: </div>
+          <div id="export-strategy" style="font-size: 12px; color: var(--text-secondary); display: none;"></div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px;">
+            <button id="export-copy-clipboard-btn" class="secondary-btn" style="display: none; margin-right: auto;">Copy to Clipboard</button>
+            <button id="export-open-folder-btn" class="secondary-btn">Open Folder</button>
+            <button id="export-ok-btn" class="primary-btn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Warnings Modal Overlay -->
+    <div id="warnings-modal" class="modal-overlay" style="display: none; align-items: flex-start; padding-top: 50px;">
+      <div class="modal-content panel" style="width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffeb3b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            Warnings
+          </span>
+          <button id="close-warnings-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px; overflow-y: auto;" id="warnings-modal-content">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+  
+  <script src="changelog-data.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
