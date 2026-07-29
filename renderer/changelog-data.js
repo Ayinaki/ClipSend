@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.5.2: CI Test Execution & Stdin Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Added -nostdin and -y to FFmpeg arguments in waveform-service to prevent child processes from hanging on unclosed stdio streams during CI automated testing."
+    ]
+  },
+  {
     "version": "v1.5.1: Windows App Icon Fix",
     "date": "July 2026",
     "changes": [

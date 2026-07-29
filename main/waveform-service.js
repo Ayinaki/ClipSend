@@ -83,6 +83,8 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
     }
 
     const args = [
+      '-nostdin',
+      '-y',
       '-i', filePath,
       '-map', `0:a:${trackIndex}`,
       '-ac', '1',
