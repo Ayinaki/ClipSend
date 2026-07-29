@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.5.6: Automated Native PNG-to-ICO Packaging Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Configured electron-builder to automatically convert high-resolution icon.png into native 32-bit ARGB Windows executable icons during build."
+    ]
+  },
+  {
     "version": "v1.5.5: Medium Clip Safety Margin Refinement",
     "date": "July 2026",
     "changes": [
