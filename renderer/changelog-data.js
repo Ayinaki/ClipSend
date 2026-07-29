@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.5.3: True 32-bit ARGB Windows Icon Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Replaced low-color palettized ICO format with a crisp, multi-resolution 32-bit ARGB icon containing 256x256, 128x128, 64x64, 48x48, 32x32, and 16x16 alpha-transparent icon layers."
+    ]
+  },
+  {
     "version": "v1.5.2: CI Test Execution & Stdin Fix",
     "date": "July 2026",
     "changes": [
