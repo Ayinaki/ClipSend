@@ -367,14 +367,16 @@ function validateInputs(mediaInfo, trimIn, trimOut, settings) {
 function computeSizeLimitBitrate(targetSizeMB, clipDurationSec, audioBitrateKbps) {
   const targetBytes = targetSizeMB * 1024 * 1024;
   
-  // Dynamic safety margin for short clips
+  // Dynamic safety margin based on clip duration
   let safetyMargin = SAFETY_MARGIN;
   if (clipDurationSec < 2.0) {
     safetyMargin = 0.85;
   } else if (clipDurationSec < 3.5) {
     safetyMargin = 0.88;
-  } else if (clipDurationSec < 5.0) {
+  } else if (clipDurationSec < 6.0) {
     safetyMargin = 0.92;
+  } else if (clipDurationSec < 10.0) {
+    safetyMargin = 0.94;
   }
 
   const safeBytes = targetBytes * safetyMargin;

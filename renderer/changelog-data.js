@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.5.5: Medium Clip Safety Margin Refinement",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Expanded short-to-medium clip safety margin curve (up to 10s duration) to ensure clips between 5s–10s stay strictly under target file size caps."
+    ]
+  },
+  {
     "version": "v1.5.4: Short Clip Target Size & VBV Fix",
     "date": "July 2026",
     "changes": [
