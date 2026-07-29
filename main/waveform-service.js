@@ -7,17 +7,48 @@ if (ffmpegPath.includes('app.asar')) {
   ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
 }
 
-// In-memory cache: "filePath_audioIndex" -> Float32Array (or Array)
+/**
+ * Bounded LRU Cache for Waveforms
+ */
+const MAX_CACHE_SIZE = 50;
 const waveformCache = new Map();
 
-function extractWaveform(filePath, audioIndex) {
-  return new Promise((resolve, reject) => {
-    // Default to track 0 if undefined
-    const trackIndex = audioIndex !== undefined ? audioIndex : 0;
-    const cacheKey = `${filePath}_${trackIndex}`;
+function setCache(key, value) {
+  if (waveformCache.has(key)) {
+    waveformCache.delete(key);
+  } else if (waveformCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = waveformCache.keys().next().value;
+    waveformCache.delete(firstKey);
+  }
+  waveformCache.set(key, value);
+}
 
-    if (waveformCache.has(cacheKey)) {
-      return resolve(waveformCache.get(cacheKey));
+function getCache(key) {
+  if (!waveformCache.has(key)) return null;
+  const value = waveformCache.get(key);
+  // Refresh LRU order
+  waveformCache.delete(key);
+  waveformCache.set(key, value);
+  return value;
+}
+
+/**
+ * Extract waveform peaks from an audio track.
+ *
+ * @param {string} filePath Path to input media file
+ * @param {number} [audioIndex=0] Audio track index
+ * @param {number} [requestedPoints=2000] Target number of waveform points
+ * @returns {Promise<Float32Array|Array|null>} Peaks array normalized 0.0–1.0
+ */
+function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
+  return new Promise((resolve, reject) => {
+    const trackIndex = audioIndex !== undefined ? audioIndex : 0;
+    const numPoints = Math.max(100, Math.min(10000, requestedPoints));
+    const cacheKey = `${filePath}_${trackIndex}_${numPoints}`;
+
+    const cached = getCache(cacheKey);
+    if (cached) {
+      return resolve(cached);
     }
 
     if (!fs.existsSync(ffmpegPath)) {
@@ -34,10 +65,12 @@ function extractWaveform(filePath, audioIndex) {
     ];
 
     const child = spawn(ffmpegPath, args);
-    let rawData = Buffer.alloc(0);
+    const chunks = [];
+    let totalBytes = 0;
 
     child.stdout.on('data', (chunk) => {
-      rawData = Buffer.concat([rawData, chunk]);
+      chunks.push(chunk);
+      totalBytes += chunk.length;
     });
 
     child.stderr.on('data', () => {
@@ -45,18 +78,21 @@ function extractWaveform(filePath, audioIndex) {
     });
 
     child.on('close', (code) => {
-      if (rawData.length === 0) {
-        // No audio data or extraction failed (e.g. no audio track)
+      if (totalBytes === 0) {
         return resolve(null);
       }
 
-      // We generate a fixed number of peaks (e.g., 2000 points)
-      // This is enough resolution for any reasonable canvas width.
-      const numPoints = 2000;
-      const samples = new Int16Array(rawData.buffer, rawData.byteOffset, rawData.byteLength / 2);
-      const samplesPerPoint = Math.max(1, Math.floor(samples.length / numPoints));
+      // Single O(N) allocation instead of O(N^2) repeated Buffer.concat
+      const rawData = Buffer.concat(chunks, totalBytes);
+      const samples = new Int16Array(rawData.buffer, rawData.byteOffset, Math.floor(rawData.byteLength / 2));
       
+      if (samples.length === 0) {
+        return resolve(null);
+      }
+
+      const samplesPerPoint = Math.max(1, Math.floor(samples.length / numPoints));
       const peaks = new Float32Array(numPoints);
+
       for (let i = 0; i < numPoints; i++) {
         const start = i * samplesPerPoint;
         const end = Math.min(start + samplesPerPoint, samples.length);
@@ -67,14 +103,15 @@ function extractWaveform(filePath, audioIndex) {
         }
         peaks[i] = max / 32768.0; // normalize to 0.0-1.0
       }
-      
-      const peaksArray = Array.from(peaks);
-      waveformCache.set(cacheKey, peaksArray);
-      resolve(peaksArray);
+
+      // Send Float32Array directly (or Array for compatibility)
+      const result = Array.from(peaks);
+      setCache(cacheKey, result);
+      resolve(result);
     });
 
-    child.on('error', (err) => {
-      resolve(null); // fail gracefully
+    child.on('error', () => {
+      resolve(null);
     });
   });
 }
@@ -83,7 +120,12 @@ function clearCache() {
   waveformCache.clear();
 }
 
+function getCacheSize() {
+  return waveformCache.size;
+}
+
 module.exports = {
   extractWaveform,
-  clearCache
+  clearCache,
+  getCacheSize
 };

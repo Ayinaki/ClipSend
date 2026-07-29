@@ -7,6 +7,9 @@ if (ffmpegPath.includes('app.asar')) {
   ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
 }
 
+const MAX_STDERR_BYTES = 16384; // 16KB rolling window
+const TIME_BUFFER_MAX = 2048;   // 2KB progress regex buffer
+
 /**
  * Encoder service — orchestrates the 2-pass FFmpeg execution.
  */
@@ -28,26 +31,17 @@ class Encoder {
     this.cancelled = false;
     const { clipDuration } = plan;
 
-    // FFmpeg 2-pass creates a log file based on the -passlogfile arg or defaults to "ffmpeg2pass".
-    // We run it in a temporary working directory to keep the root clean, or just use a unique prefix.
     const logPrefix = `ffmpeg2pass-${Date.now()}`;
     const logDir = path.dirname(outputPath);
-    
-    // x264 has a notorious bug on Windows where it mangles absolute paths due to backslash escaping.
-    // To completely avoid this, we pass a purely relative filename to FFmpeg for the passlogfile,
-    // and we set the Current Working Directory (cwd) of the FFmpeg process to logDir.
     const passLogName = logPrefix;
 
     try {
-
-
       // --- PASS 1 ---
       if (!plan.isSinglePass) {
         if (onProgress) onProgress(0, 'Pass 1/2: Analyzing...');
         const pass1Args = [...plan.pass1Args, '-passlogfile', passLogName, 'NUL'];
         
         await this._runPass(pass1Args, clipDuration, (pct) => {
-          // Pass 1 represents 0-50% of total progress
           if (onProgress) onProgress(pct * 0.5, 'Pass 1/2: Analyzing...');
         }, logDir);
 
@@ -69,7 +63,6 @@ class Encoder {
         const pass2Args = [...plan.pass2Args, '-passlogfile', passLogName, outputPath];
         
         await this._runPass(pass2Args, clipDuration, (pct) => {
-          // Pass 2 represents 50-100% of total progress
           if (onProgress) onProgress(50 + (pct * 0.5), 'Pass 2/2: Encoding...');
         }, logDir);
       }
@@ -79,11 +72,12 @@ class Encoder {
       }
 
       // Encode finished successfully.
-      const stats = fs.statSync(outputPath);
+      const getStat = fs.promises?.stat ? fs.promises.stat : (p) => Promise.resolve(fs.statSync(p));
+      const stats = await getStat(outputPath);
       const sizeMB = stats.size / (1024 * 1024);
 
-      // Cleanup pass logs
-      this._cleanupLogs(logDir, logPrefix);
+      // Async cleanup pass logs
+      await this._cleanupLogs(logDir, logPrefix);
 
       return {
         success: true,
@@ -92,10 +86,16 @@ class Encoder {
       };
 
     } catch (err) {
-      // Cleanup logs and partial output on error/cancel
-      this._cleanupLogs(logDir, logPrefix);
-      if (fs.existsSync(outputPath)) {
-        try { fs.unlinkSync(outputPath); } catch (e) { /* ignore */ }
+      // Async cleanup logs and partial output on error/cancel
+      await this._cleanupLogs(logDir, logPrefix);
+      try {
+        if (fs.promises?.unlink) {
+          await fs.promises.unlink(outputPath);
+        } else if (fs.unlinkSync) {
+          fs.unlinkSync(outputPath);
+        }
+      } catch (e) {
+        /* ignore missing file */
       }
       
       if (this.cancelled) {
@@ -126,17 +126,29 @@ class Encoder {
 
       this.currentProcess = spawn(ffmpegPath, args, { cwd });
       let errorOutput = '';
+      let timeBuffer = '';
 
       this.currentProcess.stderr.on('data', (data) => {
         const text = data.toString();
+        
+        // 1. Rolling 16KB stderr accumulation
         errorOutput += text;
+        if (errorOutput.length > MAX_STDERR_BYTES) {
+          errorOutput = errorOutput.slice(errorOutput.length - MAX_STDERR_BYTES);
+        }
 
-        // Parse time=HH:MM:SS.ms to calculate progress
-        const timeMatch = text.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
-        if (timeMatch) {
-          const h = parseInt(timeMatch[1], 10);
-          const m = parseInt(timeMatch[2], 10);
-          const s = parseFloat(timeMatch[3]);
+        // 2. Cross-chunk progress regex matching (2KB trailing buffer)
+        timeBuffer += text;
+        if (timeBuffer.length > TIME_BUFFER_MAX) {
+          timeBuffer = timeBuffer.slice(timeBuffer.length - TIME_BUFFER_MAX);
+        }
+
+        const timeMatches = [...timeBuffer.matchAll(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/g)];
+        if (timeMatches.length > 0) {
+          const lastMatch = timeMatches[timeMatches.length - 1];
+          const h = parseInt(lastMatch[1], 10);
+          const m = parseInt(lastMatch[2], 10);
+          const s = parseFloat(lastMatch[3]);
           const currentSec = (h * 3600) + (m * 60) + s;
           
           if (totalDurationSec > 0) {
@@ -152,7 +164,8 @@ class Encoder {
         if (this.cancelled) {
           reject(new Error('Cancelled'));
         } else if (code !== 0) {
-          const err = new Error(`FFmpeg exited with code ${code}. Error: ${errorOutput.split('\n').slice(-10).join('\n')}`);
+          const tail = errorOutput.split('\n').slice(-10).join('\n');
+          const err = new Error(`FFmpeg exited with code ${code}. Error: ${tail}`);
           err.ffmpegStderr = errorOutput;
           reject(err);
         } else {
@@ -168,18 +181,21 @@ class Encoder {
   }
 
   /**
-   * Cleanup ffmpeg passlog files.
+   * Async cleanup of ffmpeg passlog files.
    */
-  _cleanupLogs(logDir, logPrefix) {
+  async _cleanupLogs(logDir, logPrefix) {
     const log0 = path.join(logDir, `${logPrefix}-0.log`);
     const logMbtree = path.join(logDir, `${logPrefix}-0.log.mbtree`);
     
-    if (fs.existsSync(log0)) {
-      try { fs.unlinkSync(log0); } catch(e) {}
-    }
-    if (fs.existsSync(logMbtree)) {
-      try { fs.unlinkSync(logMbtree); } catch(e) {}
-    }
+    try {
+      if (fs.promises?.unlink) await fs.promises.unlink(log0);
+      else if (fs.unlinkSync) fs.unlinkSync(log0);
+    } catch (e) {}
+
+    try {
+      if (fs.promises?.unlink) await fs.promises.unlink(logMbtree);
+      else if (fs.unlinkSync) fs.unlinkSync(logMbtree);
+    } catch (e) {}
   }
 }
 

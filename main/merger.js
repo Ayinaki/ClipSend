@@ -12,17 +12,33 @@ if (ffprobePath.includes('app.asar')) {
   ffprobePath = ffprobePath.replace('app.asar', 'app.asar.unpacked');
 }
 
+const MAX_STDERR_BYTES = 16384; // 16KB rolling window
+const TIME_BUFFER_MAX = 2048;   // 2KB progress regex buffer
+const PROBE_CONCURRENCY = 3;    // Bounded probing limit
+
+// In-memory probe cache: "filePath_mtime_size" -> probeResult
+const probeCache = new Map();
+
+/**
+ * Helper to run async tasks with a concurrency cap
+ */
+async function mapConcurrent(items, limit, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i], i);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Merger — handles multi-clip video concatenation via FFmpeg.
- *
- * Two strategies:
- *   1. FAST PATH — concat demuxer with -c copy (lossless, near-instant)
- *      Used when all clips share identical video codec, resolution, fps,
- *      pixel format, audio codec, sample rate, and channels.
- *
- *   2. FALLBACK PATH — concat filter with re-encoding (quality-preserving)
- *      Used when clips differ. Normalizes all streams to match the first clip's
- *      resolution, then encodes with libx264 CRF 18 + AAC.
  */
 class Merger {
   constructor() {
@@ -35,25 +51,23 @@ class Merger {
   // =========================================================================
 
   /**
-   * Probe every clip and determine if they are compatible for lossless concat.
+   * Probe every clip with bounded concurrency and determine compatibility.
    * @param {string[]} filePaths  Ordered list of clip paths
    * @returns {Promise<Object>} { compatible, clips[], reason? }
    */
   async checkCompatibility(filePaths) {
-    const clips = [];
-
-    for (let i = 0; i < filePaths.length; i++) {
-      try {
-        const info = await this._probeClip(filePaths[i]);
-        clips.push(info);
-      } catch (err) {
-        throw new Error(`Failed to probe clip ${i + 1} ("${path.basename(filePaths[i])}"): ${err.message}`);
-      }
-    }
-
-    if (clips.length < 2) {
+    if (!filePaths || filePaths.length < 2) {
       throw new Error('At least 2 clips are required for merging.');
     }
+
+    // Bounded parallel probing (concurrency limit = 3)
+    const clips = await mapConcurrent(filePaths, PROBE_CONCURRENCY, async (fp, i) => {
+      try {
+        return await this._probeClipCached(fp);
+      } catch (err) {
+        throw new Error(`Failed to probe clip ${i + 1} ("${path.basename(fp)}"): ${err.message}`);
+      }
+    });
 
     // Compare all clips against the first
     const ref = clips[0];
@@ -135,7 +149,8 @@ class Merger {
         throw new Error('Merge cancelled by user.');
       }
 
-      const stats = fs.statSync(outputPath);
+      const getStat = fs.promises?.stat ? fs.promises.stat : (p) => Promise.resolve(fs.statSync(p));
+      const stats = await getStat(outputPath);
       const sizeMB = stats.size / (1024 * 1024);
 
       return {
@@ -147,9 +162,11 @@ class Merger {
       };
 
     } catch (err) {
-      // Cleanup partial output
-      if (fs.existsSync(outputPath)) {
-        try { fs.unlinkSync(outputPath); } catch (e) { /* ignore */ }
+      try {
+        if (fs.promises?.unlink) await fs.promises.unlink(outputPath);
+        else if (fs.unlinkSync) fs.unlinkSync(outputPath);
+      } catch (e) {
+        /* ignore missing file */
       }
 
       if (this.cancelled) {
@@ -170,8 +187,26 @@ class Merger {
   }
 
   // =========================================================================
-  // Private: probe a single clip
+  // Private: cached clip probe
   // =========================================================================
+
+  async _probeClipCached(filePath) {
+    try {
+      const stats = await fs.promises.stat(filePath);
+      const cacheKey = `${filePath}_${stats.mtimeMs}_${stats.size}`;
+
+      if (probeCache.has(cacheKey)) {
+        return probeCache.get(cacheKey);
+      }
+
+      const result = await this._probeClip(filePath);
+      probeCache.set(cacheKey, result);
+      return result;
+    } catch (e) {
+      // Fall back to direct probe if stat fails
+      return await this._probeClip(filePath);
+    }
+  }
 
   _probeClip(filePath) {
     return new Promise((resolve, reject) => {
@@ -187,7 +222,7 @@ class Merger {
         filePath
       ];
 
-      execFile(ffprobePath, args, { maxBuffer: 100 * 1024 * 1024 }, (error, stdout, stderr) => {
+      execFile(ffprobePath, args, { maxBuffer: 32 * 1024 * 1024 }, (error, stdout) => {
         if (error) {
           return reject(new Error(`ffprobe error: ${error.message}`));
         }
@@ -201,7 +236,6 @@ class Merger {
             return reject(new Error('No video stream found'));
           }
 
-          // Parse fps from r_frame_rate
           let fps = 30;
           if (videoStream.r_frame_rate) {
             const parts = videoStream.r_frame_rate.split('/');
@@ -238,16 +272,14 @@ class Merger {
   // =========================================================================
 
   async _runConcatDemuxer(filePaths, outputPath, totalDuration, onProgress) {
-    // Write temporary concat list file
     const listPath = path.join(os.tmpdir(), `merge-list-${Date.now()}.txt`);
 
     try {
-      // FFmpeg concat demuxer requires forward slashes and single-quote escaping
       const lines = filePaths.map(fp => {
         const escaped = fp.replace(/\\/g, '/').replace(/'/g, "'\\''");
         return `file '${escaped}'`;
       });
-      fs.writeFileSync(listPath, lines.join('\n'), 'utf8');
+      await fs.promises.writeFile(listPath, lines.join('\n'), 'utf8');
 
       const args = [
         '-y',
@@ -265,9 +297,10 @@ class Merger {
       });
 
     } finally {
-      // Cleanup list file
-      if (fs.existsSync(listPath)) {
-        try { fs.unlinkSync(listPath); } catch (e) { /* ignore */ }
+      try {
+        await fs.promises.unlink(listPath);
+      } catch (e) {
+        /* ignore missing file */
       }
     }
   }
@@ -277,28 +310,22 @@ class Merger {
   // =========================================================================
 
   async _runConcatFilter(filePaths, clips, outputPath, totalDuration, onProgress, encoder = 'libx264') {
-    // Target resolution = first clip's resolution
     const targetW = clips[0].width;
     const targetH = clips[0].height;
     const targetFps = clips[0].fps;
     const n = filePaths.length;
 
-    // Build input args
     const inputArgs = [];
     for (const fp of filePaths) {
       inputArgs.push('-i', fp);
     }
 
-    // Build filter_complex
-    // For each input: scale to target res (maintain aspect ratio + pad), set fps, set pixel format,
-    // normalize audio to 44100 stereo
     const filterParts = [];
     const concatInputs = [];
 
     for (let i = 0; i < n; i++) {
       const hasAudio = clips[i].audioCodec !== null;
 
-      // Video normalization
       filterParts.push(
         `[${i}:v:0]` +
         `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,` +
@@ -309,7 +336,6 @@ class Merger {
         `[v${i}]`
       );
 
-      // Audio normalization (generate silence if no audio stream)
       if (hasAudio) {
         filterParts.push(
           `[${i}:a:0]` +
@@ -318,7 +344,6 @@ class Merger {
           `[a${i}]`
         );
       } else {
-        // Generate silent audio matching this clip's duration
         filterParts.push(
           `anullsrc=r=44100:cl=stereo:d=${clips[i].duration}[a${i}]`
         );
@@ -327,14 +352,12 @@ class Merger {
       concatInputs.push(`[v${i}][a${i}]`);
     }
 
-    // Concat filter
     filterParts.push(
       `${concatInputs.join('')}concat=n=${n}:v=1:a=1[outv][outa]`
     );
 
     const filterComplex = filterParts.join('; ');
 
-    // Build video codec args based on encoder
     let videoCodecArgs;
     if (encoder === 'h264_nvenc') {
       videoCodecArgs = ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '18', '-b:v', '0'];
@@ -363,7 +386,7 @@ class Merger {
   }
 
   // =========================================================================
-  // Private: spawn FFmpeg + progress parsing (same pattern as Encoder)
+  // Private: spawn FFmpeg + progress parsing
   // =========================================================================
 
   _runProcess(args, totalDurationSec, onProgressUpdate) {
@@ -374,17 +397,29 @@ class Merger {
 
       this.currentProcess = spawn(ffmpegPath, args);
       let errorOutput = '';
+      let timeBuffer = '';
 
       this.currentProcess.stderr.on('data', (data) => {
         const text = data.toString();
+        
+        // 1. Rolling 16KB stderr window
         errorOutput += text;
+        if (errorOutput.length > MAX_STDERR_BYTES) {
+          errorOutput = errorOutput.slice(errorOutput.length - MAX_STDERR_BYTES);
+        }
 
-        // Parse time=HH:MM:SS.ms to calculate progress
-        const timeMatch = text.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
-        if (timeMatch) {
-          const h = parseInt(timeMatch[1], 10);
-          const m = parseInt(timeMatch[2], 10);
-          const s = parseFloat(timeMatch[3]);
+        // 2. Cross-chunk progress regex matching (2KB trailing buffer)
+        timeBuffer += text;
+        if (timeBuffer.length > TIME_BUFFER_MAX) {
+          timeBuffer = timeBuffer.slice(timeBuffer.length - TIME_BUFFER_MAX);
+        }
+
+        const timeMatches = [...timeBuffer.matchAll(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/g)];
+        if (timeMatches.length > 0) {
+          const lastMatch = timeMatches[timeMatches.length - 1];
+          const h = parseInt(lastMatch[1], 10);
+          const m = parseInt(lastMatch[2], 10);
+          const s = parseFloat(lastMatch[3]);
           const currentSec = (h * 3600) + (m * 60) + s;
 
           if (totalDurationSec > 0) {
