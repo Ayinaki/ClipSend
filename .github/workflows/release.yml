@@ -1,0 +1,63 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Build & Publish Release (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch FFmpeg & FFprobe Binaries
+        shell: powershell
+        run: |
+          if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
+          if (!(Test-Path "bin/ffmpeg.exe") -or !(Test-Path "bin/ffprobe.exe")) {
+            Write-Host "Downloading FFmpeg release binaries..."
+            Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
+            Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
+            $ffmpeg = Get-ChildItem -Path "ffmpeg_temp" -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
+            $ffprobe = Get-ChildItem -Path "ffmpeg_temp" -Filter "ffprobe.exe" -Recurse | Select-Object -First 1
+            Copy-Item $ffmpeg.FullName -Destination "bin/ffmpeg.exe"
+            Copy-Item $ffprobe.FullName -Destination "bin/ffprobe.exe"
+            Remove-Item -Recurse -Force "ffmpeg.zip", "ffmpeg_temp"
+            Write-Host "FFmpeg binaries installed successfully to bin/."
+          }
+
+      - name: Run Unit Tests
+        run: npm test
+
+      - name: Build Electron Executable
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release & Upload Executable
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
