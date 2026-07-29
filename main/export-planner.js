@@ -361,16 +361,31 @@ function validateInputs(mediaInfo, trimIn, trimOut, settings) {
 
 /**
  * Compute the video bitrate from target file size.
+ * Applies a dynamic safety margin for short clips where I-frame overhead
+ * represents a higher percentage of the total file size.
  */
 function computeSizeLimitBitrate(targetSizeMB, clipDurationSec, audioBitrateKbps) {
   const targetBytes = targetSizeMB * 1024 * 1024;
-  const safeBytes = targetBytes * SAFETY_MARGIN;
+  
+  // Dynamic safety margin for short clips
+  let safetyMargin = SAFETY_MARGIN;
+  if (clipDurationSec < 2.0) {
+    safetyMargin = 0.85;
+  } else if (clipDurationSec < 3.5) {
+    safetyMargin = 0.88;
+  } else if (clipDurationSec < 5.0) {
+    safetyMargin = 0.92;
+  }
+
+  const safeBytes = targetBytes * safetyMargin;
   const usableBytes = safeBytes * (1 - MUXING_OVERHEAD);
   const totalBitrateBps = (usableBytes * 8) / clipDurationSec;
   const totalBitrateKbps = totalBitrateBps / 1000;
   let videoBitrateKbps = totalBitrateKbps - audioBitrateKbps;
-  if (videoBitrateKbps > 50000) {
-    videoBitrateKbps = 50000;
+
+  // Cap maximum video bitrate to 25 Mbps to prevent rate-control overshoot
+  if (videoBitrateKbps > 25000) {
+    videoBitrateKbps = 25000;
   }
   return videoBitrateKbps;
 }
@@ -460,7 +475,7 @@ function buildPassArgs(opts) {
       // Size-targeted for NVENC (Single pass VBR constrained)
       const vbit = Math.round(videoBitrateKbps);
       const maxrate = vbit;
-      const bufsize = Math.round(videoBitrateKbps * 2);
+      const bufsize = Math.round(videoBitrateKbps * 1.5);
       args.push('-c:v', 'h264_nvenc', '-preset', nvencPreset, '-rc', 'vbr', '-b:v', `${vbit}k`, '-maxrate', `${maxrate}k`, '-bufsize', `${bufsize}k`);
     }
   } else {
@@ -470,8 +485,16 @@ function buildPassArgs(opts) {
       args.push('-c:v', 'libx264', '-preset', x264Preset, '-crf', crfValue.toString());
     } else if (pass === 1 || pass === 2) {
       const vbit = Math.round(videoBitrateKbps);
-      // Strict ABR for libx264 2-pass (no maxrate VBV)
-      args.push('-c:v', 'libx264', '-preset', x264Preset, '-b:v', `${vbit}k`, '-pass', pass.toString());
+      const bufsize = Math.round(videoBitrateKbps * 1.5);
+      // Enforce VBV maxrate and bufsize to prevent bitrate spikes on short clips
+      args.push(
+        '-c:v', 'libx264',
+        '-preset', x264Preset,
+        '-b:v', `${vbit}k`,
+        '-maxrate', `${vbit}k`,
+        '-bufsize', `${bufsize}k`,
+        '-pass', pass.toString()
+      );
     }
   }
   

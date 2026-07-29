@@ -83,7 +83,7 @@ describe('computeSizeLimitBitrate', () => {
 
   test('500 MB / 30s clip → very high bitrate', () => {
     const vbr = computeSizeLimitBitrate(500, 30, 128);
-    expect(vbr).toBe(50000); // capped at 50 Mbps
+    expect(vbr).toBe(25000); // capped at 25 Mbps
   });
 
   test('higher audio bitrate reduces video bitrate', () => {
@@ -417,7 +417,7 @@ describe('calculatePlan — validation', () => {
 describe('calculatePlan — edge cases', () => {
   test('very short clip (1s) at 10 MB → high bitrate, no downscale', () => {
     const plan = calculatePlan(media1440p, 0, 1, sizeLimitSettings(10));
-    expect(plan.videoBitrateKbps).toBe(50000);
+    expect(plan.videoBitrateKbps).toBe(25000);
     expect(plan.downscaled).toBe(false);
   });
 

@@ -1,5 +1,14 @@
 window.changelogData = [
   {
+    "version": "v1.5.4: Short Clip Target Size & VBV Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Implemented dynamic safety margins for ultra-short video clips (< 5s) to compensate for keyframe/IDR overhead.",
+      "Fix: Enforced VBV rate-control constraints (-maxrate & -bufsize) on 2-pass libx264 exports to eliminate file size overshoots on short clips.",
+      "Fix: Capped maximum video bitrate ceiling to 25 Mbps to prevent rate controller saturation."
+    ]
+  },
+  {
     "version": "v1.5.3: True 32-bit ARGB Windows Icon Fix",
     "date": "July 2026",
     "changes": [
