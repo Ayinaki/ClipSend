@@ -35,6 +35,7 @@ function setCache(key, value) {
     waveformCache.delete(firstKey);
   }
 
+  currentCacheBytes = Math.max(0, currentCacheBytes);
   waveformCache.set(key, value);
   currentCacheBytes += valueBytes;
 }
@@ -179,5 +180,6 @@ module.exports = {
   extractWaveform,
   clearCache,
   getCacheSize,
-  getCacheBytes
+  getCacheBytes,
+  setCache
 };
