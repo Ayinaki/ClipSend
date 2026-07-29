@@ -12,7 +12,7 @@ describe('waveform-service LRU cache & API', () => {
   });
 
   test('rejects gracefully when ffmpeg binary missing or invalid file', async () => {
-    const result = await extractWaveform('non_existent_file.mp4', 0, 100).catch(e => null);
+    const result = await extractWaveform('non_existent_file.mp4', 0, 100).catch(() => null);
     expect(result).toBeNull();
   });
 });

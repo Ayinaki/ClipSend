@@ -16,8 +16,26 @@ const MAX_STDERR_BYTES = 16384; // 16KB rolling window
 const TIME_BUFFER_MAX = 2048;   // 2KB progress regex buffer
 const PROBE_CONCURRENCY = 3;    // Bounded probing limit
 
-// In-memory probe cache: "filePath_mtime_size" -> probeResult
+const MAX_PROBE_CACHE_SIZE = 100;
 const probeCache = new Map();
+
+function setProbeCache(key, value) {
+  if (probeCache.has(key)) {
+    probeCache.delete(key);
+  } else if (probeCache.size >= MAX_PROBE_CACHE_SIZE) {
+    const firstKey = probeCache.keys().next().value;
+    probeCache.delete(firstKey);
+  }
+  probeCache.set(key, value);
+}
+
+function getProbeCache(key) {
+  if (!probeCache.has(key)) return null;
+  const value = probeCache.get(key);
+  probeCache.delete(key);
+  probeCache.set(key, value);
+  return value;
+}
 
 /**
  * Helper to run async tasks with a concurrency cap
@@ -195,15 +213,15 @@ class Merger {
       const stats = await fs.promises.stat(filePath);
       const cacheKey = `${filePath}_${stats.mtimeMs}_${stats.size}`;
 
-      if (probeCache.has(cacheKey)) {
-        return probeCache.get(cacheKey);
+      const cached = getProbeCache(cacheKey);
+      if (cached) {
+        return cached;
       }
 
       const result = await this._probeClip(filePath);
-      probeCache.set(cacheKey, result);
+      setProbeCache(cacheKey, result);
       return result;
     } catch (e) {
-      // Fall back to direct probe if stat fails
       return await this._probeClip(filePath);
     }
   }
@@ -222,9 +240,10 @@ class Merger {
         filePath
       ];
 
-      execFile(ffprobePath, args, { maxBuffer: 32 * 1024 * 1024 }, (error, stdout) => {
+      execFile(ffprobePath, args, { maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
         if (error) {
-          return reject(new Error(`ffprobe error: ${error.message}`));
+          const errSnippet = stderr ? `: ${stderr.slice(-200)}` : '';
+          return reject(new Error(`ffprobe error: ${error.message}${errSnippet}`));
         }
 
         try {
@@ -414,7 +433,7 @@ class Merger {
           timeBuffer = timeBuffer.slice(timeBuffer.length - TIME_BUFFER_MAX);
         }
 
-        const timeMatches = [...timeBuffer.matchAll(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/g)];
+        const timeMatches = [...timeBuffer.matchAll(/time=(\d+):(\d{2}):(\d{2}\.\d{2})/g)];
         if (timeMatches.length > 0) {
           const lastMatch = timeMatches[timeMatches.length - 1];
           const h = parseInt(lastMatch[1], 10);

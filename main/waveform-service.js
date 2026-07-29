@@ -8,7 +8,7 @@ if (ffmpegPath.includes('app.asar')) {
 }
 
 /**
- * Bounded LRU Cache for Waveforms
+ * Bounded LRU Cache for Waveforms (max 50 entries)
  */
 const MAX_CACHE_SIZE = 50;
 const waveformCache = new Map();
@@ -26,7 +26,6 @@ function setCache(key, value) {
 function getCache(key) {
   if (!waveformCache.has(key)) return null;
   const value = waveformCache.get(key);
-  // Refresh LRU order
   waveformCache.delete(key);
   waveformCache.set(key, value);
   return value;
@@ -34,11 +33,12 @@ function getCache(key) {
 
 /**
  * Extract waveform peaks from an audio track.
+ * Returns a Float32Array directly for zero-copy IPC transmission.
  *
  * @param {string} filePath Path to input media file
  * @param {number} [audioIndex=0] Audio track index
  * @param {number} [requestedPoints=2000] Target number of waveform points
- * @returns {Promise<Float32Array|Array|null>} Peaks array normalized 0.0–1.0
+ * @returns {Promise<Float32Array|null>} Float32Array of normalized peaks (0.0–1.0)
  */
 function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
   return new Promise((resolve, reject) => {
@@ -82,7 +82,7 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
         return resolve(null);
       }
 
-      // Single O(N) allocation instead of O(N^2) repeated Buffer.concat
+      // Single buffer allocation
       const rawData = Buffer.concat(chunks, totalBytes);
       const samples = new Int16Array(rawData.buffer, rawData.byteOffset, Math.floor(rawData.byteLength / 2));
       
@@ -104,10 +104,9 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
         peaks[i] = max / 32768.0; // normalize to 0.0-1.0
       }
 
-      // Send Float32Array directly (or Array for compatibility)
-      const result = Array.from(peaks);
-      setCache(cacheKey, result);
-      resolve(result);
+      // Cache & return Float32Array directly (zero-copy IPC)
+      setCache(cacheKey, peaks);
+      resolve(peaks);
     });
 
     child.on('error', () => {

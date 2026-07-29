@@ -143,7 +143,7 @@ class Encoder {
           timeBuffer = timeBuffer.slice(timeBuffer.length - TIME_BUFFER_MAX);
         }
 
-        const timeMatches = [...timeBuffer.matchAll(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/g)];
+        const timeMatches = [...timeBuffer.matchAll(/time=(\d+):(\d{2}):(\d{2}\.\d{2})/g)];
         if (timeMatches.length > 0) {
           const lastMatch = timeMatches[timeMatches.length - 1];
           const h = parseInt(lastMatch[1], 10);
