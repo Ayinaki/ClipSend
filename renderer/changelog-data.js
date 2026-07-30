@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v1.6.2: Auto-Updater Modal & Public Release Publishing Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Resolved HTML modal nesting issue preventing the update modal dialog from displaying when clicking the titlebar update badge.",
+      "Fix: Configured GitHub release workflow to publish non-draft releases automatically for instant API visibility."
+    ]
+  },
+  {
     "version": "v1.6.1: Direct GitHub Issues & Template Integration",
     "date": "July 2026",
     "changes": [
