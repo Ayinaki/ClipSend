@@ -1,5 +1,15 @@
 window.changelogData = [
   {
+    "version": "v1.8.1: Worker Thread Waveforms & Concurrency Refinements",
+    "date": "July 2026",
+    "changes": [
+      "Performance: Offloaded waveform audio peak extraction to a dedicated background Worker Thread (waveform-worker.js) so main process stays responsive.",
+      "Performance: Throttled encoder progress IPC notifications (200ms window / >=1% step) and switched stderr logging to a ring buffer.",
+      "Fix: Restored trash icon color rendering and cleaned up timeline track geometry getters.",
+      "Enhancement: Improved multi-file concurrency with limitConcurrent and allSettled fault tolerance."
+    ]
+  },
+  {
     "version": "v1.8.0: Core Performance & Rendering Optimization",
     "date": "July 2026",
     "changes": [

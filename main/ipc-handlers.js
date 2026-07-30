@@ -47,21 +47,25 @@ function getUniqueFilePath(basePath) {
 const encoder = new Encoder();
 const merger = new Merger();
 
-async function mapConcurrent(items, limit, fn) {
-  const results = [];
-  const executing = [];
-  for (const item of items) {
-    const p = Promise.resolve().then(() => fn(item));
-    results.push(p);
-    if (limit <= items.length) {
-      const e = p.then(() => executing.splice(executing.indexOf(e), 1));
-      executing.push(e);
-      if (executing.length >= limit) {
-        await Promise.race(executing);
+async function limitConcurrent(items, concurrencyLimit, fn) {
+  const results = new Array(items.length);
+  let currentIndex = 0;
+
+  async function worker() {
+    while (currentIndex < items.length) {
+      const index = currentIndex++;
+      try {
+        const value = await fn(items[index], index);
+        results[index] = { status: 'fulfilled', value };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
       }
     }
   }
-  return Promise.all(results);
+
+  const workers = Array.from({ length: Math.min(concurrencyLimit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 function registerIpcHandlers() {
@@ -92,7 +96,7 @@ function registerIpcHandlers() {
     
     try {
       const tempDir = app.getPath('temp');
-      const clips = await mapConcurrent(filePaths, 3, async (filePath) => {
+      const settled = await limitConcurrent(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
         const thumbnailPath = await extractThumbnail(filePath, tempDir);
         
@@ -103,6 +107,16 @@ function registerIpcHandlers() {
           id: `clip-${Date.now()}-${Math.floor(Math.random() * 10000)}`
         };
       });
+
+      const clips = settled
+        .filter(res => res.status === 'fulfilled' && res.value)
+        .map(res => res.value);
+
+      if (clips.length === 0) {
+        const firstErr = settled.find(r => r.status === 'rejected')?.reason?.message || 'Failed to open files.';
+        return { success: false, error: firstErr };
+      }
+
       return { success: true, clips };
     } catch (error) {
       return { success: false, error: error.message };
@@ -115,7 +129,7 @@ function registerIpcHandlers() {
     
     try {
       const tempDir = app.getPath('temp');
-      const clips = await mapConcurrent(filePaths, 3, async (filePath) => {
+      const settled = await limitConcurrent(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
         const thumbnailPath = await extractThumbnail(filePath, tempDir);
         
@@ -126,6 +140,16 @@ function registerIpcHandlers() {
           id: `clip-${Date.now()}-${Math.floor(Math.random() * 10000)}`
         };
       });
+
+      const clips = settled
+        .filter(res => res.status === 'fulfilled' && res.value)
+        .map(res => res.value);
+
+      if (clips.length === 0) {
+        const firstErr = settled.find(r => r.status === 'rejected')?.reason?.message || 'Failed to open files.';
+        return { success: false, error: firstErr };
+      }
+
       return { success: true, clips };
     } catch (error) {
       return { success: false, error: error.message };

@@ -56,11 +56,10 @@ function getCache(key) {
   return value;
 }
 
+const { Worker } = require('worker_threads');
+
 /**
- * Extract waveform peaks using streaming intermediate bucket processing.
- *
- * Instead of accumulating millions of raw PCM bytes in memory, incoming audio
- * is reduced on-the-fly into 80 peaks/sec intermediate buckets (98%+ memory reduction).
+ * Extract waveform peaks using a worker thread to keep the main event loop smooth.
  *
  * @param {string} filePath Path to input media file
  * @param {number} [audioIndex=0] Audio track index
@@ -82,6 +81,33 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
       return reject(new Error(`ffmpeg not found at ${ffmpegPath}`));
     }
 
+    const workerPath = path.join(__dirname, 'waveform-worker.js');
+
+    if (Worker && fs.existsSync(workerPath)) {
+      const worker = new Worker(workerPath, {
+        workerData: { ffmpegPath, filePath, trackIndex, numPoints }
+      });
+
+      worker.on('message', (msg) => {
+        if (msg.error) {
+          reject(new Error(msg.error));
+        } else if (msg.peaks) {
+          const peaks = new Float32Array(msg.peaks);
+          setCache(cacheKey, peaks);
+          resolve(peaks);
+        } else {
+          resolve(null);
+        }
+      });
+
+      worker.on('error', () => resolve(null));
+      worker.on('exit', (code) => {
+        if (code !== 0) resolve(null);
+      });
+      return;
+    }
+
+    // Fallback inline extraction (for mock or restricted thread environments)
     const args = [
       '-nostdin',
       '-y',
@@ -94,27 +120,24 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
     ];
 
     const child = spawn(ffmpegPath, args);
-
-    // Intermediate streaming peak bucket (1 peak per 100 samples @ 8000Hz = 80 peaks/sec)
     const CHUNK_BUCKET_SIZE = 100;
     const intermediatePeaks = [];
-    let leftoverBuffer = Buffer.alloc(0);
+    let leftoverBuffer = null;
     let currentBucketMax = 0;
     let currentBucketSamples = 0;
 
     child.stdout.on('data', (chunk) => {
       let data = chunk;
-      if (leftoverBuffer.length > 0) {
+      if (leftoverBuffer) {
         data = Buffer.concat([leftoverBuffer, chunk]);
-        leftoverBuffer = Buffer.alloc(0);
+        leftoverBuffer = null;
       }
 
-      // 16-bit mono = 2 bytes per sample
       const sampleCount = Math.floor(data.length / 2);
       const remainder = data.length % 2;
 
       if (remainder > 0) {
-        leftoverBuffer = data.slice(data.length - remainder);
+        leftoverBuffer = data.subarray(data.length - remainder);
       }
 
       const samples = new Int16Array(data.buffer, data.byteOffset, sampleCount);
@@ -134,11 +157,9 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
       }
     });
 
-    child.stderr.on('data', () => {
-      // Ignore stderr
-    });
+    child.stderr.on('data', () => {});
 
-    child.on('close', (code) => {
+    child.on('close', () => {
       if (currentBucketSamples > 0) {
         intermediatePeaks.push(currentBucketMax / 32768.0);
       }
@@ -147,7 +168,6 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
         return resolve(null);
       }
 
-      // Resample intermediate peaks into exact numPoints
       const peaks = new Float32Array(numPoints);
       const step = intermediatePeaks.length / numPoints;
 

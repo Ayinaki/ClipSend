@@ -183,8 +183,12 @@ export class Timeline {
 
   /** Usable drawing width (excludes handle gutters on each side). */
   get _trackLeft()  { return HANDLE_WIDTH; }
-  get _trackRight() { return this.canvas.width - HANDLE_WIDTH; }
-  get _trackWidth() { return this._trackRight - this._trackLeft; }
+  get _trackRight() {
+    const rect = this.canvas.getBoundingClientRect();
+    const width = rect.width || 300;
+    return width - HANDLE_WIDTH;
+  }
+  get _trackWidth() { return Math.max(1, this._trackRight - this._trackLeft); }
 
   _secondsToX(seconds) {
     if (this.duration <= 0) return this._trackLeft;
@@ -297,8 +301,6 @@ export class Timeline {
     if (this.duration <= 0) return;
 
     const trackY = HANDLE_HEIGHT;
-    this._trackWidth = W - (2 * HANDLE_WIDTH);
-    this._trackLeft = HANDLE_WIDTH;
 
     // --- Track bar (full width, muted) ---
     ctx.fillStyle = COL_TRACK;
@@ -368,7 +370,7 @@ export class Timeline {
 
       // Draw Trash Icon (if multi-trim and more than 1 segment)
       if (this.isMultiTrim && this.segments.length > 1) {
-        this._drawTrashIcon(ctx, inX, outX, seg.id);
+        this._drawTrashIcon(ctx, inX, outX, seg.color);
       }
     }
 

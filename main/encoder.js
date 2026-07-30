@@ -127,16 +127,21 @@ class Encoder {
       }
 
       this.currentProcess = spawn(ffmpegPath, args, { cwd });
-      let errorOutput = '';
+      const stderrChunks = [];
+      let stderrBytesTotal = 0;
       let timeBuffer = '';
+      let lastProgressTs = 0;
+      let lastProgressPct = -1;
 
       this.currentProcess.stderr.on('data', (data) => {
         const text = data.toString();
         
-        // 1. Rolling 16KB stderr accumulation
-        errorOutput += text;
-        if (errorOutput.length > MAX_STDERR_BYTES) {
-          errorOutput = errorOutput.slice(errorOutput.length - MAX_STDERR_BYTES);
+        // 1. Ring buffer for stderr chunks to avoid repeated string concatenation allocations
+        stderrChunks.push(text);
+        stderrBytesTotal += text.length;
+        while (stderrBytesTotal > MAX_STDERR_BYTES && stderrChunks.length > 1) {
+          const removed = stderrChunks.shift();
+          stderrBytesTotal -= removed.length;
         }
 
         // 2. Cross-chunk progress regex matching (2KB trailing buffer)
@@ -152,7 +157,7 @@ class Encoder {
           lastMatch = match;
         }
 
-        if (lastMatch) {
+        if (lastMatch && onProgressUpdate) {
           const h = parseInt(lastMatch[1], 10);
           const m = parseInt(lastMatch[2], 10);
           const s = parseFloat(lastMatch[3]);
@@ -161,7 +166,13 @@ class Encoder {
           if (totalDurationSec > 0) {
             let pct = (currentSec / totalDurationSec) * 100;
             pct = Math.min(100, Math.max(0, pct));
-            if (onProgressUpdate) onProgressUpdate(pct);
+            
+            const now = Date.now();
+            if (now - lastProgressTs >= 200 || Math.abs(pct - lastProgressPct) >= 1.0 || pct >= 100) {
+              lastProgressTs = now;
+              lastProgressPct = pct;
+              onProgressUpdate(pct);
+            }
           }
         }
       });
@@ -171,7 +182,8 @@ class Encoder {
         if (this.cancelled) {
           reject(new Error('Cancelled'));
         } else if (code !== 0) {
-          const tail = errorOutput.split('\n').slice(-10).join('\n');
+          const fullErrText = stderrChunks.join('');
+          const tail = fullErrText.split('\n').slice(-10).join('\n');
           const err = new Error(`FFmpeg exited with code ${code}. Error: ${tail}`);
           err.ffmpegStderr = errorOutput;
           reject(err);
