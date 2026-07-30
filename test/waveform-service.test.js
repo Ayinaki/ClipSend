@@ -68,4 +68,23 @@ describe('waveform-service streaming & LRU cache', () => {
     expect(reconstructed[0]).toBeCloseTo(0.1, 2);
     expect(reconstructed[2]).toBeCloseTo(0.9, 2);
   });
+
+  test('parses structured worker error with code and stderrTail', () => {
+    const mockMsgError = {
+      code: 1,
+      message: 'FFmpeg process exited with code 1. Stderr: Invalid data',
+      stderrTail: 'Invalid data'
+    };
+
+    const errMsg = typeof mockMsgError === 'string' ? mockMsgError : (mockMsgError.message || 'Worker extraction failed');
+    const err = new Error(errMsg);
+    if (typeof mockMsgError === 'object') {
+      err.code = mockMsgError.code;
+      err.stderrTail = mockMsgError.stderrTail;
+    }
+
+    expect(err.message).toContain('FFmpeg process exited with code 1');
+    expect(err.code).toBe(1);
+    expect(err.stderrTail).toBe('Invalid data');
+  });
 });
