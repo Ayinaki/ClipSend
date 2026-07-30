@@ -51,7 +51,7 @@ async function getUniqueFilePath(basePath) {
 const encoder = new Encoder();
 const merger = new Merger();
 
-async function limitConcurrent(items, concurrencyLimit, fn) {
+async function limitConcurrentSettled(items, concurrencyLimit, fn) {
   const results = new Array(items.length);
   let currentIndex = 0;
 
@@ -100,7 +100,7 @@ function registerIpcHandlers() {
     
     try {
       const tempDir = app.getPath('temp');
-      const settled = await limitConcurrent(filePaths, 3, async (filePath) => {
+      const settled = await limitConcurrentSettled(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
         const thumbnailPath = await extractThumbnail(filePath, tempDir);
         
@@ -133,7 +133,7 @@ function registerIpcHandlers() {
     
     try {
       const tempDir = app.getPath('temp');
-      const settled = await limitConcurrent(filePaths, 3, async (filePath) => {
+      const settled = await limitConcurrentSettled(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
         const thumbnailPath = await extractThumbnail(filePath, tempDir);
         

@@ -60,7 +60,12 @@ child.stdout.on('data', (chunk) => {
 
 child.stderr.on('data', () => {});
 
-child.on('close', () => {
+child.on('close', (code) => {
+  if (code !== 0 && intermediatePeaks.length === 0) {
+    parentPort.postMessage({ error: `FFmpeg process exited with code ${code}` });
+    return;
+  }
+
   if (currentBucketSamples > 0) {
     intermediatePeaks.push(currentBucketMax / 32768.0);
   }

@@ -109,4 +109,27 @@ describe('Encoder', () => {
     // Should have tried to clean up log files and output file
     expect(fs.unlinkSync).toHaveBeenCalled();
   });
+
+  it('attaches ffmpegStderr to error on non-zero exit', async () => {
+    const plan = {
+      clipDuration: 10,
+      pass1Args: ['-pass', '1'],
+      pass2Args: ['-pass', '2']
+    };
+
+    const runPromise = encoder.runEncode(plan, 'out.mp4');
+    
+    const stderrHandler = mockProcess.stderr.on.mock.calls.find(c => c[0] === 'data')[1];
+    stderrHandler(Buffer.from('Cannot load nvcuda.dll'));
+
+    const pass1CloseHandler = mockProcess.on.mock.calls.find(c => c[0] === 'close')[1];
+    pass1CloseHandler(1); // non-zero exit code
+
+    await expect(runPromise).rejects.toThrow();
+    try {
+      await runPromise;
+    } catch (err) {
+      expect(err.ffmpegStderr).toContain('Cannot load nvcuda.dll');
+    }
+  });
 });
