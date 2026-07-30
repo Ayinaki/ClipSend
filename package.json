@@ -1,11 +1,11 @@
 {
   "name": "video-compressor",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "",
   "main": "main/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder build --win",
+    "build": "electron-builder build --win --publish never",
     "test": "jest"
   },
   "build": {

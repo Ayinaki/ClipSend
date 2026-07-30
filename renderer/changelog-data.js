@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.6.3: Duplicate Draft Release Elimination",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Added --publish never to build script to prevent electron-builder from creating duplicate draft releases on GitHub."
+    ]
+  },
+  {
     "version": "v1.6.2: Auto-Updater Modal & Public Release Publishing Fix",
     "date": "July 2026",
     "changes": [
