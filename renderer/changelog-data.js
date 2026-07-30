@@ -1,9 +1,10 @@
 window.changelogData = [
   {
-    "version": "v1.8.12: Complete Changelog Synchronization",
+    "version": "v1.8.13: Relauncher Variable Scope & Exception Handling Fix",
     "date": "July 2026",
     "changes": [
-      "Feature: Restored complete historical version entries (v1.8.5 through v1.8.11) in the in-app changelog modal dataset."
+      "Fix: Defined currentPid and currentExecPath prior to logUpdater invocation, resolving ReferenceError in delayed relauncher callback.",
+      "Fix: Wrapped delayed relauncher execution in try/catch block to prevent uncaught exceptions from killing the main process."
     ]
   },
   {
