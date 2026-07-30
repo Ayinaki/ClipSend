@@ -132,4 +132,32 @@ describe('Encoder', () => {
       expect(err.ffmpegStderr).toContain('Cannot load nvcuda.dll');
     }
   });
+
+  it('throttles rapid progress updates and always emits 100% at end', async () => {
+    const plan = {
+      clipDuration: 100,
+      isSinglePass: true,
+      singlePassArgs: ['-i', 'in.mp4']
+    };
+
+    const progressCalls = [];
+    const runPromise = encoder.runEncode(plan, 'out.mp4', (pct) => {
+      progressCalls.push(pct);
+    });
+
+    const stderrHandler = mockProcess.stderr.on.mock.calls.find(c => c[0] === 'data')[1];
+    
+    // Fire rapid updates with small incremental changes
+    stderrHandler(Buffer.from('time=00:00:10.00')); // 10%
+    stderrHandler(Buffer.from('time=00:00:10.10')); // 10.1% (sub-1% change within 200ms -> should throttle)
+    stderrHandler(Buffer.from('time=00:01:40.00')); // 100% (should emit)
+
+    const closeHandler = mockProcess.on.mock.calls.find(c => c[0] === 'close')[1];
+    closeHandler(0);
+
+    await runPromise;
+
+    expect(progressCalls.length).toBeGreaterThan(0);
+    expect(progressCalls[progressCalls.length - 1]).toBe(100);
+  });
 });

@@ -59,4 +59,13 @@ describe('waveform-service streaming & LRU cache', () => {
     const result = await extractWaveform('non_existent_file.mp4', 0, 100).catch(() => null);
     expect(result).toBeNull();
   }, 10000);
+
+  test('constructs Float32Array correctly from transferred ArrayBuffer', () => {
+    const samplePeaks = new Float32Array([0.1, 0.5, 0.9, 0.3]);
+    const buffer = samplePeaks.buffer;
+    const reconstructed = new Float32Array(buffer);
+    expect(reconstructed.length).toBe(4);
+    expect(reconstructed[0]).toBeCloseTo(0.1, 2);
+    expect(reconstructed[2]).toBeCloseTo(0.9, 2);
+  });
 });

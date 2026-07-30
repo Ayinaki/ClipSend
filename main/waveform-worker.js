@@ -58,11 +58,18 @@ child.stdout.on('data', (chunk) => {
   }
 });
 
-child.stderr.on('data', () => {});
+let stderrOutput = '';
+child.stderr.on('data', (chunk) => {
+  stderrOutput += chunk.toString();
+  if (stderrOutput.length > 4096) {
+    stderrOutput = stderrOutput.slice(stderrOutput.length - 4096);
+  }
+});
 
 child.on('close', (code) => {
   if (code !== 0 && intermediatePeaks.length === 0) {
-    parentPort.postMessage({ error: `FFmpeg process exited with code ${code}` });
+    const tail = stderrOutput.split('\n').slice(-5).join('\n').trim();
+    parentPort.postMessage({ error: `FFmpeg process exited with code ${code}.${tail ? ' Stderr: ' + tail : ''}` });
     return;
   }
 
