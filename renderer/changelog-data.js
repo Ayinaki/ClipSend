@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v1.6.0: Automated GitHub Auto-Updater",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Introduced automated GitHub Release auto-updates with background version checking.",
+      "Feature: Added titlebar update badge and modal displaying release notes, live download progress, and silent installation."
+    ]
+  },
+  {
     "version": "v1.5.6: Automated Native PNG-to-ICO Packaging Fix",
     "date": "July 2026",
     "changes": [

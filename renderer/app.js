@@ -1843,6 +1843,114 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initial call to set empty states correctly
   updateMergeUI();
 
+  // --- Auto Updater UI ---
+  const updateBadgeBtn = document.getElementById('update-badge-btn');
+  const updateBadgeText = document.getElementById('update-badge-text');
+  const updateModal = document.getElementById('update-modal');
+  const closeUpdateModalBtn = document.getElementById('close-update-modal-btn');
+  const updateLaterBtn = document.getElementById('update-later-btn');
+  const startUpdateBtn = document.getElementById('start-update-btn');
+  const updateModalVersionInfo = document.getElementById('update-modal-version-info');
+  const updateNotesContainer = document.getElementById('update-notes-container');
+  const updateProgressSection = document.getElementById('update-progress-section');
+  const updateProgressStatus = document.getElementById('update-progress-status');
+  const updateProgressPercent = document.getElementById('update-progress-percent');
+  const updateProgressBarFill = document.getElementById('update-progress-bar-fill');
+
+  let activeUpdateData = null;
+
+  if (window.clipSend.onUpdateAvailable) {
+    window.clipSend.onUpdateAvailable((info) => {
+      activeUpdateData = info;
+      if (updateBadgeBtn) {
+        if (updateBadgeText) updateBadgeText.textContent = `Update (${info.version})`;
+        updateBadgeBtn.style.display = 'inline-flex';
+      }
+    });
+  }
+
+  function openUpdateModal() {
+    if (!activeUpdateData) return;
+    if (updateModalVersionInfo) {
+      updateModalVersionInfo.textContent = `A new version of ClipSend (${activeUpdateData.version}) is available. Current version is ${activeUpdateData.currentVersion || ''}.`;
+    }
+    if (updateNotesContainer) {
+      updateNotesContainer.textContent = activeUpdateData.releaseNotes || 'No release notes provided.';
+    }
+    if (updateProgressSection) updateProgressSection.style.display = 'none';
+    if (startUpdateBtn) {
+      startUpdateBtn.disabled = false;
+      const span = startUpdateBtn.querySelector('span');
+      if (span) span.textContent = 'Download & Install';
+    }
+    if (updateLaterBtn) updateLaterBtn.disabled = false;
+    if (updateModal) updateModal.style.display = 'flex';
+  }
+
+  updateBadgeBtn?.addEventListener('click', openUpdateModal);
+  closeUpdateModalBtn?.addEventListener('click', () => {
+    if (updateModal) updateModal.style.display = 'none';
+  });
+  updateLaterBtn?.addEventListener('click', () => {
+    if (updateModal) updateModal.style.display = 'none';
+  });
+
+  startUpdateBtn?.addEventListener('click', async () => {
+    if (!activeUpdateData) return;
+    if (startUpdateBtn) {
+      startUpdateBtn.disabled = true;
+      const span = startUpdateBtn.querySelector('span');
+      if (span) span.textContent = 'Downloading...';
+    }
+    if (updateLaterBtn) updateLaterBtn.disabled = true;
+    if (updateProgressSection) updateProgressSection.style.display = 'flex';
+
+    try {
+      await window.clipSend.downloadAndInstallUpdate();
+    } catch (err) {
+      if (updateProgressStatus) updateProgressStatus.textContent = `Error: ${err.message}`;
+      if (startUpdateBtn) {
+        startUpdateBtn.disabled = false;
+        const span = startUpdateBtn.querySelector('span');
+        if (span) span.textContent = 'Retry Download';
+      }
+      if (updateLaterBtn) updateLaterBtn.disabled = false;
+    }
+  });
+
+  if (window.clipSend.onUpdateProgress) {
+    window.clipSend.onUpdateProgress((data) => {
+      const pct = data.percent || 0;
+      if (updateProgressPercent) updateProgressPercent.textContent = `${pct}%`;
+      if (updateProgressBarFill) updateProgressBarFill.style.width = `${pct}%`;
+      const mbDownloaded = (data.downloadedBytes / (1024 * 1024)).toFixed(1);
+      const mbTotal = (data.totalBytes / (1024 * 1024)).toFixed(1);
+      if (updateProgressStatus) {
+        updateProgressStatus.textContent = `Downloading update (${mbDownloaded} MB / ${mbTotal} MB)...`;
+      }
+    });
+  }
+
+  if (window.clipSend.onUpdateDownloaded) {
+    window.clipSend.onUpdateDownloaded(() => {
+      if (updateProgressStatus) updateProgressStatus.textContent = 'Download complete! Restarting to install...';
+      if (updateProgressPercent) updateProgressPercent.textContent = '100%';
+      if (updateProgressBarFill) updateProgressBarFill.style.width = '100%';
+    });
+  }
+
+  if (window.clipSend.onUpdateError) {
+    window.clipSend.onUpdateError((errMsg) => {
+      if (updateProgressStatus) updateProgressStatus.textContent = `Update Error: ${errMsg}`;
+      if (startUpdateBtn) {
+        startUpdateBtn.disabled = false;
+        const span = startUpdateBtn.querySelector('span');
+        if (span) span.textContent = 'Retry Download';
+      }
+      if (updateLaterBtn) updateLaterBtn.disabled = false;
+    });
+  }
+
   // --- Keyboard shortcuts ---
   document.addEventListener('keydown', (e) => {
     // Ignore when typing in the timecode field

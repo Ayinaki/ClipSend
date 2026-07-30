@@ -49,5 +49,13 @@ contextBridge.exposeInMainWorld('clipSend', {
   getWaveformData: (filePath, audioIndex) => ipcRenderer.invoke('waveform:get', { filePath, audioIndex }),
 
   // Feedback
-  submitFeedback: (payload) => ipcRenderer.invoke('submit-feedback', payload)
+  submitFeedback: (payload) => ipcRenderer.invoke('submit-feedback', payload),
+
+  // Auto Updater
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadAndInstallUpdate: () => ipcRenderer.invoke('updater:downloadAndInstall'),
+  onUpdateAvailable: (callback) => ipcRenderer.on('updater:available', (event, data) => callback(data)),
+  onUpdateProgress: (callback) => ipcRenderer.on('updater:progress', (event, data) => callback(data)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('updater:downloaded', (event, data) => callback(data)),
+  onUpdateError: (callback) => ipcRenderer.on('updater:error', (event, data) => callback(data))
 });

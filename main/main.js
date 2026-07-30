@@ -3,6 +3,7 @@ const path = require('path');
 const dotenvPath = app.isPackaged ? path.join(process.resourcesPath, '.env') : path.join(__dirname, '..', '.env');
 require('dotenv').config({ path: dotenvPath });
 const { registerIpcHandlers } = require('./ipc-handlers');
+const { initUpdater } = require('./updater');
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -20,6 +21,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  initUpdater(mainWindow);
   
   // Open DevTools for M0 to easily inspect things
   // mainWindow.webContents.openDevTools();

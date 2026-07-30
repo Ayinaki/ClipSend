@@ -56,6 +56,30 @@ body {
   text-transform: uppercase;
 }
 
+.update-badge-btn {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.2), rgba(0, 230, 118, 0.2));
+  color: #00e676;
+  border: 1px solid rgba(0, 230, 118, 0.4);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.update-badge-btn:hover {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.35), rgba(0, 230, 118, 0.35));
+  border-color: #00e676;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
 .titlebar-controls {
   display: flex;
   -webkit-app-region: no-drag;
