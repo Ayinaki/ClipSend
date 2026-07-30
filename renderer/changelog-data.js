@@ -1,10 +1,64 @@
 window.changelogData = [
   {
+    "version": "v1.8.12: Complete Changelog Synchronization",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Restored complete historical version entries (v1.8.5 through v1.8.11) in the in-app changelog modal dataset."
+    ]
+  },
+  {
     "version": "v1.8.11: Machine-Readable Installer Result Telemetry",
     "date": "July 2026",
     "changes": [
       "Feature: Added machine-readable installer result tracking (userData/installer-result.json) written by .ps1 relauncher script.",
       "Feature: Added app startup handler (updater:installedResult) to surface post-update status and automatically clean up result files."
+    ]
+  },
+  {
+    "version": "v1.8.10: Installer Exit Logging & Status Tracking",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Enhanced .ps1 relauncher script to capture NSIS installer process exit codes (-PassThru) and append completion telemetry directly to updater.log."
+    ]
+  },
+  {
+    "version": "v1.8.9: Platform Guard & Download Integrity Verification",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Added process.platform === 'win32' guard around Windows .ps1 / cmd.exe relauncher routines.",
+      "Feature: Added download byte-size verification against Content-Length headers with warning logging.",
+      "Feature: Refined cmd.exe fallback parameter tokenization and added logPath metadata to IPC error/download payloads."
+    ]
+  },
+  {
+    "version": "v1.8.8: Enterprise Auto-Updater Hardening & Logging",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Replaced inline updater command with a temporary self-cleaning .ps1 script (-ExecutionPolicy Bypass) for enterprise compatibility.",
+      "Feature: Added cmd.exe fallback execution path for environments restricting PowerShell scripts.",
+      "Feature: Implemented persistent timestamped logging in userData/updater.log to capture download metrics and execution traces."
+    ]
+  },
+  {
+    "version": "v1.8.7: Auto-Updater NSIS Process Wait Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Hardened auto-updater relaunch script to wait for NSIS installer process termination before relaunching the updated executable.",
+      "Fix: Resolved issue where silent installer stub exited early causing application relaunch before file replacement completed."
+    ]
+  },
+  {
+    "version": "v1.8.6: In-App Changelog & Release Synchronization",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Synchronized in-app changelog dataset with all recent performance, auto-updater, and binary bundling release notes."
+    ]
+  },
+  {
+    "version": "v1.8.5: Release Notes Dataset Alignment",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Aligned release notes dataset for in-app changelog view."
     ]
   },
   {
