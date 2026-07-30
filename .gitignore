@@ -10,4 +10,6 @@ temp.gif
 temp.y4m
 temp_pipe.gif
 bin/*.exe
+.crates.toml
+.crates2.json
 
