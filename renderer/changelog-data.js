@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v1.8.6: In-App Changelog & Release Synchronization",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Synchronized in-app changelog with all recent performance, auto-updater, and binary bundling release notes.",
+      "Fix: Updated release notes dataset to match current release version v1.8.6."
+    ]
+  },
+  {
     "version": "v1.8.4: Auto-Updater Process Lock & Binary Bundling Fix",
     "date": "July 2026",
     "changes": [
