@@ -38,12 +38,12 @@ jobs:
             $downloadSuccess = $false
             foreach ($url in $urls) {
               try {
-                Write-Host "Attempting download from $url..."
+                Write-Host "Attempting download from ${url}..."
                 Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip" -TimeoutSec 120
                 $downloadSuccess = $true
                 break
               } catch {
-                Write-Host "Download failed from $url: $_"
+                Write-Host "Download failed from ${url}"
               }
             }
             if (!$downloadSuccess) {
