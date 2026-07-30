@@ -506,6 +506,12 @@ function registerIpcHandlers() {
   ipcMain.handle('app:getVersion', () => {
     return app.getVersion();
   });
+
+  ipcMain.handle('shell:openExternal', (event, url) => {
+    if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+      shell.openExternal(url);
+    }
+  });
 }
 
 module.exports = { registerIpcHandlers };

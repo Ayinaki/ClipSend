@@ -1360,6 +1360,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === feedbackModal) closeFeedbackModal();
   });
 
+  const openGithubIssueBtn = document.getElementById('open-github-issue-btn');
+  openGithubIssueBtn?.addEventListener('click', () => {
+    if (window.clipSend.openExternalUrl) {
+      window.clipSend.openExternalUrl('https://github.com/Ayinaki/ClipSend/issues/new/choose');
+    }
+  });
+
   // --- Changelog ---
   const changelogBtn = document.getElementById('changelog-btn');
   const changelogModal = document.getElementById('changelog-modal');

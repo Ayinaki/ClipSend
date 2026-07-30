@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('clipSend', {
   detectEncoders: () => ipcRenderer.invoke('encoder:detect'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('shell:showItemInFolder', filePath),
   copyFileToClipboard: (filePath) => ipcRenderer.invoke('clipboard:copyFile', filePath),
+  openExternalUrl: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   // Preview Remux
   generatePreviewRemux: (inputPath, audioOrdinal) => ipcRenderer.invoke('preview:remux', { inputPath, audioOrdinal }),

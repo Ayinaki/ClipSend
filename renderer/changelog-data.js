@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v1.6.1: Direct GitHub Issues & Template Integration",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Added direct 'Create GitHub Issue' option in the feedback modal for bug reports and feature requests.",
+      "Feature: Added structured GitHub Issue templates (.github/ISSUE_TEMPLATE) for Bug Reports and Feature Requests."
+    ]
+  },
+  {
     "version": "v1.6.0: Automated GitHub Auto-Updater",
     "date": "July 2026",
     "changes": [

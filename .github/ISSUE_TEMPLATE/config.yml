@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 GitHub Release Changelog
+    url: https://github.com/Ayinaki/ClipSend/releases
+    about: Read the latest release notes and version updates.
