@@ -87,4 +87,26 @@ describe('waveform-service streaming & LRU cache', () => {
     expect(err.code).toBe(1);
     expect(err.stderrTail).toBe('Invalid data');
   });
+
+  test('verifies zero-copy ArrayBuffer transfer detaches original buffer', (done) => {
+    const { MessageChannel } = require('worker_threads');
+    const { port1, port2 } = new MessageChannel();
+
+    const peaks = new Float32Array([0.2, 0.4, 0.6, 0.8]);
+    const originalBuffer = peaks.buffer;
+
+    expect(originalBuffer.byteLength).toBe(16);
+
+    port2.on('message', (msg) => {
+      const receivedPeaks = new Float32Array(msg.peaksBuffer);
+      expect(receivedPeaks.length).toBe(4);
+      expect(receivedPeaks[0]).toBeCloseTo(0.2, 2);
+      expect(originalBuffer.byteLength).toBe(0); // Detached zero-copy transfer
+      port1.close();
+      port2.close();
+      done();
+    });
+
+    port1.postMessage({ peaksBuffer: originalBuffer }, [originalBuffer]);
+  });
 });
