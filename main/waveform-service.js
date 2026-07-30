@@ -88,7 +88,12 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
         workerData: { ffmpegPath, filePath, trackIndex, numPoints }
       });
 
+      const cleanupWorker = () => {
+        try { worker.terminate(); } catch (e) {}
+      };
+
       worker.on('message', (msg) => {
+        cleanupWorker();
         if (msg.error) {
           reject(new Error(msg.error));
         } else if (msg.peaksBuffer) {
@@ -104,8 +109,13 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
         }
       });
 
-      worker.on('error', () => resolve(null));
+      worker.on('error', (err) => {
+        cleanupWorker();
+        resolve(null);
+      });
+
       worker.on('exit', (code) => {
+        cleanupWorker();
         if (code !== 0) resolve(null);
       });
       return;
@@ -124,7 +134,7 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
     ];
 
     const child = spawn(ffmpegPath, args);
-    const CHUNK_BUCKET_SIZE = 100;
+    const CHUNK_BUCKET_SIZE = 500; // 5x larger bucket for fast inline fallback
     const intermediatePeaks = [];
     let leftoverBuffer = null;
     let currentBucketMax = 0;
