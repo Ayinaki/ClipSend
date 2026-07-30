@@ -42,9 +42,9 @@ function customSettings(bitrateKbps, opts = {}) {
 // ---------------------------------------------------------------------------
 
 describe('Presets', () => {
-  test('provides exactly three presets (10, 50, 500 MB)', () => {
-    expect(SIZE_PRESETS).toHaveLength(3);
-    expect(SIZE_PRESETS.map(p => p.sizeMB)).toEqual([10, 50, 500]);
+  test('provides four presets (10, 50, 500 MB and custom)', () => {
+    expect(SIZE_PRESETS).toHaveLength(4);
+    expect(SIZE_PRESETS.filter(p => !p.isCustom).map(p => p.sizeMB)).toEqual([10, 50, 500]);
   });
 
   test('default preset is discord-free (10 MB)', () => {
@@ -84,6 +84,12 @@ describe('computeSizeLimitBitrate', () => {
   test('500 MB / 30s clip → very high bitrate', () => {
     const vbr = computeSizeLimitBitrate(500, 30, 128);
     expect(vbr).toBe(25000); // capped at 25 Mbps
+  });
+
+  test('custom target size (e.g. 25 MB / 60s) computes proportional bitrate', () => {
+    const vbr10 = computeSizeLimitBitrate(10, 60, 128);
+    const vbr25 = computeSizeLimitBitrate(25, 60, 128);
+    expect(vbr25).toBeGreaterThan(vbr10);
   });
 
   test('higher audio bitrate reduces video bitrate', () => {
@@ -445,8 +451,8 @@ describe('calculatePlan — edge cases', () => {
     expect(plan.downscaled).toBe(false);
   });
 
-  test('all three presets produce valid plans for a 30s 1080p clip', () => {
-    for (const preset of SIZE_PRESETS) {
+  test('all standard size presets produce valid plans for a 30s 1080p clip', () => {
+    for (const preset of SIZE_PRESETS.filter(p => !p.isCustom)) {
       const plan = calculatePlan(media1080p, 0, 30, sizeLimitSettings(preset.sizeMB));
       expect(plan.videoBitrateKbps).toBeGreaterThan(0);
       expect(plan.estimatedSizeMB).toBeLessThanOrEqual(preset.sizeMB);

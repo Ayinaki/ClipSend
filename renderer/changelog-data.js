@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v1.7.0: Custom Target File Size Limit",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Added 'Custom Target Size' option in the target size dropdown, allowing users to enter custom file size limits in MB (e.g. 25 MB, 100 MB, 250 MB).",
+      "Enhancement: Integrated custom size calculation with two-pass rate control and automatic resolution scaling."
+    ]
+  },
+  {
     "version": "v1.6.3: Duplicate Draft Release Elimination",
     "date": "July 2026",
     "changes": [

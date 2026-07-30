@@ -194,11 +194,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentPlan = null;
   let currentMediaInfo = null;
 
+  const customSizeInputContainer = document.getElementById('custom-size-input-container');
+  const customSizeInput = document.getElementById('custom-size-input');
+
   // Hardcode presets to match presets.js (normally we'd IPC this, but hardcoding for simplicity in UI)
   const presets = [
     { id: 'discord-free', label: '10 MB — Discord (Free)', sizeMB: 10, mode: 'size-limit' },
     { id: 'discord-nitro-basic', label: '50 MB — Discord (Nitro Basic)', sizeMB: 50, mode: 'size-limit' },
     { id: 'discord-nitro', label: '500 MB — Discord (Nitro)', sizeMB: 500, mode: 'size-limit' },
+    { id: 'custom-size', label: 'Custom Target Size', mode: 'size-limit', isCustom: true },
     { id: 'auto-crf', label: 'Auto (Best Quality)', mode: 'auto', crfValue: 19 }
   ];
 
@@ -211,6 +215,18 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Set default to 10 MB Discord Free
   presetSelect.value = 'discord-free';
+
+  presetSelect.addEventListener('change', () => {
+    clearExportPlan();
+    const selectedPreset = presets.find(p => p.id === presetSelect.value);
+    if (selectedPreset && selectedPreset.isCustom) {
+      if (customSizeInputContainer) customSizeInputContainer.style.display = 'block';
+    } else {
+      if (customSizeInputContainer) customSizeInputContainer.style.display = 'none';
+    }
+  });
+
+  customSizeInput?.addEventListener('input', clearExportPlan);
 
   function clearExportPlan() {
     currentPlan = null;
@@ -343,6 +359,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const presetId = presetSelect.value;
     const preset = presets.find(p => p.id === presetId);
     
+    let targetSizeMB = preset ? preset.sizeMB : 10;
+    let mode = preset ? (preset.mode || 'size-limit') : 'size-limit';
+
+    if (preset && preset.isCustom) {
+      const customVal = parseFloat(customSizeInput ? customSizeInput.value : '');
+      if (isNaN(customVal) || customVal <= 0) {
+        alert('Please enter a valid target size in MB (greater than 0).');
+        calculateBtn.disabled = false;
+        calculateBtn.textContent = 'Calculate Plan';
+        return;
+      }
+      targetSizeMB = customVal;
+      mode = 'size-limit';
+    }
+    
     let manualResolution = null;
     if (resolutionSelect.value !== 'native') {
       const parts = resolutionSelect.value.split('x');
@@ -353,9 +384,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     const settings = {
-      mode: preset.mode || 'size-limit',
-      targetSizeMB: preset.sizeMB,
-      crfValue: preset.crfValue,
+      mode: mode,
+      targetSizeMB: targetSizeMB,
+      crfValue: preset ? preset.crfValue : undefined,
       selectedAudioTrackIndex: exportState.selectedAudioTrackIndex,
       hwAccel: document.getElementById('setting-hw-accel').value,
       hasNvenc: hasNvenc,
