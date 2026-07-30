@@ -1,11 +1,9 @@
 window.changelogData = [
   {
-    "version": "v1.8.9: Platform Guard, Download Integrity & Quoting Refinements",
+    "version": "v1.8.10: Installer Exit Logging & Status Tracking",
     "date": "July 2026",
     "changes": [
-      "Feature: Added process.platform === 'win32' guard around Windows .ps1 / cmd.exe relauncher routines.",
-      "Feature: Added download byte-size verification against Content-Length headers with warning logging.",
-      "Feature: Refined cmd.exe fallback parameter tokenization and added logPath metadata to IPC error/download payloads."
+      "Feature: Enhanced .ps1 relauncher script to capture NSIS installer process exit codes (-PassThru) and append completion telemetry directly to updater.log."
     ]
   },
   {

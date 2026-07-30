@@ -218,6 +218,7 @@ async function downloadAndInstallUpdate() {
 $pidVal = ${currentPid}
 $installer = '${installerPath.replace(/'/g, "''")}'
 $currentExec = '${currentExecPath.replace(/'/g, "''")}'
+$logFile = '${logPath.replace(/'/g, "''")}'
 
 # Wait for original process to exit completely
 while (Get-Process -Id $pidVal -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }
@@ -225,11 +226,10 @@ Start-Sleep -Seconds 1
 
 # Run installer silently (NSIS: /S)
 try {
-  Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden -Wait
+  $p = Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
+  try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] Installer process completed with exit code $($p.ExitCode)." } catch {}
 } catch {
-  try {
-    Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden
-  } catch {}
+  try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] Installer failed to run: $_" } catch {}
 }
 
 Start-Sleep -Seconds 1
