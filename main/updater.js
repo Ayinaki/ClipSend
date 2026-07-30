@@ -169,14 +169,21 @@ async function downloadAndInstallUpdate() {
       mainWindowRef.webContents.send('updater:downloaded', { installerPath });
     }
 
-    // Launch NSIS silent installer and quit app
+    // Launch NSIS silent installer, wait for completion, then automatically relaunch updated app
     setTimeout(() => {
-      const installer = spawn(installerPath, ['/S'], {
+      const currentExecPath = process.execPath;
+      const psCommand = `Start-Process -FilePath "${installerPath}" -ArgumentList "/S" -Wait; if (Test-Path "${currentExecPath}") { Start-Process -FilePath "${currentExecPath}" }`;
+
+      const relauncher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', psCommand], {
         detached: true,
-        stdio: 'ignore'
+        stdio: 'ignore',
+        windowsHide: true
       });
-      installer.unref();
-      app.quit();
+      relauncher.unref();
+
+      setTimeout(() => {
+        app.quit();
+      }, 500);
     }, 1500);
 
     return { success: true, installerPath };

@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.7.1: Automatic Post-Update App Relaunch",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Implemented background process monitoring to automatically relaunch the updated ClipSend executable immediately after silent installation completes."
+    ]
+  },
+  {
     "version": "v1.7.0: Custom Target File Size Limit",
     "date": "July 2026",
     "changes": [
