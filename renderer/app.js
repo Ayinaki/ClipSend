@@ -6,6 +6,15 @@ import CropManager from './crop-manager.js';
 import { formatTimecode } from './utils/timecode.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Disable browser media session action handlers so hardware media keys do not trigger video playback
+  if ('mediaSession' in navigator) {
+    ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward'].forEach(action => {
+      try {
+        navigator.mediaSession.setActionHandler(action, null);
+      } catch (e) {}
+    });
+  }
+
   const openFileBtn = document.getElementById('open-file-btn');
   const initialState = document.getElementById('initial-state');
   const errorState = document.getElementById('error-state');

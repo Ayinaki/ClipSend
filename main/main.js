@@ -5,6 +5,9 @@ require('dotenv').config({ path: dotenvPath });
 const { registerIpcHandlers } = require('./ipc-handlers');
 const { initUpdater } = require('./updater');
 
+// Disable OS hardware media key handling so multimedia keys don't trigger video playback
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1500,

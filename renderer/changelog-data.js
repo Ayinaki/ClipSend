@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.7.2: Hardware Media Key Suppression",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Disabled Chromium HardwareMediaKeyHandling and MediaSession action handlers to prevent keyboard/headset media keys from hijacking video playback."
+    ]
+  },
+  {
     "version": "v1.7.1: Automatic Post-Update App Relaunch",
     "date": "July 2026",
     "changes": [
