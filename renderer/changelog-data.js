@@ -1,5 +1,30 @@
 window.changelogData = [
   {
+    "version": "v1.8.4: Auto-Updater Process Lock & Binary Bundling Fix",
+    "date": "July 2026",
+    "changes": [
+      "Fix: Hardened auto-updater relaunch script to wait until process ID terminates before running NSIS installer, eliminating file lock conflicts during silent updates.",
+      "Fix: Updated CI and Release workflows to automatically bundle gifski.exe in packaged Windows builds for high-quality GIF exports."
+    ]
+  },
+  {
+    "version": "v1.8.3: Diagnostic Error Output & Progress IPC Hardening",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Implemented structured worker error propagation (exit codes + rolling stderr tails) for instant diagnostic reporting.",
+      "Performance: Added defensive rate-limiting layer for progress IPC messages to ensure fluid title bar updates without IPC congestion."
+    ]
+  },
+  {
+    "version": "v1.8.2: Hardware Media Key Suppression & Geometry Caching",
+    "date": "July 2026",
+    "changes": [
+      "Feature: Disabled Chromium HardwareMediaKeyHandling to prevent OS play/pause keys from hijacking active video playback.",
+      "Performance: Cached timeline track dimensions to eliminate layout thrashing and getBoundingClientRect calls during canvas draw loops.",
+      "Performance: Converted internal file paths and cleanup routines to non-blocking async operations."
+    ]
+  },
+  {
     "version": "v1.8.1: Worker Thread Waveforms & Concurrency Refinements",
     "date": "July 2026",
     "changes": [
