@@ -51,6 +51,19 @@ async function getUniqueFilePath(basePath) {
 const encoder = new Encoder();
 const merger = new Merger();
 
+function createProgressThrottler(sendFn, minIntervalMs = 100) {
+  let lastTime = 0;
+  let lastPercent = -1;
+  return (percent, status) => {
+    const now = Date.now();
+    if (now - lastTime >= minIntervalMs || Math.abs(percent - lastPercent) >= 1.0 || percent >= 100) {
+      lastTime = now;
+      lastPercent = percent;
+      sendFn(percent, status);
+    }
+  };
+}
+
 async function limitConcurrentSettled(items, concurrencyLimit, fn) {
   const results = new Array(items.length);
   let currentIndex = 0;
@@ -255,15 +268,17 @@ function registerIpcHandlers() {
     }
 
     try {
-      if (plan.outputFormat === 'gif') {
-        const result = await gifExporter.runEncode(plan, outputPath, (percent, status) => {
+      const throttledSend = createProgressThrottler((percent, status) => {
+        if (!event.sender.isDestroyed()) {
           event.sender.send('export:progress', { percent, status });
-        });
+        }
+      });
+
+      if (plan.outputFormat === 'gif') {
+        const result = await gifExporter.runEncode(plan, outputPath, throttledSend);
         return result;
       } else {
-        const result = await encoder.runEncode(plan, outputPath, (percent, status) => {
-          event.sender.send('export:progress', { percent, status });
-        });
+        const result = await encoder.runEncode(plan, outputPath, throttledSend);
         return result;
       }
     } catch (error) {

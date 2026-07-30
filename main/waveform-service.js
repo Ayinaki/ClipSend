@@ -95,7 +95,13 @@ function extractWaveform(filePath, audioIndex, requestedPoints = 2000) {
       worker.on('message', (msg) => {
         cleanupWorker();
         if (msg.error) {
-          reject(new Error(msg.error));
+          const errMsg = typeof msg.error === 'string' ? msg.error : (msg.error.message || 'Worker extraction failed');
+          const err = new Error(errMsg);
+          if (typeof msg.error === 'object') {
+            err.code = msg.error.code;
+            err.stderrTail = msg.error.stderrTail;
+          }
+          reject(err);
         } else if (msg.peaksBuffer) {
           const peaks = new Float32Array(msg.peaksBuffer);
           setCache(cacheKey, peaks);

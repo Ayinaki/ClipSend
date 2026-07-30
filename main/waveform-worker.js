@@ -69,7 +69,13 @@ child.stderr.on('data', (chunk) => {
 child.on('close', (code) => {
   if (code !== 0 && intermediatePeaks.length === 0) {
     const tail = stderrOutput.split('\n').slice(-5).join('\n').trim();
-    parentPort.postMessage({ error: `FFmpeg process exited with code ${code}.${tail ? ' Stderr: ' + tail : ''}` });
+    parentPort.postMessage({
+      error: {
+        code,
+        message: `FFmpeg process exited with code ${code}.${tail ? ' Stderr: ' + tail : ''}`,
+        stderrTail: tail
+      }
+    });
     return;
   }
 
