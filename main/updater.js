@@ -208,8 +208,7 @@ async function downloadAndInstallUpdate() {
         return;
       }
 
-      const currentExecPath = process.execPath;
-      const currentPid = process.pid;
+      const resultFile = path.join(app ? app.getPath('userData') : process.cwd(), 'installer-result.json');
 
       logUpdater(`Preparing update relauncher for PID ${currentPid}, execPath: "${currentExecPath}", installerPath: "${installerPath}"`);
 
@@ -219,6 +218,7 @@ $pidVal = ${currentPid}
 $installer = '${installerPath.replace(/'/g, "''")}'
 $currentExec = '${currentExecPath.replace(/'/g, "''")}'
 $logFile = '${logPath.replace(/'/g, "''")}'
+$resFile = '${resultFile.replace(/'/g, "''")}'
 
 # Wait for original process to exit completely
 while (Get-Process -Id $pidVal -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }
@@ -227,9 +227,18 @@ Start-Sleep -Seconds 1
 # Run installer silently (NSIS: /S)
 try {
   $p = Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
-  try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] Installer process completed with exit code $($p.ExitCode)." } catch {}
+  $code = if ($null -eq $p) { 0 } else { $p.ExitCode }
+  try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] Installer process completed with exit code $code." } catch {}
+  try {
+    $resObj = @{ exitCode = $code; timestamp = (Get-Date -Format o); installerPath = $installer; success = ($code -eq 0) }
+    $resObj | ConvertTo-Json | Set-Content -Path $resFile -Encoding utf8
+  } catch {}
 } catch {
   try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] Installer failed to run: $_" } catch {}
+  try {
+    $resObj = @{ exitCode = -1; timestamp = (Get-Date -Format o); error = $_.ToString(); success = $false }
+    $resObj | ConvertTo-Json | Set-Content -Path $resFile -Encoding utf8
+  } catch {}
 }
 
 Start-Sleep -Seconds 1
@@ -318,6 +327,22 @@ function initUpdater(mainWindow) {
   ipcMain.handle('updater:downloadAndInstall', async () => {
     return await downloadAndInstallUpdate();
   });
+
+  // Check if a previous installer result file exists
+  try {
+    const resultFile = path.join(app ? app.getPath('userData') : process.cwd(), 'installer-result.json');
+    if (fs.existsSync(resultFile)) {
+      const raw = fs.readFileSync(resultFile, 'utf8');
+      const resultData = JSON.parse(raw);
+      logUpdater(`Read installer result from previous update: ${JSON.stringify(resultData)}`);
+      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+        mainWindowRef.webContents.send('updater:installedResult', resultData);
+      }
+      fs.unlinkSync(resultFile);
+    }
+  } catch (e) {
+    logUpdater('Failed processing installer-result.json on start:', e);
+  }
 
   // Automatic background update check on app start after 3 seconds
   setTimeout(() => {

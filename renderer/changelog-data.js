@@ -1,9 +1,10 @@
 window.changelogData = [
   {
-    "version": "v1.8.10: Installer Exit Logging & Status Tracking",
+    "version": "v1.8.11: Machine-Readable Installer Result Telemetry",
     "date": "July 2026",
     "changes": [
-      "Feature: Enhanced .ps1 relauncher script to capture NSIS installer process exit codes (-PassThru) and append completion telemetry directly to updater.log."
+      "Feature: Added machine-readable installer result tracking (userData/installer-result.json) written by .ps1 relauncher script.",
+      "Feature: Added app startup handler (updater:installedResult) to surface post-update status and automatically clean up result files."
     ]
   },
   {
