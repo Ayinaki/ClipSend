@@ -9,6 +9,7 @@ if (ffmpegPath.includes('app.asar')) {
 
 const MAX_STDERR_BYTES = 16384; // 16KB rolling window
 const TIME_BUFFER_MAX = 2048;   // 2KB progress regex buffer
+const TIME_REGEX = /time=(\d+):(\d{2}):(\d{2}\.\d{2})/g;
 
 /**
  * Encoder service — orchestrates the 2-pass FFmpeg execution.
@@ -39,7 +40,8 @@ class Encoder {
       // --- PASS 1 ---
       if (!plan.isSinglePass) {
         if (onProgress) onProgress(0, 'Pass 1/2: Analyzing...');
-        const pass1Args = [...plan.pass1Args, '-passlogfile', passLogName, 'NUL'];
+        const nullOutput = process.platform === 'win32' ? 'NUL' : '/dev/null';
+        const pass1Args = [...plan.pass1Args, '-passlogfile', passLogName, nullOutput];
         
         await this._runPass(pass1Args, clipDuration, (pct) => {
           if (onProgress) onProgress(pct * 0.5, 'Pass 1/2: Analyzing...');
@@ -143,9 +145,14 @@ class Encoder {
           timeBuffer = timeBuffer.slice(timeBuffer.length - TIME_BUFFER_MAX);
         }
 
-        const timeMatches = [...timeBuffer.matchAll(/time=(\d+):(\d{2}):(\d{2}\.\d{2})/g)];
-        if (timeMatches.length > 0) {
-          const lastMatch = timeMatches[timeMatches.length - 1];
+        TIME_REGEX.lastIndex = 0;
+        let lastMatch = null;
+        let match;
+        while ((match = TIME_REGEX.exec(timeBuffer)) !== null) {
+          lastMatch = match;
+        }
+
+        if (lastMatch) {
           const h = parseInt(lastMatch[1], 10);
           const m = parseInt(lastMatch[2], 10);
           const s = parseFloat(lastMatch[3]);

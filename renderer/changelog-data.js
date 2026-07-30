@@ -1,5 +1,16 @@
 window.changelogData = [
   {
+    "version": "v1.8.0: Core Performance & Rendering Optimization",
+    "date": "July 2026",
+    "changes": [
+      "Performance: Coalesced timeline canvas redraws with requestAnimationFrame to eliminate layout thrashing during drag interactions.",
+      "Performance: Corrected High-DPI canvas scaling to avoid resetting canvas bitmap transforms.",
+      "Performance: Pre-compiled FFmpeg progress regex and throttled progress IPC messages for smoother exports.",
+      "Performance: Parallelized multi-file probing & thumbnail extractions (3x concurrency).",
+      "Fix: Added cross-platform null output targets ('NUL' vs '/dev/null')."
+    ]
+  },
+  {
     "version": "v1.7.2: Hardware Media Key Suppression",
     "date": "July 2026",
     "changes": [

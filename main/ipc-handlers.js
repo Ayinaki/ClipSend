@@ -47,6 +47,23 @@ function getUniqueFilePath(basePath) {
 const encoder = new Encoder();
 const merger = new Merger();
 
+async function mapConcurrent(items, limit, fn) {
+  const results = [];
+  const executing = [];
+  for (const item of items) {
+    const p = Promise.resolve().then(() => fn(item));
+    results.push(p);
+    if (limit <= items.length) {
+      const e = p.then(() => executing.splice(executing.indexOf(e), 1));
+      executing.push(e);
+      if (executing.length >= limit) {
+        await Promise.race(executing);
+      }
+    }
+  }
+  return Promise.all(results);
+}
+
 function registerIpcHandlers() {
   ipcMain.handle('dialog:openFile', async () => {
     const filePath = await openFileDialog();
@@ -54,16 +71,17 @@ function registerIpcHandlers() {
     
     try {
       const mediaInfo = await probeFile(filePath);
-      return { success: true, mediaInfo };
+      return { success: true, filePath, mediaInfo };
     } catch (error) {
       return { success: false, error: error.message };
     }
   });
 
   ipcMain.handle('dialog:openSpecificFile', async (event, filePath) => {
+    if (!filePath) return null;
     try {
       const mediaInfo = await probeFile(filePath);
-      return { success: true, mediaInfo, filePath };
+      return { success: true, filePath, mediaInfo };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -73,19 +91,18 @@ function registerIpcHandlers() {
     if (!filePaths || filePaths.length === 0) return null;
     
     try {
-      const clips = [];
-      for (const filePath of filePaths) {
+      const tempDir = app.getPath('temp');
+      const clips = await mapConcurrent(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
-        const tempDir = app.getPath('temp');
         const thumbnailPath = await extractThumbnail(filePath, tempDir);
         
-        clips.push({
+        return {
           filePath,
           mediaInfo,
           thumbnailPath,
-          id: `clip-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-        });
-      }
+          id: `clip-${Date.now()}-${Math.floor(Math.random() * 10000)}`
+        };
+      });
       return { success: true, clips };
     } catch (error) {
       return { success: false, error: error.message };
@@ -97,19 +114,18 @@ function registerIpcHandlers() {
     if (!filePaths || filePaths.length === 0) return null;
     
     try {
-      const clips = [];
-      for (const filePath of filePaths) {
+      const tempDir = app.getPath('temp');
+      const clips = await mapConcurrent(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
-        const tempDir = app.getPath('temp');
         const thumbnailPath = await extractThumbnail(filePath, tempDir);
         
-        clips.push({
+        return {
           filePath,
           mediaInfo,
           thumbnailPath,
-          id: `clip-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-        });
-      }
+          id: `clip-${Date.now()}-${Math.floor(Math.random() * 10000)}`
+        };
+      });
       return { success: true, clips };
     } catch (error) {
       return { success: false, error: error.message };

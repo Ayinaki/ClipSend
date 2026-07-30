@@ -250,19 +250,26 @@ export class Timeline {
   // -----------------------------------------------------------------------
 
   _setupSize() {
+    let resizeTimeout = null;
     const resize = () => {
       const rect = this.canvas.getBoundingClientRect();
+      const cssWidth = rect.width || 300;
       const dpr = window.devicePixelRatio || 1;
-      this.canvas.width = rect.width * dpr;
+      
+      this.canvas.width = cssWidth * dpr;
       this.canvas.height = CANVAS_HEIGHT * dpr;
+      this.canvas.style.width = cssWidth + 'px';
       this.canvas.style.height = CANVAS_HEIGHT + 'px';
+      
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      this.canvas.width = rect.width;
-      this.canvas.height = CANVAS_HEIGHT;
-      this._draw();
+      this._scheduleRedraw();
     };
+
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(resize, 50);
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -279,7 +286,8 @@ export class Timeline {
 
   _draw() {
     const ctx = this.ctx;
-    const W = this.canvas.width;
+    const rect = this.canvas.getBoundingClientRect();
+    const W = rect.width || 300;
     const H = CANVAS_HEIGHT;
 
     // Background
@@ -289,6 +297,8 @@ export class Timeline {
     if (this.duration <= 0) return;
 
     const trackY = HANDLE_HEIGHT;
+    this._trackWidth = W - (2 * HANDLE_WIDTH);
+    this._trackLeft = HANDLE_WIDTH;
 
     // --- Track bar (full width, muted) ---
     ctx.fillStyle = COL_TRACK;
@@ -336,10 +346,10 @@ export class Timeline {
         const midY = trackY + (TRACK_HEIGHT / 2);
         const maxHeight = (TRACK_HEIGHT / 2) - 1;
 
-        const startIdx = Math.floor((inX - this._trackLeft) / step);
-        const endIdx = Math.ceil((outX - this._trackLeft) / step);
+        const startIdx = Math.max(0, Math.floor((inX - this._trackLeft) / step));
+        const endIdx = Math.min(peaks.length - 1, Math.ceil((outX - this._trackLeft) / step));
 
-        for (let i = Math.max(0, startIdx); i <= Math.min(peaks.length - 1, endIdx); i++) {
+        for (let i = startIdx; i <= endIdx; i++) {
           const p = peaks[i];
           if (p > 0.01) {
             const px = this._trackLeft + i * step;
@@ -358,14 +368,14 @@ export class Timeline {
 
       // Draw Trash Icon (if multi-trim and more than 1 segment)
       if (this.isMultiTrim && this.segments.length > 1) {
-        this._drawTrashIcon(ctx, inX, outX, seg.color);
+        this._drawTrashIcon(ctx, inX, outX, seg.id);
       }
     }
 
     // --- Playhead ---
-    const phX = this._secondsToX(this.playhead);
+    const playheadX = this._secondsToX(this.playhead);
     ctx.fillStyle = COL_PLAYHEAD;
-    ctx.fillRect(phX - PLAYHEAD_WIDTH / 2, 0, PLAYHEAD_WIDTH, H);
+    ctx.fillRect(playheadX - PLAYHEAD_WIDTH / 2, 0, PLAYHEAD_WIDTH, H);
   }
 
   _adjustColor(color, alpha) {
@@ -490,7 +500,7 @@ export class Timeline {
 
     if (hit.id) {
       this.activeSegmentId = hit.id;
-      this._draw();
+      this._scheduleRedraw();
     }
 
     if (hit.type === 'in' || hit.type === 'out') {
@@ -499,7 +509,7 @@ export class Timeline {
       this._dragging = { type: 'playhead' };
       const seconds = this._xToSeconds(x);
       this.playhead = seconds;
-      this._draw();
+      this._scheduleRedraw();
       if (this.callbacks.onSeek) this.callbacks.onSeek(seconds);
     }
 
@@ -528,7 +538,7 @@ export class Timeline {
       case 'in': {
         const seg = this.getSegment(this._dragging.id);
         seg.in = this._clampIn(seg.id, seconds);
-        this._draw();
+        this._scheduleRedraw();
         this._emitSegments();
         if (this.callbacks.onSeek) this.callbacks.onSeek(seg.in);
         break;
@@ -536,7 +546,7 @@ export class Timeline {
       case 'out': {
         const seg = this.getSegment(this._dragging.id);
         seg.out = this._clampOut(seg.id, seconds);
-        this._draw();
+        this._scheduleRedraw();
         this._emitSegments();
         if (this.callbacks.onSeek) this.callbacks.onSeek(seg.out);
         break;
@@ -544,7 +554,7 @@ export class Timeline {
       case 'playhead': {
         const clamped = Math.max(0, Math.min(this.duration, seconds));
         this.playhead = clamped;
-        this._draw();
+        this._scheduleRedraw();
         if (this.callbacks.onSeek) this.callbacks.onSeek(clamped);
         break;
       }
