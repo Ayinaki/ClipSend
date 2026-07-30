@@ -173,7 +173,7 @@ async function downloadAndInstallUpdate() {
     setTimeout(() => {
       const currentExecPath = process.execPath;
       const currentPid = process.pid;
-      const psCommand = `while (Get-Process -Id ${currentPid} -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }; Start-Process -FilePath "${installerPath}" -ArgumentList "/S" -Wait; if (Test-Path "${currentExecPath}") { Start-Process -FilePath "${currentExecPath}" }`;
+      const psCommand = `while (Get-Process -Id ${currentPid} -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }; Start-Sleep -Seconds 1; Start-Process -FilePath "${installerPath}" -ArgumentList "/S"; Start-Sleep -Seconds 3; while (Get-Process -Name "*ClipSend-Setup*" -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; Start-Sleep -Seconds 1; if (Test-Path "${currentExecPath}") { Start-Process -FilePath "${currentExecPath}" }`;
 
       const relauncher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', psCommand], {
         detached: true,

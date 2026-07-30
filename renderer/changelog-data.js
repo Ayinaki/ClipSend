@@ -1,10 +1,10 @@
 window.changelogData = [
   {
-    "version": "v1.8.6: In-App Changelog & Release Synchronization",
+    "version": "v1.8.7: Auto-Updater NSIS Process Wait Fix",
     "date": "July 2026",
     "changes": [
-      "Feature: Synchronized in-app changelog with all recent performance, auto-updater, and binary bundling release notes.",
-      "Fix: Updated release notes dataset to match current release version v1.8.6."
+      "Fix: Hardened auto-updater relaunch script to wait for NSIS installer process termination before relaunching the updated executable.",
+      "Fix: Resolved issue where silent installer stub exited early causing application relaunch before file replacement completed."
     ]
   },
   {
