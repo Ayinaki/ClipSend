@@ -189,14 +189,25 @@ async function downloadAndInstallUpdate() {
     });
 
     isDownloading = false;
-    logUpdater(`Download finished successfully. File size: ${downloadedBytes} bytes.`);
+    logUpdater(`Download finished. File size: ${downloadedBytes} bytes (Expected: ${totalBytes} bytes).`);
 
-    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      mainWindowRef.webContents.send('updater:downloaded', { installerPath });
+    if (totalBytes > 0 && downloadedBytes !== totalBytes) {
+      logUpdater(`Warning: Downloaded byte size (${downloadedBytes}) differs from Content-Length header (${totalBytes}).`);
     }
 
-    // Launch NSIS silent installer via a temporary .ps1 script or cmd.exe fallback
+    const logPath = path.join(app ? app.getPath('userData') : process.cwd(), 'updater.log');
+
+    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+      mainWindowRef.webContents.send('updater:downloaded', { installerPath, logPath });
+    }
+
+    // Launch NSIS silent installer via a temporary .ps1 script or cmd.exe fallback (Windows platform)
     setTimeout(() => {
+      if (process.platform !== 'win32') {
+        logUpdater(`Non-Windows platform (${process.platform}) detected. Automatic installer execution skipped.`);
+        return;
+      }
+
       const currentExecPath = process.execPath;
       const currentPid = process.pid;
 
@@ -270,7 +281,7 @@ try { Remove-Item -LiteralPath (Get-Item $MyInvocation.MyCommand.Path) -Force } 
       // Fallback: try to start installer directly via cmd.exe
       try {
         logUpdater('Executing cmd.exe fallback for installer...');
-        const cmdFallback = spawn('cmd.exe', ['/C', 'start', '""', `"${installerPath}"`, '/S'], {
+        const cmdFallback = spawn('cmd.exe', ['/C', 'start', '""', installerPath, '/S'], {
           detached: true,
           stdio: 'ignore',
           windowsHide: true
@@ -284,13 +295,14 @@ try { Remove-Item -LiteralPath (Get-Item $MyInvocation.MyCommand.Path) -Force } 
       app.quit();
     }, 1000);
 
-    return { success: true, installerPath };
+    return { success: true, installerPath, logPath };
 
   } catch (err) {
     isDownloading = false;
     logUpdater('Download or install failed', err);
+    const logPath = path.join(app ? app.getPath('userData') : process.cwd(), 'updater.log');
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      mainWindowRef.webContents.send('updater:error', err.message);
+      mainWindowRef.webContents.send('updater:error', { error: err.message, logPath });
     }
     throw err;
   }

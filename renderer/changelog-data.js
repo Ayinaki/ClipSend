@@ -1,11 +1,11 @@
 window.changelogData = [
   {
-    "version": "v1.8.8: Enterprise Auto-Updater Hardening & Logging",
+    "version": "v1.8.9: Platform Guard, Download Integrity & Quoting Refinements",
     "date": "July 2026",
     "changes": [
-      "Feature: Replaced inline updater command with a temporary self-cleaning .ps1 script (-ExecutionPolicy Bypass) for enterprise compatibility.",
-      "Feature: Added cmd.exe fallback execution path for environments restricting PowerShell scripts.",
-      "Feature: Implemented persistent timestamped logging in userData/updater.log to capture download metrics and execution traces."
+      "Feature: Added process.platform === 'win32' guard around Windows .ps1 / cmd.exe relauncher routines.",
+      "Feature: Added download byte-size verification against Content-Length headers with warning logging.",
+      "Feature: Refined cmd.exe fallback parameter tokenization and added logPath metadata to IPC error/download payloads."
     ]
   },
   {
