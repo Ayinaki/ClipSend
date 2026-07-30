@@ -34,7 +34,25 @@ jobs:
           if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
           if (!(Test-Path "bin/ffmpeg.exe") -or !(Test-Path "bin/ffprobe.exe")) {
             Write-Host "Downloading FFmpeg release binaries..."
-            Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
+            $urls = @(
+              "https://github.com/GyanD/codexffmpeg/releases/download/7.0/ffmpeg-7.0-essentials_build.zip",
+              "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+              "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-04-30-12-50/ffmpeg-n7.0-latest-win64-gpl-7.0.zip"
+            )
+            $downloadSuccess = $false
+            foreach ($url in $urls) {
+              try {
+                Write-Host "Attempting download from $url..."
+                Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip" -TimeoutSec 120
+                $downloadSuccess = $true
+                break
+              } catch {
+                Write-Host "Download failed from $url: $_"
+              }
+            }
+            if (!$downloadSuccess) {
+              throw "Failed to download FFmpeg from all mirror URLs."
+            }
             Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
             $ffmpeg = Get-ChildItem -Path "ffmpeg_temp" -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
             $ffprobe = Get-ChildItem -Path "ffmpeg_temp" -Filter "ffprobe.exe" -Recurse | Select-Object -First 1
