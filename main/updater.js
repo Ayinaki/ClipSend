@@ -67,20 +67,38 @@ function fetchJson(url) {
   });
 }
 
+function logUpdater(message, error = null) {
+  try {
+    const logDir = app ? app.getPath('userData') : process.cwd();
+    const logPath = path.join(logDir, 'updater.log');
+    const timestamp = new Date().toISOString();
+    let line = `[${timestamp}] ${message}\n`;
+    if (error) {
+      line += `[${timestamp}] ERROR: ${error.stack || error.message || error}\n`;
+    }
+    fs.appendFileSync(logPath, line, 'utf8');
+  } catch (e) {
+    console.error('Failed writing to updater.log:', e);
+  }
+}
+
 async function checkForUpdates() {
   try {
+    logUpdater('Checking for updates...');
     const data = await fetchJson(GITHUB_API_URL);
     const latestVersion = data.tag_name || data.name || '';
     const currentVersion = app.getVersion();
 
     if (!latestVersion || !isNewerVersion(currentVersion, latestVersion)) {
       updateInfo = null;
+      logUpdater(`No new updates. Current: ${currentVersion}, Latest: ${latestVersion}`);
       return { available: false, currentVersion, latestVersion };
     }
 
     // Find Windows installer asset (.exe)
     const exeAsset = (data.assets || []).find(a => a.name.endsWith('.exe'));
     if (!exeAsset) {
+      logUpdater(`New version ${latestVersion} available, but no .exe asset found.`);
       return { available: false, currentVersion, latestVersion, error: 'No Windows installer asset found in release.' };
     }
 
@@ -93,12 +111,15 @@ async function checkForUpdates() {
       publishedAt: data.published_at
     };
 
+    logUpdater(`Update available: ${latestVersion} (Url: ${exeAsset.browser_download_url}, Size: ${exeAsset.size} bytes)`);
+
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
       mainWindowRef.webContents.send('updater:available', updateInfo);
     }
 
     return { available: true, updateInfo };
   } catch (err) {
+    logUpdater('Error checking for updates', err);
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
       mainWindowRef.webContents.send('updater:error', err.message);
     }
@@ -108,7 +129,9 @@ async function checkForUpdates() {
 
 async function downloadAndInstallUpdate() {
   if (!updateInfo || !updateInfo.downloadUrl) {
-    throw new Error('No update available to download.');
+    const err = new Error('No update available to download.');
+    logUpdater('downloadAndInstallUpdate failed', err);
+    throw err;
   }
 
   if (isDownloading) {
@@ -118,6 +141,8 @@ async function downloadAndInstallUpdate() {
   isDownloading = true;
   const tempDir = app.getPath('temp');
   const installerPath = path.join(tempDir, `ClipSend-Setup-${updateInfo.version}.exe`);
+
+  logUpdater(`Starting update download: ${updateInfo.downloadUrl} -> ${installerPath}`);
 
   try {
     const res = await fetchUrl(updateInfo.downloadUrl);
@@ -164,23 +189,97 @@ async function downloadAndInstallUpdate() {
     });
 
     isDownloading = false;
+    logUpdater(`Download finished successfully. File size: ${downloadedBytes} bytes.`);
 
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
       mainWindowRef.webContents.send('updater:downloaded', { installerPath });
     }
 
-    // Launch NSIS silent installer after waiting for current process PID to exit, then relaunch updated app
+    // Launch NSIS silent installer via a temporary .ps1 script or cmd.exe fallback
     setTimeout(() => {
       const currentExecPath = process.execPath;
       const currentPid = process.pid;
-      const psCommand = `while (Get-Process -Id ${currentPid} -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }; Start-Sleep -Seconds 1; Start-Process -FilePath "${installerPath}" -ArgumentList "/S"; Start-Sleep -Seconds 3; while (Get-Process -Name "*ClipSend-Setup*" -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; Start-Sleep -Seconds 1; if (Test-Path "${currentExecPath}") { Start-Process -FilePath "${currentExecPath}" }`;
 
-      const relauncher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', psCommand], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true
-      });
-      relauncher.unref();
+      logUpdater(`Preparing update relauncher for PID ${currentPid}, execPath: "${currentExecPath}", installerPath: "${installerPath}"`);
+
+      // PowerShell script content — waits for PID to exit, runs installer silently, relaunch app, self-deletes
+      const psScript = `
+$pidVal = ${currentPid}
+$installer = '${installerPath.replace(/'/g, "''")}'
+$currentExec = '${currentExecPath.replace(/'/g, "''")}'
+
+# Wait for original process to exit completely
+while (Get-Process -Id $pidVal -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }
+Start-Sleep -Seconds 1
+
+# Run installer silently (NSIS: /S)
+try {
+  Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden -Wait
+} catch {
+  try {
+    Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden
+  } catch {}
+}
+
+Start-Sleep -Seconds 1
+
+# Attempt to relaunch the app executable
+try {
+  if (Test-Path $currentExec) {
+    Start-Process -FilePath $currentExec -WindowStyle Hidden
+  }
+} catch {}
+
+# Self-cleanup
+try { Remove-Item -LiteralPath (Get-Item $MyInvocation.MyCommand.Path) -Force } catch {}
+`;
+
+      const psPath = path.join(app.getPath('temp'), `clipsend-updater-${Date.now()}.ps1`);
+      let psWritten = false;
+
+      try {
+        fs.writeFileSync(psPath, psScript, { encoding: 'utf8' });
+        psWritten = true;
+        logUpdater(`Successfully wrote updater script to "${psPath}"`);
+      } catch (writeErr) {
+        logUpdater(`Failed to write .ps1 script to "${psPath}". Attempting cmd.exe fallback.`, writeErr);
+      }
+
+      if (psWritten) {
+        try {
+          const relauncher = spawn('powershell.exe', [
+            '-NoProfile',
+            '-NonInteractive',
+            '-WindowStyle', 'Hidden',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', psPath
+          ], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+          });
+          relauncher.unref();
+          logUpdater('Successfully spawned PowerShell relauncher process. Quitting app now.');
+          app.quit();
+          return;
+        } catch (spawnErr) {
+          logUpdater('Failed to spawn powershell.exe relauncher. Attempting cmd.exe fallback.', spawnErr);
+        }
+      }
+
+      // Fallback: try to start installer directly via cmd.exe
+      try {
+        logUpdater('Executing cmd.exe fallback for installer...');
+        const cmdFallback = spawn('cmd.exe', ['/C', 'start', '""', `"${installerPath}"`, '/S'], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        });
+        cmdFallback.unref();
+        logUpdater('cmd.exe fallback spawned successfully.');
+      } catch (cmdErr) {
+        logUpdater('cmd.exe fallback failed as well.', cmdErr);
+      }
 
       app.quit();
     }, 1000);
@@ -189,6 +288,7 @@ async function downloadAndInstallUpdate() {
 
   } catch (err) {
     isDownloading = false;
+    logUpdater('Download or install failed', err);
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
       mainWindowRef.webContents.send('updater:error', err.message);
     }
@@ -217,5 +317,6 @@ module.exports = {
   initUpdater,
   checkForUpdates,
   downloadAndInstallUpdate,
-  isNewerVersion
+  isNewerVersion,
+  logUpdater
 };

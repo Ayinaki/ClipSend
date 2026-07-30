@@ -1,10 +1,11 @@
 window.changelogData = [
   {
-    "version": "v1.8.7: Auto-Updater NSIS Process Wait Fix",
+    "version": "v1.8.8: Enterprise Auto-Updater Hardening & Logging",
     "date": "July 2026",
     "changes": [
-      "Fix: Hardened auto-updater relaunch script to wait for NSIS installer process termination before relaunching the updated executable.",
-      "Fix: Resolved issue where silent installer stub exited early causing application relaunch before file replacement completed."
+      "Feature: Replaced inline updater command with a temporary self-cleaning .ps1 script (-ExecutionPolicy Bypass) for enterprise compatibility.",
+      "Feature: Added cmd.exe fallback execution path for environments restricting PowerShell scripts.",
+      "Feature: Implemented persistent timestamped logging in userData/updater.log to capture download metrics and execution traces."
     ]
   },
   {

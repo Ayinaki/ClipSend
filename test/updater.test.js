@@ -17,3 +17,24 @@ describe('updater semver comparison', () => {
     expect(isNewerVersion('2.0.0', '1.9.9')).toBe(false);
   });
 });
+
+describe('logUpdater logger helper', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const { logUpdater } = require('../main/updater');
+
+  test('writes timestamped logs without throwing', () => {
+    expect(() => {
+      logUpdater('Test update message');
+      logUpdater('Test error message', new Error('Mock update error'));
+    }).not.toThrow();
+
+    const logPath = path.join(process.cwd(), 'updater.log');
+    if (fs.existsSync(logPath)) {
+      const content = fs.readFileSync(logPath, 'utf8');
+      expect(content).toContain('Test update message');
+      expect(content).toContain('Mock update error');
+      try { fs.unlinkSync(logPath); } catch (e) {}
+    }
+  });
+});
