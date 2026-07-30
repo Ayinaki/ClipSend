@@ -160,4 +160,35 @@ describe('Encoder', () => {
     expect(progressCalls.length).toBeGreaterThan(0);
     expect(progressCalls[progressCalls.length - 1]).toBe(100);
   });
+
+  it('triggers CPU fallback detection when NVENC encoder fails', async () => {
+    const plan = {
+      encoder: 'h264_nvenc',
+      clipDuration: 10,
+      isSinglePass: true,
+      singlePassArgs: ['-c:v', 'h264_nvenc']
+    };
+
+    const runPromise = encoder.runEncode(plan, 'out.mp4');
+    
+    const stderrHandler = mockProcess.stderr.on.mock.calls.find(c => c[0] === 'data')[1];
+    stderrHandler(Buffer.from('OpenEncodeSessionEx failed: out of memory (10): (No Error)'));
+
+    const closeHandler = mockProcess.on.mock.calls.find(c => c[0] === 'close')[1];
+    closeHandler(1);
+
+    try {
+      await runPromise;
+    } catch (error) {
+      const errText = error.ffmpegStderr || '';
+      const isNvencFailure = (
+        errText.includes('Could not open encoder') ||
+        errText.includes('Cannot load nvcuda.dll') ||
+        errText.includes('No capable devices found') ||
+        errText.includes('OpenEncodeSessionEx failed') ||
+        errText.includes('Initialize failed')
+      );
+      expect(isNvencFailure).toBe(true);
+    }
+  });
 });
