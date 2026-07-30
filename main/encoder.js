@@ -185,7 +185,7 @@ class Encoder {
           const fullErrText = stderrChunks.join('');
           const tail = fullErrText.split('\n').slice(-10).join('\n');
           const err = new Error(`FFmpeg exited with code ${code}. Error: ${tail}`);
-          err.ffmpegStderr = errorOutput;
+          err.ffmpegStderr = fullErrText;
           reject(err);
         } else {
           resolve();

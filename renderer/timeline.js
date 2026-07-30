@@ -177,18 +177,18 @@ export class Timeline {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // Coordinate math
-  // -----------------------------------------------------------------------
+  _updateDimensions() {
+    const rect = this.canvas.getBoundingClientRect();
+    this._cssWidth = rect.width || 300;
+    this._trackLeftVal = HANDLE_WIDTH;
+    this._trackRightVal = Math.max(HANDLE_WIDTH + 1, this._cssWidth - HANDLE_WIDTH);
+    this._trackWidthVal = Math.max(1, this._trackRightVal - this._trackLeftVal);
+  }
 
   /** Usable drawing width (excludes handle gutters on each side). */
-  get _trackLeft()  { return HANDLE_WIDTH; }
-  get _trackRight() {
-    const rect = this.canvas.getBoundingClientRect();
-    const width = rect.width || 300;
-    return width - HANDLE_WIDTH;
-  }
-  get _trackWidth() { return Math.max(1, this._trackRight - this._trackLeft); }
+  get _trackLeft()  { return this._trackLeftVal || HANDLE_WIDTH; }
+  get _trackRight() { return this._trackRightVal || (300 - HANDLE_WIDTH); }
+  get _trackWidth() { return this._trackWidthVal || (300 - 2 * HANDLE_WIDTH); }
 
   _secondsToX(seconds) {
     if (this.duration <= 0) return this._trackLeft;
@@ -256,8 +256,8 @@ export class Timeline {
   _setupSize() {
     let resizeTimeout = null;
     const resize = () => {
-      const rect = this.canvas.getBoundingClientRect();
-      const cssWidth = rect.width || 300;
+      this._updateDimensions();
+      const cssWidth = this._cssWidth;
       const dpr = window.devicePixelRatio || 1;
       
       this.canvas.width = cssWidth * dpr;
@@ -289,9 +289,9 @@ export class Timeline {
   }
 
   _draw() {
+    this._updateDimensions();
     const ctx = this.ctx;
-    const rect = this.canvas.getBoundingClientRect();
-    const W = rect.width || 300;
+    const W = this._cssWidth;
     const H = CANVAS_HEIGHT;
 
     // Background

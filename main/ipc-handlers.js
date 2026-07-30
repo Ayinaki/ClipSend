@@ -22,26 +22,30 @@ if (ffmpegPath.includes('app.asar')) {
 }
 const activePreviews = new Set();
 
-app.on('quit', () => {
+app.on('will-quit', () => {
   activePreviews.forEach(tempPath => {
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch (e) {
-      // Ignore cleanup errors on quit
-    }
+    fs.promises.unlink(tempPath).catch(() => {});
   });
 });
 
-function getUniqueFilePath(basePath) {
-  if (!fs.existsSync(basePath)) return basePath;
+async function getUniqueFilePath(basePath) {
+  try {
+    await fs.promises.access(basePath);
+  } catch (e) {
+    return basePath;
+  }
+
   const parsed = path.parse(basePath);
   let counter = 1;
-  let uniquePath = basePath;
-  while (fs.existsSync(uniquePath)) {
-    uniquePath = path.join(parsed.dir, `${parsed.name} (${counter})${parsed.ext}`);
-    counter++;
+  while (true) {
+    const candidatePath = path.join(parsed.dir, `${parsed.name} (${counter})${parsed.ext}`);
+    try {
+      await fs.promises.access(candidatePath);
+      counter++;
+    } catch (e) {
+      return candidatePath;
+    }
   }
-  return uniquePath;
 }
 
 const encoder = new Encoder();
@@ -243,7 +247,7 @@ function registerIpcHandlers() {
 
       if (defaultExportDir && fs.existsSync(defaultExportDir)) {
         const targetPath = path.join(defaultExportDir, standardizedName);
-        outputPath = getUniqueFilePath(targetPath);
+        outputPath = await getUniqueFilePath(targetPath);
       } else {
         outputPath = await showSaveDialog(standardizedName);
         if (!outputPath) return null; // Cancelled
@@ -304,7 +308,7 @@ function registerIpcHandlers() {
 
     if (defaultExportDir && fs.existsSync(defaultExportDir)) {
       const targetPath = path.join(defaultExportDir, defaultName);
-      return getUniqueFilePath(targetPath);
+      return await getUniqueFilePath(targetPath);
     } else {
       return await showSaveDialog(defaultName);
     }
@@ -316,7 +320,7 @@ function registerIpcHandlers() {
       const defaultExportDir = store.get('defaultExportDirectory');
       if (defaultExportDir && fs.existsSync(defaultExportDir)) {
         const targetPath = path.join(defaultExportDir, defaultName);
-        outputPath = getUniqueFilePath(targetPath);
+        outputPath = await getUniqueFilePath(targetPath);
       } else {
         outputPath = await showSaveDialog(defaultName);
         if (!outputPath) return null; // Cancelled

@@ -85,7 +85,7 @@ child.on('close', () => {
     peaks[i] = max;
   }
 
-  parentPort.postMessage({ peaks: Array.from(peaks) });
+  parentPort.postMessage({ peaksBuffer: peaks.buffer }, [peaks.buffer]);
 });
 
 child.on('error', (err) => {
