@@ -2017,7 +2017,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (window.clipSend.onUpdateDownloaded) {
     window.clipSend.onUpdateDownloaded(() => {
-      if (updateProgressStatus) updateProgressStatus.textContent = 'Download complete! Restarting to install...';
+      if (updateProgressStatus) updateProgressStatus.textContent = 'Download complete! Launching installer to finish the update...';
       if (updateProgressPercent) updateProgressPercent.textContent = '100%';
       if (updateProgressBarFill) updateProgressBarFill.style.width = '100%';
     });
@@ -2035,14 +2035,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Surface the previous install attempt's outcome (read from installer-result.json on startup).
+  // Surface the previous install attempt's outcome (read from update-attempt.json on startup).
   if (window.clipSend.onUpdateInstalledResult) {
     window.clipSend.onUpdateInstalledResult((result) => {
       const ok = result && result.success === true;
       if (updateProgressStatus) {
         updateProgressStatus.textContent = ok
           ? `Update ${result.version || ''} installed successfully.`
-          : `Previous update was not applied (exit code: ${result ? result.exitCode : 'unknown'}). Check the updater log for details.`;
+          : `Update ${result && result.version ? result.version : ''} was not applied on the last attempt. Check the updater log for details.`;
         updateProgressStatus.style.color = ok ? 'var(--success-color)' : 'var(--error-color)';
       }
       if (updateProgressPercent) updateProgressPercent.textContent = ok ? '100%' : '0%';

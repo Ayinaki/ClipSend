@@ -1,5 +1,14 @@
 window.changelogData = [
   {
+    "version": "v1.8.18: Auto-Updater Rebuilt on electron-updater",
+    "date": "August 2026",
+    "changes": [
+      "Fix: Replaced the custom PowerShell-based updater with the maintained electron-updater engine. Updates now install reliably — the installer runs directly (no script orchestration), downloads are verified against the published checksum, per-machine installs trigger the proper elevation prompt, and the app relaunches after install.",
+      "Fix: The update dialog now reports whether a previous update actually applied when the app next starts, so silent failures are no longer invisible.",
+      "Note: The installer now opens on screen after the download so the update can be completed manually. If Windows SmartScreen warns that the publisher is unrecognized, click \"More info\" then \"Run anyway\" to continue — signing the installer with a trusted certificate would remove this prompt entirely."
+    ]
+  },
+  {
     "version": "v1.8.17: Title Bar Window Dragging Fix",
     "date": "August 2026",
     "changes": [

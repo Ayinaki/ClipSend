@@ -1,6 +1,6 @@
 {
   "name": "video-compressor",
-  "version": "1.8.17",
+  "version": "1.8.18",
   "description": "",
   "main": "main/main.js",
   "scripts": {
@@ -40,6 +40,14 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
-    "electron-store": "^8.1.0"
-  }
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.6.2"
+  },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "Ayinaki",
+      "repo": "ClipSend"
+    }
+  ]
 }
