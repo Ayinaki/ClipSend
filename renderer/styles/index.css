@@ -83,11 +83,17 @@ body {
 .titlebar-controls {
   display: flex;
   justify-content: flex-end;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
   flex: 1;
 }
 
-/* Centered export-estimate cluster in the title bar */
+/* Window buttons stay clickable even though their column is a drag region */
+.titlebar-controls .win-btn {
+  -webkit-app-region: no-drag;
+}
+
+/* Centered export-estimate cluster in the title bar.
+   The whole bar is a drag region (except the interactive widgets below). */
 .titlebar-center {
   flex: 1;
   display: flex;
@@ -95,7 +101,7 @@ body {
   justify-content: center;
   min-width: 0;
   overflow: hidden;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
 }
 
 .titlebar-estimate {
@@ -111,6 +117,7 @@ body {
   white-space: nowrap;
   max-width: 100%;
   box-sizing: border-box;
+  -webkit-app-region: drag;
 }
 
 .titlebar-estimate-item {
@@ -139,6 +146,7 @@ body {
   font-size: 10px;
   border-radius: 3px;
   margin-left: 4px;
+  -webkit-app-region: no-drag;
 }
 
 .titlebar-export-btn:hover {
@@ -990,6 +998,7 @@ button:disabled {
   align-items: center;
   gap: 12px;
   padding: 0 16px;
+  -webkit-app-region: drag;
 }
 
 .titlebar-progress-text {
@@ -1025,6 +1034,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
+  -webkit-app-region: no-drag;
 }
 .titlebar-cancel-btn:hover {
   background-color: rgba(211, 47, 47, 0.1);

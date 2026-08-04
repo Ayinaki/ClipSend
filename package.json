@@ -1,6 +1,6 @@
 {
   "name": "video-compressor",
-  "version": "1.8.16",
+  "version": "1.8.17",
   "description": "",
   "main": "main/main.js",
   "scripts": {

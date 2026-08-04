@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.8.17: Title Bar Window Dragging Fix",
+    "date": "August 2026",
+    "changes": [
+      "Fix: The window can now be dragged from anywhere on the title bar again — the center and right sections (previously blocked by the relocated export estimate and window controls) are draggable regions again, while buttons and controls stay fully clickable."
+    ]
+  },
+  {
     "version": "v1.8.16: Auto-Updater Fix, Title Bar Estimates & MP3 Export",
     "date": "August 2026",
     "changes": [
