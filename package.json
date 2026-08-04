@@ -7,7 +7,8 @@
     "start": "npm run build:renderer && electron .",
     "build:renderer": "esbuild renderer/app.js --bundle --format=esm --outfile=renderer/dist/app.bundle.js && esbuild renderer/app.js --bundle --format=cjs --outfile=renderer/dist/app.bundle.cjs",
     "build": "npm run build:renderer && electron-builder build --win --publish never",
-    "test": "npm run build:renderer && jest"
+    "test": "npm run build:renderer && jest",
+    "release:patch": "node scripts/release.js"
   },
   "jest": {
     "transform": {
