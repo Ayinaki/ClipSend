@@ -474,8 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const hwAccel = fallback ? 'cpu' : (await window.clipSend.getSetting('hwAccel') || 'auto');
-      const hasNvenc = !fallback && window.clipSend.getSetting('hasNvenc'); 
-      const encoderName = basePlan.encoder || 'libx264';
+      const encoderName = fallback ? 'libx264' : (basePlan.encoder || 'libx264');
       
       console.log('--- ENCODE START DIAGNOSTICS ---');
       console.log(`Hardware Acceleration Selected: ${hwAccel}`);
@@ -634,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (mergeResult.success) {
-          showExportModal(mergeResult.filePath, mergeResult.finalSizeMB, finalWarnings.length > 0 ? finalWarnings : null, true);
+          showExportModal(mergeResult.filePath, mergeResult.finalSizeMB, mergeResult.strategy || null, true);
         } else {
           throw new Error(mergeResult.error);
         }
@@ -642,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Single clip or Separate Clips
         // If Separate Clips, finalFilePath is just the LAST clip.
         // We can just show the modal for the directory or the last clip.
-        showExportModal(finalFilePath, totalFinalSizeMB, finalWarnings.length > 0 ? finalWarnings : null, true);
+        showExportModal(finalFilePath, totalFinalSizeMB, null, true);
       }
       
       progressContainer.style.display = 'none';
@@ -652,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
       progressContainer.style.display = 'none';
       exportProgressState.isActive = false;
     } finally {
-      if (!fallback || (fallback && progressContainer.style.display === 'none')) {
+      if (!fallback || progressContainer.style.display === 'none') {
         exportBtn.disabled = false;
         calculateBtn.disabled = false;
         presetSelect.disabled = false;
@@ -727,14 +726,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function showExportModal(filePath, sizeMB, strategy = null, isTrimMode = false) {
+  function showExportModal(filePath, sizeMB, mergeStrategy = null, isTrimMode = false) {
     currentExportFilePath = filePath;
     if (exportSavedTo) exportSavedTo.textContent = `Saved to: ${filePath}`;
     if (exportFinalSize) exportFinalSize.textContent = `Final size: ${sizeMB} MB`;
     const strategyEl = document.getElementById('export-strategy');
     if (strategyEl) {
-      if (strategy) {
-        const text = strategy === 'concat_demuxer' ? 'Lossless fast merge' : 'Re-encoded (format mismatch)';
+      if (mergeStrategy && typeof mergeStrategy === 'string') {
+        const text = mergeStrategy === 'concat_demuxer' ? 'Lossless fast merge' : 'Re-encoded (format mismatch)';
         strategyEl.textContent = `Strategy: ${text}`;
         strategyEl.style.display = 'block';
       } else {

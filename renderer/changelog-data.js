@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v1.8.15: NVENC Fallback & Export Modal Fixes",
+    "date": "August 2026",
+    "changes": [
+      "Fix: Resolved an infinite retry loop when NVENC hardware encoding failed — CPU fallback retries now force libx264 instead of reusing the NVENC plan, so exports complete successfully on systems without working GPU encoding.",
+      "Fix: Merge strategy (lossless concat vs re-encode) now displays correctly in the export complete modal instead of being silently dropped."
+    ]
+  },
+  {
     "version": "v1.8.13: Relauncher Variable Scope & Exception Handling Fix",
     "date": "July 2026",
     "changes": [
