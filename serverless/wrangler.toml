@@ -1,0 +1,8 @@
+name = "clipsend-feedback"
+main = "feedback-worker.js"
+compatibility_date = "2026-08-04"
+
+# No vars needed — DISCORD_WEBHOOK_URL is set as a secret:
+#   wrangler secret put DISCORD_WEBHOOK_URL
+#
+# No KV / D1 / R2 bindings required. Runs entirely on the free tier.

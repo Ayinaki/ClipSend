@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.8.19: Feedback Relayed Through Secure Proxy",
+    "date": "August 2026",
+    "changes": [
+      "Security: Feedback no longer ships the Discord webhook URL inside the installer. Submissions are relayed through a Cloudflare Worker proxy that holds the webhook secret, so the endpoint can be rotated without releasing a new build and can no longer be extracted from the app files."
+    ]
+  },
+  {
     "version": "v1.8.18: Auto-Updater Rebuilt on electron-updater",
     "date": "August 2026",
     "changes": [

@@ -464,75 +464,44 @@ function registerIpcHandlers() {
   });
 
   // --- Feedback ---
+  // Feedback is POSTed to a Cloudflare Worker proxy (serverless/feedback-
+  // worker.js). The Discord webhook URL is a secret on the worker only — it
+  // must never be baked into the installer. Replace the placeholder below
+  // with the deployed worker URL (see serverless/README.md).
+  const FEEDBACK_PROXY_URL = 'https://clipsend-feedback.YOUR_WORKER_SUBDOMAIN.workers.dev';
+
   ipcMain.handle('submit-feedback', async (event, payload) => {
     try {
-      const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-      if (!webhookUrl) {
-        throw new Error('Discord webhook URL is not configured.');
+      if (FEEDBACK_PROXY_URL.includes('YOUR_WORKER_SUBDOMAIN')) {
+        throw new Error('Feedback service is not configured yet.');
       }
 
-      let { type, message, contact } = payload;
-      
+      let { type, message, contact } = payload || {};
+
       if (!message || message.trim().length < 10) {
         throw new Error('Message too short — please add more detail.');
       }
-      
-      if (message.length > 1000) {
-        message = message.substring(0, 1000) + '...';
-      }
 
-      let color = 0x808080; // Gray for general
-      let titleEmoji = '💬';
-      let typeName = 'General Feedback';
-
-      if (type === 'bug') {
-        color = 0xFF4444; // Red
-        titleEmoji = '🐛';
-        typeName = 'Bug Report';
-      } else if (type === 'feature') {
-        color = 0x44AAFF; // Blue
-        titleEmoji = '💡';
-        typeName = 'Feature Request';
-      }
-
-      const embed = {
-        author: {
-          name: 'New Feedback Submission'
-        },
-        title: `${titleEmoji} ${typeName}`,
-        description: message,
-        color: color,
-        timestamp: new Date().toISOString(),
-        footer: {
-          text: 'ClipSend Feedback'
-        },
-        fields: [
-          {
-            name: 'App Version',
-            value: app.getVersion() || 'Unknown',
-            inline: true
-          }
-        ]
-      };
-
-      if (contact && contact.trim().length > 0) {
-        embed.fields.push({
-          name: 'Submitted by',
-          value: contact.substring(0, 100), // Enforce length limit
-          inline: true
-        });
-      }
-
-      const response = await fetch(webhookUrl, {
+      const response = await fetch(FEEDBACK_PROXY_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ embeds: [embed] })
+        body: JSON.stringify({
+          type: type || 'general',
+          message: String(message).substring(0, 1000),
+          contact: contact ? String(contact).substring(0, 100) : '',
+          version: app.getVersion() || 'Unknown'
+        })
       });
 
       if (!response.ok) {
-        throw new Error(`Discord API returned ${response.status} ${response.statusText}`);
+        let detail = '';
+        try {
+          const body = await response.json();
+          detail = body.error || '';
+        } catch (e) { /* non-JSON error body */ }
+        throw new Error(detail || `Feedback service returned ${response.status}`);
       }
 
       return { success: true };

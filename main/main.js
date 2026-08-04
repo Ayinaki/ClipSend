@@ -1,7 +1,5 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
-const dotenvPath = app.isPackaged ? path.join(process.resourcesPath, '.env') : path.join(__dirname, '..', '.env');
-require('dotenv').config({ path: dotenvPath });
 const { registerIpcHandlers } = require('./ipc-handlers');
 const { initUpdater } = require('./updater');
 

@@ -11,8 +11,8 @@ the maintainer.
 - All video and audio processing happens **locally on your device**. Your media
   files are never uploaded or transmitted.
 - The app contacts GitHub only to check for and download updates.
-- The optional in-app feedback form sends the text you submit to a Discord
-  webhook owned by the maintainer.
+- The optional in-app feedback form sends the text you submit through a
+  Cloudflare Worker proxy to a Discord webhook owned by the maintainer.
 - No analytics, no tracking, no advertising, and no accounts.
 
 ## Data handling
@@ -34,11 +34,12 @@ is sent.
 ### Feedback
 
 The in-app **Send Feedback** form (Bug Report / Feature Request / General
-Feedback) sends the text you type to a Discord webhook operated by the
-maintainer. It may include any contact information you choose to provide.
-Media files are never attached. Submissions are stored in the maintainer's
-Discord server and may be used to improve the app; you can request deletion by
-opening an issue on GitHub.
+Feedback) sends the text you type to a Cloudflare Worker operated by the
+maintainer, which relays it to a Discord webhook. It may include any contact
+information you choose to provide. Media files are never attached. The
+webhook URL is held only by the relay and is never embedded in the app.
+Submissions are stored in the maintainer's Discord server and may be used to
+improve the app; you can request deletion by opening an issue on GitHub.
 
 ### Settings and local data
 
@@ -52,8 +53,12 @@ data is transmitted.
 - **GitHub** — update checks and release downloads. GitHub's own
   [Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement)
   applies to those interactions.
-- **Discord** — receives optional feedback submissions. Discord's own
-  [Privacy Policy](https://discord.com/privacy) applies to that data.
+- **Cloudflare Workers** — relays optional feedback submissions. Cloudflare's
+  own [Privacy Policy](https://www.cloudflare.com/privacypolicy/) applies to
+  that interaction.
+- **Discord** — receives optional feedback submissions via the relay.
+  Discord's own [Privacy Policy](https://discord.com/privacy) applies to
+  that data.
 
 ## Children
 

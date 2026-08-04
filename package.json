@@ -1,6 +1,6 @@
 {
   "name": "video-compressor",
-  "version": "1.8.18",
+  "version": "1.8.19",
   "description": "",
   "main": "main/main.js",
   "scripts": {
@@ -21,9 +21,6 @@
     "win": {
       "icon": "build/icon.png"
     },
-    "extraResources": [
-      ".env"
-    ],
     "files": [
       "main/**/*",
       "renderer/**/*",
@@ -52,7 +49,6 @@
     "jsdom": "^26.1.0"
   },
   "dependencies": {
-    "dotenv": "^17.4.2",
     "electron-store": "^8.1.0",
     "electron-updater": "^6.6.2"
   },
