@@ -58,5 +58,6 @@ contextBridge.exposeInMainWorld('clipSend', {
   onUpdateAvailable: (callback) => ipcRenderer.on('updater:available', (event, data) => callback(data)),
   onUpdateProgress: (callback) => ipcRenderer.on('updater:progress', (event, data) => callback(data)),
   onUpdateDownloaded: (callback) => ipcRenderer.on('updater:downloaded', (event, data) => callback(data)),
-  onUpdateError: (callback) => ipcRenderer.on('updater:error', (event, data) => callback(data))
+  onUpdateError: (callback) => ipcRenderer.on('updater:error', (event, data) => callback(data)),
+  onUpdateInstalledResult: (callback) => ipcRenderer.on('updater:installedResult', (event, data) => callback(data))
 });

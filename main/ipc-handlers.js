@@ -254,7 +254,8 @@ function registerIpcHandlers() {
     if (!outputPath) {
       const parsedInput = path.parse(inputFilePath);
       const isGif = plan.outputFormat === 'gif';
-      const ext = isGif ? '.gif' : '.mp4';
+      const isMp3 = plan.outputFormat === 'mp3';
+      const ext = isGif ? '.gif' : isMp3 ? '.mp3' : '.mp4';
       const standardizedName = `${parsedInput.name} - Trimmed${ext}`;
       const defaultExportDir = store.get('defaultExportDirectory');
 

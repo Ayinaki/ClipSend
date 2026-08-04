@@ -417,6 +417,69 @@ describe('calculatePlan — validation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// calculatePlan — MP3 audio-only export
+// ---------------------------------------------------------------------------
+
+describe('calculatePlan — MP3 audio export', () => {
+  test('produces a single-pass audio-only plan', () => {
+    const plan = calculatePlan(media1080p, 10, 40, { mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3' });
+    expect(plan.isSinglePass).toBe(true);
+    expect(plan.outputFormat).toBe('mp3');
+    expect(plan.videoBitrateKbps).toBe(0);
+    expect(plan.singlePassArgs).toContain('-vn');
+    expect(plan.singlePassArgs).toContain('libmp3lame');
+    const bIdx = plan.singlePassArgs.indexOf('-b:a');
+    expect(bIdx).not.toBe(-1);
+    expect(plan.singlePassArgs[bIdx + 1]).toBe('192k');
+  });
+
+  test('defaults audio bitrate to 192 kbps and estimates size correctly', () => {
+    const plan = calculatePlan(media1080p, 0, 60, { mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3' });
+    expect(plan.audioBitrateKbps).toBe(192);
+    expect(plan.estimatedSizeMB).toBeCloseTo((192 * 1000 * 60 / 8) / (1024 * 1024), 1);
+  });
+
+  test('honors a custom audio bitrate', () => {
+    const plan = calculatePlan(media1080p, 0, 60, { mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3', audioBitrateKbps: 320 });
+    const bIdx = plan.singlePassArgs.indexOf('-b:a');
+    expect(plan.singlePassArgs[bIdx + 1]).toBe('320k');
+  });
+
+  test('maps the selected audio track', () => {
+    const plan = calculatePlan(media1080p, 0, 60, { mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3', selectedAudioTrackIndex: 1 });
+    expect(plan.singlePassArgs).toContain('0:a:1');
+  });
+
+  test('uses simple input seek and duration like video exports', () => {
+    const plan = calculatePlan(media1080p, 45, 75, { mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3' });
+    const ssIdx = plan.singlePassArgs.indexOf('-ss');
+    const iIdx = plan.singlePassArgs.indexOf('-i');
+    expect(ssIdx).toBeLessThan(iIdx);
+    expect(plan.singlePassArgs[ssIdx + 1]).toBe('45');
+    expect(plan.singlePassArgs).toContain('-t');
+  });
+
+  test('throws when the source has no audio tracks', () => {
+    const noAudio = { filePath: 'test.mp4', width: 1920, height: 1080, audioTracks: [] };
+    expect(() => calculatePlan(noAudio, 0, 60, { mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3' }))
+      .toThrow(/no audio tracks/i);
+  });
+
+  test('throws for invalid audio track ordinal like video exports', () => {
+    expect(() => calculatePlan(media1080p, 0, 60, { mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3', selectedAudioTrackIndex: 99 }))
+      .toThrow(/does not exist in the source file/);
+  });
+
+  test('ignores mode/crf — works even with auto mode settings', () => {
+    const plan = calculatePlan(media1080p, 0, 60, { mode: 'auto', crfValue: 19, outputFormat: 'mp3' });
+    expect(plan.isSinglePass).toBe(true);
+    expect(plan.crfValue).toBeUndefined();
+    expect(plan.audioBitrateKbps).toBe(192);
+    expect(plan.singlePassArgs).toContain('libmp3lame');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // calculatePlan — edge cases
 // ---------------------------------------------------------------------------
 

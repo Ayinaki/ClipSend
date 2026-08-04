@@ -1,5 +1,15 @@
 window.changelogData = [
   {
+    "version": "v1.8.16: Auto-Updater Fix, Title Bar Estimates & MP3 Export",
+    "date": "August 2026",
+    "changes": [
+      "Fix: Auto-updates now actually apply — the installer runs in in-place update mode (--updated), the app relaunches visibly after install, and the update waits until the new executable is fully in place instead of racing the installer stub.",
+      "Fix: Update install results are now surfaced in the update dialog instead of failing silently.",
+      "Feature: The export estimate (bitrate, resolution, size) and Start Export button now live in the center of the title bar instead of the sidebar.",
+      "Feature: New MP3 (Audio) output format — export audio-only from any selected track at 192 kbps."
+    ]
+  },
+  {
     "version": "v1.8.15: NVENC Fallback & Export Modal Fixes",
     "date": "August 2026",
     "changes": [

@@ -54,11 +54,12 @@ class Encoder {
 
       // --- PASS 2 or SINGLE PASS ---
       if (plan.isSinglePass) {
-        if (onProgress) onProgress(0, 'Encoding (CRF Mode)...');
+        const singlePassLabel = plan.outputFormat === 'mp3' ? 'Encoding Audio...' : 'Encoding (CRF Mode)...';
+        if (onProgress) onProgress(0, singlePassLabel);
         const passArgs = [...plan.singlePassArgs, outputPath];
         
         await this._runPass(passArgs, clipDuration, (pct) => {
-          if (onProgress) onProgress(pct, 'Encoding (CRF Mode)...');
+          if (onProgress) onProgress(pct, singlePassLabel);
         }, logDir);
       } else {
         if (onProgress) onProgress(50, 'Pass 2/2: Encoding...');

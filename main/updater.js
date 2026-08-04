@@ -127,6 +127,118 @@ async function checkForUpdates() {
   }
 }
 
+/**
+ * Build the PowerShell relauncher script that:
+ *   1. Waits for the current app process (PID) to exit completely.
+ *   2. Runs the downloaded NSIS installer silently in UPDATE mode (--updated /S).
+ *   3. Polls the installed exe until it is actually replaced (NSIS stub exits early).
+ *   4. Relaunches the app VISIBLY (no -WindowStyle Hidden).
+ *   5. Writes installer-result.json and self-deletes.
+ *
+ * @param {Object} opts
+ * @param {number} opts.currentPid
+ * @param {string} opts.installerPath
+ * @param {string} opts.currentExecPath
+ * @param {string} opts.logPath
+ * @param {string} opts.resultFile
+ * @returns {string} PowerShell script content.
+ */
+function buildInstallerScript({ currentPid, installerPath, currentExecPath, logPath, resultFile }) {
+  const psEscape = (s) => String(s).replace(/'/g, "''");
+  return `
+$pidVal = ${Number(currentPid)}
+$installer = '${psEscape(installerPath)}'
+$currentExec = '${psEscape(currentExecPath)}'
+$logFile = '${psEscape(logPath)}'
+$resFile = '${psEscape(resultFile)}'
+
+function Write-UpdaterLog([string]$msg) {
+  try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] $msg" } catch {}
+}
+
+# 1. Wait for the old process to exit completely (bounded so we never hang forever)
+$deadline = (Get-Date).AddSeconds(60)
+while ((Get-Date) -lt $deadline) {
+  if (-not (Get-Process -Id $pidVal -ErrorAction SilentlyContinue)) { break }
+  Start-Sleep -Milliseconds 200
+}
+Start-Sleep -Seconds 1
+
+# 2. Record pre-update exe metadata so we can detect when it is replaced
+$beforeWrite = $null
+$beforeSize = -1
+$exeBefore = Get-Item -LiteralPath $currentExec -ErrorAction SilentlyContinue
+if ($exeBefore) {
+  $beforeWrite = $exeBefore.LastWriteTimeUtc
+  $beforeSize = $exeBefore.Length
+}
+
+# 3. Run the installer silently in UPDATE mode.
+#    NSIS: /S = silent, --updated = update flow (electron-updater passes this first).
+$code = -1
+$installError = $null
+try {
+  $p = Start-Process -FilePath $installer -ArgumentList '--updated','/S' -WindowStyle Hidden -Wait -PassThru
+  $code = if ($null -eq $p) { 0 } else { $p.ExitCode }
+  Write-UpdaterLog "Installer process completed with exit code $code."
+} catch {
+  $installError = $_.Exception.Message
+  Write-UpdaterLog "Installer failed to run: $installError"
+}
+
+# 4. NSIS is a bootstrap stub: the main process can exit before files are replaced.
+#    Poll the installed exe until it changes (or a 120s timeout) before relaunching.
+$replaced = $false
+$pollDeadline = (Get-Date).AddSeconds(120)
+while ((Get-Date) -lt $pollDeadline) {
+  Start-Sleep -Milliseconds 500
+  $exeNow = Get-Item -LiteralPath $currentExec -ErrorAction SilentlyContinue
+  if ($exeNow) {
+    if ($null -ne $beforeWrite -and $exeNow.LastWriteTimeUtc -gt $beforeWrite) { $replaced = $true; break }
+    if ($beforeSize -ge 0 -and $exeNow.Length -ne $beforeSize) { $replaced = $true; break }
+  }
+}
+
+# 5. Write machine-readable result for the next launch to surface
+$resObj = @{
+  exitCode = $code
+  replaced = $replaced
+  timestamp = (Get-Date -Format o)
+  installerPath = $installer
+  success = (($code -eq 0) -and $replaced)
+}
+if ($installError) { $resObj.error = $installError }
+try { $resObj | ConvertTo-Json | Set-Content -Path $resFile -Encoding utf8 } catch {}
+
+# 6. Relaunch the app visibly (never -WindowStyle Hidden) so the update is noticed.
+#    Guard: if the NSIS installer already auto-ran the new build (oneClick
+#    runAfterFinish), don't spawn a duplicate instance.
+if (($code -eq 0) -and $replaced) {
+  Start-Sleep -Seconds 1
+  $exeName = [System.IO.Path]::GetFileName($currentExec)
+  $alreadyRunning = Get-Process -Name ([System.IO.Path]::GetFileNameWithoutExtension($exeName)) -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $currentExec }
+  if (-not $alreadyRunning) {
+    try {
+      if (Test-Path $currentExec) {
+        Start-Process -FilePath $currentExec
+        Write-UpdaterLog "Relaunched app: $currentExec"
+      }
+    } catch {
+      Write-UpdaterLog "Failed to relaunch app: $_"
+    }
+  } else {
+    Write-UpdaterLog "App already running after install — skipping relaunch to avoid a duplicate instance."
+  }
+} else {
+  Write-UpdaterLog "Update not applied (code=$code, replaced=$replaced) — app will not be relaunched."
+}
+
+# 7. Self-cleanup (leave installer-result.json in place — the next launch reads it)
+Start-Sleep -Seconds 2
+try { Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue } catch {}
+`;
+}
+
 async function downloadAndInstallUpdate() {
   if (!updateInfo || !updateInfo.downloadUrl) {
     const err = new Error('No update available to download.');
@@ -215,47 +327,27 @@ async function downloadAndInstallUpdate() {
 
         logUpdater(`Preparing update relauncher for PID ${currentPid}, execPath: "${currentExecPath}", installerPath: "${installerPath}"`);
 
-        // PowerShell script content — waits for PID to exit, runs installer silently, relaunch app, self-deletes
-        const psScript = `
-$pidVal = ${currentPid}
-$installer = '${installerPath.replace(/'/g, "''")}'
-$currentExec = '${currentExecPath.replace(/'/g, "''")}'
-$logFile = '${logPath.replace(/'/g, "''")}'
-$resFile = '${resultFile.replace(/'/g, "''")}'
-
-# Wait for original process to exit completely
-while (Get-Process -Id $pidVal -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }
-Start-Sleep -Seconds 1
-
-# Run installer silently (NSIS: /S)
-try {
-  $p = Start-Process -FilePath $installer -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
-  $code = if ($null -eq $p) { 0 } else { $p.ExitCode }
-  try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] Installer process completed with exit code $code." } catch {}
-  try {
-    $resObj = @{ exitCode = $code; timestamp = (Get-Date -Format o); installerPath = $installer; success = ($code -eq 0) }
-    $resObj | ConvertTo-Json | Set-Content -Path $resFile -Encoding utf8
-  } catch {}
-} catch {
-  try { Add-Content -Path $logFile -Value "[$(Get-Date -Format o)] Installer failed to run: $_" } catch {}
-  try {
-    $resObj = @{ exitCode = -1; timestamp = (Get-Date -Format o); error = $_.ToString(); success = $false }
-    $resObj | ConvertTo-Json | Set-Content -Path $resFile -Encoding utf8
-  } catch {}
-}
-
-Start-Sleep -Seconds 1
-
-# Attempt to relaunch the app executable
-try {
-  if (Test-Path $currentExec) {
-    Start-Process -FilePath $currentExec -WindowStyle Hidden
-  }
-} catch {}
-
-# Self-cleanup
-try { Remove-Item -LiteralPath (Get-Item $MyInvocation.MyCommand.Path) -Force } catch {}
-`;
+        // PowerShell script content — waits for PID to exit, runs installer in
+        // update mode (--updated) silently (/S), waits for files to be replaced,
+        // relaunches the app visibly, and self-deletes.
+        //
+        // Key details:
+        //  - NSIS installers are bootstrap stubs: the main .exe may exit before
+        //    the real install finishes, so Start-Process -Wait alone is not
+        //    enough. We poll the target exe's write time / size to confirm the
+        //    new build actually replaced the old one before relaunching.
+        //  - Without --updated, the NSIS installer runs a fresh-install flow
+        //    which can fail to update an existing installation (and won't
+        //    relaunch the app on success). electron-updater always passes it.
+        //  - The app must be relaunched VISIBLY — -WindowStyle Hidden makes the
+        //    window never appear, which users report as "the app never reopens".
+        const psScript = buildInstallerScript({
+          currentPid,
+          installerPath,
+          currentExecPath,
+          logPath,
+          resultFile
+        });
 
         const psPath = path.join(app.getPath('temp'), `clipsend-updater-${Date.now()}.ps1`);
         let psWritten = false;
@@ -293,7 +385,10 @@ try { Remove-Item -LiteralPath (Get-Item $MyInvocation.MyCommand.Path) -Force } 
         // Fallback: try to start installer directly via cmd.exe
         try {
           logUpdater('Executing cmd.exe fallback for installer...');
-          const cmdFallback = spawn('cmd.exe', ['/C', 'start', '""', installerPath, '/S'], {
+          // Quote the installer path for cmd start (handles spaces), and pass
+          // --updated so the NSIS installer runs the update flow, not fresh install.
+          const quotedPath = `"${installerPath}"`;
+          const cmdFallback = spawn('cmd.exe', ['/C', 'start', '""', quotedPath, '/S', '--updated'], {
             detached: true,
             stdio: 'ignore',
             windowsHide: true
@@ -341,7 +436,7 @@ function initUpdater(mainWindow) {
   try {
     const resultFile = path.join(app ? app.getPath('userData') : process.cwd(), 'installer-result.json');
     if (fs.existsSync(resultFile)) {
-      const raw = fs.readFileSync(resultFile, 'utf8');
+      const raw = fs.readFileSync(resultFile, 'utf8').replace(/^\uFEFF/, ''); // strip UTF-8 BOM (PowerShell 5.1 writes one)
       const resultData = JSON.parse(raw);
       logUpdater(`Read installer result from previous update: ${JSON.stringify(resultData)}`);
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
@@ -364,5 +459,6 @@ module.exports = {
   checkForUpdates,
   downloadAndInstallUpdate,
   isNewerVersion,
-  logUpdater
+  logUpdater,
+  buildInstallerScript
 };

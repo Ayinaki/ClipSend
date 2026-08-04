@@ -221,6 +221,48 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     hasAudio = true;
   }
 
+  // ------ MP3 audio-only export ------
+  if (settings.outputFormat === 'mp3') {
+    if (!hasAudio) {
+      throw new Error('Cannot export MP3: the source file has no audio tracks.');
+    }
+
+    const seekTimes = computeSeekTimes(trimIn, trimOut);
+    const mp3BitrateKbps = settings.audioBitrateKbps ?? 192;
+
+    const singlePassArgs = [
+      '-y',
+      '-ss', String(seekTimes.inputSeek),
+      '-i', mediaInfo.filePath,
+      '-vn',
+      '-map', `0:a:${selectedAudioTrackIndex}`,
+      '-c:a', 'libmp3lame',
+      '-b:a', `${mp3BitrateKbps}k`,
+      '-t', seekTimes.duration.toFixed(3)
+    ];
+
+    const estimatedSizeMB = (mp3BitrateKbps * 1000 * clipDuration / 8) / (1024 * 1024);
+
+    return {
+      clipDuration,
+      isSinglePass: true,
+      singlePassArgs,
+      warnings: [],
+      audioTracks: mediaInfo.audioTracks,
+      selectedAudioOrdinal: selectedAudioTrackIndex,
+      encoder: 'libmp3lame',
+      outputFormat: 'mp3',
+      width: 0,
+      height: 0,
+      crfValue: undefined,
+      targetSizeMB: settings.targetSizeMB,
+      estimatedSizeMB: parseFloat(estimatedSizeMB.toFixed(2)),
+      videoBitrateKbps: 0,
+      audioBitrateKbps: mp3BitrateKbps,
+      totalBitrateKbps: mp3BitrateKbps
+    };
+  }
+
   // ------ Build FFmpeg args ------
   const seekTimes = computeSeekTimes(trimIn, trimOut);
   

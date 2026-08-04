@@ -18,12 +18,22 @@
           <span id="update-badge-text">Update Available</span>
         </button>
       </div>
-      <div id="progress-container" class="titlebar-progress-container" style="display: none; -webkit-app-region: no-drag;">
-        <span id="progress-text" class="titlebar-progress-text">0%</span>
-        <div class="titlebar-progress-bar">
-          <div id="progress-fill" class="titlebar-progress-fill"></div>
+      <div class="titlebar-center" style="-webkit-app-region: no-drag;">
+        <div id="export-estimate-bar" class="titlebar-estimate" style="display: none;">
+          <span class="titlebar-estimate-item"><span class="plan-label" id="plan-vbr-label">Video:</span> <span class="plan-val" id="plan-vbr">--</span></span>
+          <span class="titlebar-estimate-sep">•</span>
+          <span class="titlebar-estimate-item" id="plan-res-item"><span class="plan-label">Res:</span> <span class="plan-val" id="plan-res">--</span></span>
+          <span class="titlebar-estimate-sep">•</span>
+          <span class="titlebar-estimate-item"><span class="plan-label">Est:</span> <span class="plan-val" id="plan-size">--</span></span>
+          <button id="export-btn" class="primary-btn titlebar-export-btn">Start Export</button>
         </div>
-        <button id="cancel-btn" class="titlebar-cancel-btn win-btn" title="Cancel">&#xE711;</button>
+        <div id="progress-container" class="titlebar-progress-container" style="display: none;">
+          <span id="progress-text" class="titlebar-progress-text">0%</span>
+          <div class="titlebar-progress-bar">
+            <div id="progress-fill" class="titlebar-progress-fill"></div>
+          </div>
+          <button id="cancel-btn" class="titlebar-cancel-btn win-btn" title="Cancel">&#xE711;</button>
+        </div>
       </div>
       <div class="titlebar-controls">
         <button id="titlebar-warning-btn" class="win-btn" title="View Warnings" style="font-size: 13px; color: #ffeb3b; display: none; align-items: center; justify-content: center;">
@@ -124,6 +134,7 @@
               <select id="format-select" class="track-select full-width">
                 <option value="mp4">MP4 (Video)</option>
                 <option value="gif">GIF (Animated)</option>
+                <option value="mp3">MP3 (Audio)</option>
               </select>
             </div>
             <div class="input-group">
@@ -148,19 +159,6 @@
 
 
 
-        <div class="panel" id="export-plan-display" style="display: none;">
-          <div class="panel-header">Export Estimate</div>
-          <div class="panel-content">
-            <div class="plan-details">
-              <div class="plan-row"><span class="plan-label">Video:</span><span class="plan-val" id="plan-vbr">--</span></div>
-              <div class="plan-row"><span class="plan-label">Res:</span><span class="plan-val" id="plan-res">--</span></div>
-              <div class="plan-row"><span class="plan-label">Est:</span><span class="plan-val" id="plan-size">--</span></div>
-            </div>
-            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--panel-border);">
-              <button id="export-btn" class="primary-btn full-width">Start Export</button>
-            </div>
-          </div>
-        </div>
         </div>
 
           <!-- MERGE SIDEBAR -->

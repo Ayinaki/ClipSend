@@ -170,7 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const presetSelect = document.getElementById('preset-select');
   const resolutionSelect = document.getElementById('resolution-select');
   const calculateBtn = document.getElementById('calculate-btn');
-  const exportPlanDisplay = document.getElementById('export-plan-display');
+  const exportEstimateBar = document.getElementById('export-estimate-bar');
+  const planVbrLabel = document.getElementById('plan-vbr-label');
   const planVbr = document.getElementById('plan-vbr');
   const planRes = document.getElementById('plan-res');
   const planSize = document.getElementById('plan-size');
@@ -239,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function clearExportPlan() {
     currentPlan = null;
-    exportPlanDisplay.style.display = 'none';
+    if (exportEstimateBar) exportEstimateBar.style.display = 'none';
     showWarnings([]);
   }
 
@@ -342,15 +343,30 @@ document.addEventListener('DOMContentLoaded', () => {
   if (formatSelect) {
     formatSelect.addEventListener('change', () => {
       clearExportPlan();
-      const isGif = formatSelect.value === 'gif';
+      const format = formatSelect.value;
+      const isGif = format === 'gif';
+      const isMp3 = format === 'mp3';
       const audioPanel = document.getElementById('audio-settings-panel');
       if (audioPanel) {
+        // GIF is video-only; MP3 is audio-only. Both still allow track selection for MP3.
         if (isGif) {
           audioPanel.style.opacity = '0.5';
           audioPanel.style.pointerEvents = 'none';
         } else {
           audioPanel.style.opacity = '1';
           audioPanel.style.pointerEvents = 'auto';
+        }
+      }
+      // Target size / resolution don't apply to audio-only exports
+      if (presetSelect) presetSelect.disabled = isMp3;
+      if (resolutionSelect) resolutionSelect.disabled = isMp3;
+      if (customSizeInputContainer) customSizeInputContainer.style.display = 'none';
+      const multiExportModeContainer = document.getElementById('multi-export-mode-container');
+      if (multiExportModeContainer) {
+        if (isMp3) {
+          multiExportModeContainer.style.display = 'none';
+        } else if (timeline && timeline.getSegments() && timeline.getSegments().length > 1) {
+          multiExportModeContainer.style.display = 'block';
         }
       }
     });
@@ -365,13 +381,16 @@ document.addEventListener('DOMContentLoaded', () => {
     calculateBtn.textContent = 'Calculating...';
     clearExportPlan();
     
+    const selectedFormat = formatSelect ? formatSelect.value : 'mp4';
+    const isMp3 = selectedFormat === 'mp3';
+
     const presetId = presetSelect.value;
     const preset = presets.find(p => p.id === presetId);
     
     let targetSizeMB = preset ? preset.sizeMB : 10;
     let mode = preset ? (preset.mode || 'size-limit') : 'size-limit';
 
-    if (preset && preset.isCustom) {
+    if (preset && preset.isCustom && !isMp3) {
       const customVal = parseFloat(customSizeInput ? customSizeInput.value : '');
       if (isNaN(customVal) || customVal <= 0) {
         alert('Please enter a valid target size in MB (greater than 0).');
@@ -428,14 +447,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (result.success) {
         currentPlan = result.plan;
-        planRes.textContent = `${currentPlan.width}x${currentPlan.height}`;
-        
-        if (settings.mode === 'auto') {
-          planVbr.textContent = `CRF ${currentPlan.crfValue}`;
-          planSize.textContent = 'Variable (quality-based)';
-        } else {
-          planVbr.textContent = currentPlan.videoBitrateKbps + ' kbps';
+        const resItem = document.getElementById('plan-res-item');
+        if (isMp3) {
+          if (planVbrLabel) planVbrLabel.textContent = 'Audio:';
+          planVbr.textContent = currentPlan.audioBitrateKbps + ' kbps';
           planSize.textContent = currentPlan.estimatedSizeMB + ' MB';
+          if (resItem) resItem.style.display = 'none';
+        } else {
+          if (planVbrLabel) planVbrLabel.textContent = 'Video:';
+          if (resItem) resItem.style.display = '';
+          planRes.textContent = `${currentPlan.width}x${currentPlan.height}`;
+          if (settings.outputFormat === 'gif') {
+            planVbr.textContent = 'GIF';
+            planSize.textContent = '—';
+          } else if (settings.mode === 'auto') {
+            planVbr.textContent = `CRF ${currentPlan.crfValue}`;
+            planSize.textContent = 'Variable (quality-based)';
+          } else {
+            planVbr.textContent = currentPlan.videoBitrateKbps + ' kbps';
+            planSize.textContent = currentPlan.estimatedSizeMB + ' MB';
+          }
         }
         const allWarnings = [...(currentPlan.warnings || [])];
         if (currentMediaInfo.isVFR) {
@@ -454,7 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         showWarnings(allWarnings);
-        exportPlanDisplay.style.display = 'block';
+        if (exportEstimateBar) exportEstimateBar.style.display = 'flex';
       } else {
         showWarnings([{ id: 'error', title: 'Plan generation failed', body: result.error }]);
       }
@@ -468,9 +499,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function executeExportWithRetry(basePlan, fallback = false) {
     const exportModeSelect = document.getElementById('export-mode-select');
-    const exportMode = exportModeSelect ? exportModeSelect.value : 'separate';
     const segments = timeline.getSegments().sort((a, b) => a.in - b.in);
     const isMulti = timeline.isMultiTrim && segments.length > 1;
+    const isMp3 = basePlan.outputFormat === 'mp3';
+    // MP3 exports have no merge step — each segment (if any) becomes its own file
+    const exportMode = isMp3 ? 'separate' : (exportModeSelect ? exportModeSelect.value : 'separate');
 
     try {
       const hwAccel = fallback ? 'cpu' : (await window.clipSend.getSetting('hwAccel') || 'auto');
@@ -481,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log(`Encoder: ${encoderName}`);
 
       let mergedFinalDest = null;
-      if (isMulti && exportMode === 'merged') {
+      if (isMulti && exportMode === 'merged' && !isMp3) {
         mergedFinalDest = await window.clipSend.resolveMergeDestination();
         if (!mergedFinalDest) {
           progressContainer.style.display = 'none';
@@ -538,7 +571,11 @@ document.addEventListener('DOMContentLoaded', () => {
             maxQuality: await window.clipSend.getSetting('maxQuality')
           };
           
-          if (exportMode === 'separate') {
+          if (isMp3) {
+            // MP3 is audio-only — target size / bitrate split doesn't apply
+            settings.mode = 'size-limit';
+            settings.targetSizeMB = 10;
+          } else if (exportMode === 'separate') {
             settings.mode = preset.mode || 'size-limit';
             settings.targetSizeMB = preset.sizeMB;
             settings.crfValue = preset.crfValue;
@@ -571,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         let segOutputPath = null;
-        if (isMulti && exportMode === 'merged') {
+        if (isMulti && exportMode === 'merged' && !isMp3) {
           const tempDir = await window.clipSend.getTempPath();
           segOutputPath = `${tempDir}\\clipsend-seg-${Date.now()}-${i}.mp4`;
           generatedTempFiles.push(segOutputPath);
@@ -616,7 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       exportProgressState.isActive = false;
 
-      if (isMulti && exportMode === 'merged') {
+      if (isMulti && exportMode === 'merged' && !isMp3) {
         progressText.textContent = 'Merging...';
         
         // Ensure progress handles the merge phase? The merge API doesn't use the same progress emitter, 
@@ -755,6 +792,8 @@ document.addEventListener('DOMContentLoaded', () => {
     calculateBtn.disabled = true;
     presetSelect.disabled = true;
     if (typeof resolutionSelect !== 'undefined' && resolutionSelect) resolutionSelect.disabled = true;
+    // Swap the estimate cluster out for the progress cluster
+    if (exportEstimateBar) exportEstimateBar.style.display = 'none';
     progressContainer.style.display = 'flex';
     progressFill.style.width = '0%';
     progressText.textContent = '0%';
@@ -808,12 +847,11 @@ document.addEventListener('DOMContentLoaded', () => {
     trimDurationDisplay.textContent = formatTimecode(timeline.getTrimDuration(), fps);
     
     const segments = timeline.getSegments();
-    if (segments && segments.length > 1) {
-      const multiExportModeContainer = document.getElementById('multi-export-mode-container');
-      if (multiExportModeContainer) multiExportModeContainer.style.display = 'block';
-    } else {
-      const multiExportModeContainer = document.getElementById('multi-export-mode-container');
-      if (multiExportModeContainer) multiExportModeContainer.style.display = 'none';
+    const multiExportModeContainer = document.getElementById('multi-export-mode-container');
+    const currentFormat = formatSelect ? formatSelect.value : 'mp4';
+    if (multiExportModeContainer) {
+      // MP3 exports each segment as its own file, so the merged option doesn't apply
+      multiExportModeContainer.style.display = (segments && segments.length > 1 && currentFormat !== 'mp3') ? 'block' : 'none';
     }
     
     clearExportPlan(); // Plan is invalid if trim changes
@@ -1994,6 +2032,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (span) span.textContent = 'Retry Download';
       }
       if (updateLaterBtn) updateLaterBtn.disabled = false;
+    });
+  }
+
+  // Surface the previous install attempt's outcome (read from installer-result.json on startup).
+  if (window.clipSend.onUpdateInstalledResult) {
+    window.clipSend.onUpdateInstalledResult((result) => {
+      const ok = result && result.success === true;
+      if (updateProgressStatus) {
+        updateProgressStatus.textContent = ok
+          ? `Update ${result.version || ''} installed successfully.`
+          : `Previous update was not applied (exit code: ${result ? result.exitCode : 'unknown'}). Check the updater log for details.`;
+        updateProgressStatus.style.color = ok ? 'var(--success-color)' : 'var(--error-color)';
+      }
+      if (updateProgressPercent) updateProgressPercent.textContent = ok ? '100%' : '0%';
+      if (updateProgressBarFill) updateProgressBarFill.style.width = ok ? '100%' : '0%';
+      if (updateProgressSection) updateProgressSection.style.display = 'flex';
+      if (updateModal) updateModal.style.display = 'flex';
     });
   }
 
