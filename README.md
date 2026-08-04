@@ -46,6 +46,15 @@ The export system relies heavily on FFmpeg, governed by a multi-step planning an
 - **FFmpeg Execution:** `Encoder` and `Merger` classes wrap the native Node.js `child_process.spawn`, parsing stderr text streams in real-time to extract timecode progress updates. 
 - **Two-Pass Path Workaround:** FFmpeg/x264 on Windows suffers from a long-standing bug where it fails to interpret backslashes correctly in the pass logfile path. ClipSend bypasses this by setting the Node child process `cwd` to the target output directory and using a relative filename (`ffmpeg2pass-0.log`) for the pass logs.
 
+## Code Signing & Privacy
+
+ClipSend's Windows installer is code-signed for release builds.
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- [Code Signing Policy](CODE_SIGNING.md)
+- [Privacy Policy](PRIVACY.md)
+
 ## Known Limitations / Future Work
 - **Hardware Acceleration Fallback:** While the export pipeline correctly detects NVENC initialization failures (e.g. out of VRAM or missing drivers) and falls back gracefully to CPU `libx264` encoding, currently only NVIDIA NVENC is implemented. Support for Intel QSV or AMD AMF hardware encoders is not yet built.
 - **Single-Pass NVENC Restriction:** FFmpeg's `h264_nvenc` encoder does not support traditional 2-pass encoding. Therefore, size-targeted exports using NVENC are forced into single-pass VBR mode. While fast, this makes hitting exact file size targets slightly less accurate than the CPU-based 2-pass libx264 path.
