@@ -4,6 +4,9 @@ import { Timeline } from './timeline.js';
 import { MergePlayer } from './merge-player.js';
 import CropManager from './crop-manager.js';
 import { formatTimecode } from './utils/timecode.js';
+import { createEstimateBar, createProgressUI, createWarningsUI, initWindowControls, initTitlebarActions } from './titlebar.js';
+import { createSettingsController } from './settings.js';
+import { buildPlanWarnings } from './export-flow.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // Disable browser media session action handlers so hardware media keys do not trigger video playback
@@ -170,36 +173,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const presetSelect = document.getElementById('preset-select');
   const resolutionSelect = document.getElementById('resolution-select');
   const calculateBtn = document.getElementById('calculate-btn');
-  const exportEstimateBar = document.getElementById('export-estimate-bar');
-  const planVbrLabel = document.getElementById('plan-vbr-label');
-  const planVbr = document.getElementById('plan-vbr');
-  const planRes = document.getElementById('plan-res');
-  const planSize = document.getElementById('plan-size');
   const exportBtn = document.getElementById('export-btn');
-  const titlebarWarningBtn = document.getElementById('titlebar-warning-btn');
-  const warningsModal = document.getElementById('warnings-modal');
-  const closeWarningsBtn = document.getElementById('close-warnings-btn');
-  const warningsModalContent = document.getElementById('warnings-modal-content');
-  
-  if (titlebarWarningBtn && warningsModal) {
-    titlebarWarningBtn.addEventListener('click', () => {
-      warningsModal.style.display = 'flex';
-    });
-  }
-  if (closeWarningsBtn && warningsModal) {
-    closeWarningsBtn.addEventListener('click', () => {
-      warningsModal.style.display = 'none';
-    });
-  }
-  if (warningsModal) {
-    warningsModal.addEventListener('click', (e) => {
-      if (e.target === warningsModal) warningsModal.style.display = 'none';
-    });
-  }
-  const progressContainer = document.getElementById('progress-container');
-  const progressFill = document.getElementById('progress-fill');
-  const progressText = document.getElementById('progress-text');
-  const cancelBtn = document.getElementById('cancel-btn');
+
+  const estimateBar = createEstimateBar({
+    bar: document.getElementById('export-estimate-bar'),
+    vbrLabel: document.getElementById('plan-vbr-label'),
+    vbr: document.getElementById('plan-vbr'),
+    res: document.getElementById('plan-res'),
+    resItem: document.getElementById('plan-res-item'),
+    size: document.getElementById('plan-size')
+  });
+
+  const progressUI = createProgressUI({
+    container: document.getElementById('progress-container'),
+    fill: document.getElementById('progress-fill'),
+    text: document.getElementById('progress-text'),
+    cancelBtn: document.getElementById('cancel-btn')
+  });
+
+  const warningsUI = createWarningsUI({
+    button: document.getElementById('titlebar-warning-btn'),
+    modal: document.getElementById('warnings-modal'),
+    closeBtn: document.getElementById('close-warnings-btn'),
+    content: document.getElementById('warnings-modal-content')
+  });
 
   let currentPlan = null;
   let currentMediaInfo = null;
@@ -240,7 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function clearExportPlan() {
     currentPlan = null;
-    if (exportEstimateBar) exportEstimateBar.style.display = 'none';
+    estimateBar.hide();
     showWarnings([]);
   }
 
@@ -285,58 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
   resolutionSelect.addEventListener('change', clearExportPlan);
 
   function showWarnings(warnings) {
-    if (!warnings || warnings.length === 0) {
-      if (titlebarWarningBtn) titlebarWarningBtn.style.display = 'none';
-      if (warningsModalContent) warningsModalContent.innerHTML = '';
-      return;
-    }
-    if (warningsModalContent) warningsModalContent.innerHTML = '';
-    let renderedCount = 0;
-    
-    warnings.forEach(w => {
-      // If any old string warnings somehow leak through, skip or convert them
-      if (typeof w === 'string') {
-        if (w.startsWith('Resolution: Native')) return;
-        w = { id: 'legacy', title: 'Warning', body: w };
-      }
-      
-      const div = document.createElement('div');
-      div.className = 'warning-card';
-      
-      const iconSpan = document.createElement('span');
-      iconSpan.className = 'warning-card-icon';
-      iconSpan.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
-          <line x1="12" y1="9" x2="12" y2="13"></line>
-          <line x1="12" y1="17" x2="12.01" y2="17"></line>
-        </svg>
-      `;
-      
-      const textDiv = document.createElement('div');
-      textDiv.className = 'warning-card-text';
-      
-      const titleDiv = document.createElement('div');
-      titleDiv.className = 'warning-card-title';
-      titleDiv.textContent = w.title;
-      
-      const bodyDiv = document.createElement('div');
-      bodyDiv.className = 'warning-card-body';
-      bodyDiv.textContent = w.body;
-      
-      textDiv.appendChild(titleDiv);
-      textDiv.appendChild(bodyDiv);
-      
-      div.appendChild(iconSpan);
-      div.appendChild(textDiv);
-      
-      if (warningsModalContent) warningsModalContent.appendChild(div);
-      renderedCount++;
-    });
-    
-    if (titlebarWarningBtn) {
-      titlebarWarningBtn.style.display = renderedCount > 0 ? 'inline-block' : 'none';
-    }
+    warningsUI.show(warnings);
   }
 
   const formatSelect = document.getElementById('format-select');
@@ -447,45 +393,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (result.success) {
         currentPlan = result.plan;
-        const resItem = document.getElementById('plan-res-item');
-        if (isMp3) {
-          if (planVbrLabel) planVbrLabel.textContent = 'Audio:';
-          planVbr.textContent = currentPlan.audioBitrateKbps + ' kbps';
-          planSize.textContent = currentPlan.estimatedSizeMB + ' MB';
-          if (resItem) resItem.style.display = 'none';
-        } else {
-          if (planVbrLabel) planVbrLabel.textContent = 'Video:';
-          if (resItem) resItem.style.display = '';
-          planRes.textContent = `${currentPlan.width}x${currentPlan.height}`;
-          if (settings.outputFormat === 'gif') {
-            planVbr.textContent = 'GIF';
-            planSize.textContent = '—';
-          } else if (settings.mode === 'auto') {
-            planVbr.textContent = `CRF ${currentPlan.crfValue}`;
-            planSize.textContent = 'Variable (quality-based)';
-          } else {
-            planVbr.textContent = currentPlan.videoBitrateKbps + ' kbps';
-            planSize.textContent = currentPlan.estimatedSizeMB + ' MB';
-          }
-        }
-        const allWarnings = [...(currentPlan.warnings || [])];
-        if (currentMediaInfo.isVFR) {
-          allWarnings.push({
-            id: 'vfr',
-            title: 'Variable Frame Rate detected',
-            body: 'Source video has a Variable Frame Rate (VFR). Audio sync issues might occur in the exported clip.'
-          });
-        }
-        if (settings.outputFormat === 'gif' && timeline.getTrimDuration() > 30 && settings.targetSizeMB <= 10) {
-          allWarnings.push({
-            id: 'gif_feasibility',
-            title: 'GIF Feasibility Warning',
-            body: `This clip may be too long (${Math.round(timeline.getTrimDuration())}s) to comfortably fit within ${settings.targetSizeMB}MB as a GIF. Consider trimming the clip shorter.`
-          });
-        }
-        
+        estimateBar.show(currentPlan, {
+          isMp3,
+          outputFormat: settings.outputFormat,
+          mode: settings.mode
+        });
+        const allWarnings = buildPlanWarnings(currentPlan, {
+          isVFR: currentMediaInfo.isVFR,
+          outputFormat: settings.outputFormat,
+          trimDuration: timeline.getTrimDuration(),
+          targetSizeMB: settings.targetSizeMB
+        });
         showWarnings(allWarnings);
-        if (exportEstimateBar) exportEstimateBar.style.display = 'flex';
       } else {
         showWarnings([{ id: 'error', title: 'Plan generation failed', body: result.error }]);
       }
@@ -517,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isMulti && exportMode === 'merged' && !isMp3) {
         mergedFinalDest = await window.clipSend.resolveMergeDestination();
         if (!mergedFinalDest) {
-          progressContainer.style.display = 'none';
+          progressUI.hide();
           return;
         }
       }
@@ -622,14 +541,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!result) {
           await doCleanup();
-          progressContainer.style.display = 'none';
+          progressUI.hide();
           exportProgressState.isActive = false;
           return;
         }
 
         if (result.cancelled) {
           await doCleanup();
-          progressContainer.style.display = 'none';
+          progressUI.hide();
           exportProgressState.isActive = false;
           return;
         } else if (result.fallbackToCpu) {
@@ -654,7 +573,7 @@ document.addEventListener('DOMContentLoaded', () => {
       exportProgressState.isActive = false;
 
       if (isMulti && exportMode === 'merged' && !isMp3) {
-        progressText.textContent = 'Merging...';
+        progressUI.setStatus('Merging...');
         
         // Ensure progress handles the merge phase? The merge API doesn't use the same progress emitter, 
         // but we can just let it sit at 100% or "Merging...".
@@ -665,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await doCleanup();
         
         if (!mergeResult) {
-          progressContainer.style.display = 'none';
+          progressUI.hide();
           return;
         }
         
@@ -681,14 +600,14 @@ document.addEventListener('DOMContentLoaded', () => {
         showExportModal(finalFilePath, totalFinalSizeMB, null, true);
       }
       
-      progressContainer.style.display = 'none';
+      progressUI.hide();
 
     } catch (err) {
       alert(`Export failed: ${err.message}`);
-      progressContainer.style.display = 'none';
+      progressUI.hide();
       exportProgressState.isActive = false;
     } finally {
-      if (!fallback || progressContainer.style.display === 'none') {
+      if (!fallback || !progressUI.isVisible()) {
         exportBtn.disabled = false;
         calculateBtn.disabled = false;
         presetSelect.disabled = false;
@@ -785,25 +704,27 @@ document.addEventListener('DOMContentLoaded', () => {
     if (exportModal) exportModal.style.display = 'flex';
   }
 
-  exportBtn.addEventListener('click', async () => {
-    if (!currentPlan) return;
-    
-    exportBtn.disabled = true;
-    calculateBtn.disabled = true;
-    presetSelect.disabled = true;
-    if (typeof resolutionSelect !== 'undefined' && resolutionSelect) resolutionSelect.disabled = true;
-    // Swap the estimate cluster out for the progress cluster
-    if (exportEstimateBar) exportEstimateBar.style.display = 'none';
-    progressContainer.style.display = 'flex';
-    progressFill.style.width = '0%';
-    progressText.textContent = '0%';
-    
-    await executeExportWithRetry(currentPlan);
-  });
+  initTitlebarActions({
+    exportBtn,
+    cancelBtn: document.getElementById('cancel-btn'),
+    onStartExport: async () => {
+      if (!currentPlan) return;
 
-  cancelBtn.addEventListener('click', () => {
-    cancelBtn.disabled = true;
-    window.clipSend.cancelExport();
+      exportBtn.disabled = true;
+      calculateBtn.disabled = true;
+      presetSelect.disabled = true;
+      if (typeof resolutionSelect !== 'undefined' && resolutionSelect) resolutionSelect.disabled = true;
+      // Swap the estimate cluster out for the progress cluster
+      estimateBar.hide();
+      progressUI.show();
+      progressUI.setPercent(0);
+
+      await executeExportWithRetry(currentPlan);
+    },
+    onCancel: () => {
+      progressUI.disableCancel();
+      window.clipSend.cancelExport();
+    }
   });
 
   let exportProgressState = {
@@ -817,26 +738,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.clipSend.onExportProgress((data) => {
     let { percent, status } = data;
-    
+
     if (exportProgressState.isActive && exportProgressState.totalSegments > 1) {
       const segDur = exportProgressState.durations[exportProgressState.segmentIndex];
       const percentOfTotal = (segDur / exportProgressState.totalDuration) * 100;
       const basePercent = (exportProgressState.accumulatedDuration / exportProgressState.totalDuration) * 100;
       percent = basePercent + (percent * (percentOfTotal / 100));
     }
-    if (percent < 0) {
-      progressFill.style.width = '100%';
-      progressFill.style.opacity = '0.5';
-      progressFill.style.animation = 'pulse 1.5s infinite';
-      progressText.textContent = status || 'Processing...';
-    } else {
-      progressFill.style.opacity = '1';
-      progressFill.style.animation = 'none';
-      const rounded = Math.round(percent);
-      progressFill.style.width = `${rounded}%`;
-      progressText.textContent = status ? `${status} (${rounded}%)` : `${rounded}%`;
-    }
-    cancelBtn.disabled = false;
+    progressUI.setPercent(percent, status);
+    progressUI.enableCancel();
   });
 
   /** Update the trim info row beneath the timeline. */
@@ -885,7 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       clearExportPlan();
-      progressContainer.style.display = 'none';
+      progressUI.hide();
       
       showState(readyState);
 
@@ -903,7 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
       
-      syncVolumeUI();
+      settings.syncVolumeUI();
       
       if (!controlBar) {
         controlBar = new ControlBar(
@@ -1185,163 +1095,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // --- Window Controls ---
-  document.getElementById('win-min')?.addEventListener('click', () => window.clipSend.minimizeWindow());
-  document.getElementById('win-close')?.addEventListener('click', () => window.clipSend.closeWindow());
+  initWindowControls({
+    minBtn: document.getElementById('win-min'),
+    closeBtn: document.getElementById('win-close'),
+    api: window.clipSend
+  });
 
-  // --- Settings Modal ---
-  const settingsModal = document.getElementById('settings-modal');
-  const settingsBtn = document.getElementById('settings-btn');
-  const closeSettingsBtn = document.getElementById('close-settings-btn');
-  const settingExportDir = document.getElementById('setting-export-dir');
-  const browseExportDirBtn = document.getElementById('browse-export-dir-btn');
-  const clearExportDirBtn = document.getElementById('clear-export-dir-btn');
-  const settingHwAccel = document.getElementById('setting-hw-accel');
-  const settingDisableDownscale = document.getElementById('setting-disable-downscale');
-  const settingShowWaveform = document.getElementById('setting-show-waveform');
-  const settingMaxQuality = document.getElementById('setting-max-quality');
-
-  // Volume UI elements
-  const volumeSlider = document.getElementById('volume-slider');
-  const muteBtn = document.getElementById('mute-btn');
-  const mergeVolumeSlider = document.getElementById('merge-volume-slider');
-  const mergeMuteBtn = document.getElementById('merge-mute-btn');
-  
-  let storedVolume = 0.6;
-  let isMutedState = false;
+  // --- Settings Modal & Playback State ---
   let hasNvenc = false;
 
-  function syncVolumeUI() {
-    const effectiveVolume = isMutedState ? 0 : storedVolume;
-    if (volumeSlider) volumeSlider.value = effectiveVolume;
-    if (mergeVolumeSlider) mergeVolumeSlider.value = effectiveVolume;
-    
-    if (videoPreview) {
-      videoPreview.setVolume(effectiveVolume);
-      videoPreview.setMuted(false); 
-    }
-    // mergePlayer is declared at the top of app.js
-    if (mergePlayer) {
-      mergePlayer.setVolume(effectiveVolume);
-      mergePlayer.setMuted(false);
-    }
-    
-    const icon = (effectiveVolume === 0) ? '&#xE74F;' : '&#xE767;';
-    if (muteBtn) muteBtn.innerHTML = icon;
-    if (mergeMuteBtn) mergeMuteBtn.innerHTML = icon;
-  }
-
-  const handleVolumeInput = (e) => {
-    const val = parseFloat(e.target.value);
-    if (isMutedState) {
-      isMutedState = false;
-      window.clipSend.setSetting('playbackMuted', false);
-    }
-    storedVolume = val;
-    syncVolumeUI();
-  };
-
-  volumeSlider?.addEventListener('input', handleVolumeInput);
-  mergeVolumeSlider?.addEventListener('input', handleVolumeInput);
-
-  const handleVolumeChange = () => {
-    window.clipSend.setSetting('playbackVolume', storedVolume);
-  };
-
-  volumeSlider?.addEventListener('change', handleVolumeChange);
-  mergeVolumeSlider?.addEventListener('change', handleVolumeChange);
-
-  const handleMuteClick = () => {
-    isMutedState = !isMutedState;
-    // If they mute while slider is 0, storedVolume is 0. If they unmute, it restores to 0.
-    window.clipSend.setSetting('playbackMuted', isMutedState);
-    syncVolumeUI();
-  };
-
-  muteBtn?.addEventListener('click', handleMuteClick);
-  mergeMuteBtn?.addEventListener('click', handleMuteClick);
-
-  async function loadSettings() {
-    const allSettings = await window.clipSend.getAllSettings();
-    if (allSettings) {
-      settingExportDir.value = allSettings.defaultExportDirectory || '';
-      settingHwAccel.value = allSettings.hwAccel || 'auto';
-      settingDisableDownscale.checked = allSettings.disableAutoDownscale === true;
-      if (allSettings.showWaveform !== undefined) {
-        if (settingShowWaveform) settingShowWaveform.checked = allSettings.showWaveform;
-        if (timeline) timeline.setShowWaveform(allSettings.showWaveform);
+  const settings = createSettingsController({
+    api: window.clipSend,
+    elements: {
+      modal: document.getElementById('settings-modal'),
+      openBtn: document.getElementById('settings-btn'),
+      closeBtn: document.getElementById('close-settings-btn'),
+      exportDir: document.getElementById('setting-export-dir'),
+      browseBtn: document.getElementById('browse-export-dir-btn'),
+      clearBtn: document.getElementById('clear-export-dir-btn'),
+      hwAccel: document.getElementById('setting-hw-accel'),
+      disableDownscale: document.getElementById('setting-disable-downscale'),
+      showWaveform: document.getElementById('setting-show-waveform'),
+      maxQuality: document.getElementById('setting-max-quality'),
+      volumeSlider: document.getElementById('volume-slider'),
+      muteBtn: document.getElementById('mute-btn'),
+      mergeVolumeSlider: document.getElementById('merge-volume-slider'),
+      mergeMuteBtn: document.getElementById('merge-mute-btn')
+    },
+    timeline,
+    onNvencDetected: (detected) => { hasNvenc = detected; },
+    onPlanInvalidated: clearExportPlan,
+    onShowWaveformChange: (checked) => {
+      if (timeline) {
+        timeline.setShowWaveform(checked);
+        if (checked && currentMediaInfo && currentMediaInfo.filePath && !timeline.waveformPeaks) {
+          loadWaveform(currentMediaInfo.filePath, exportState.selectedAudioTrackIndex);
+        }
       }
-      if (allSettings.maxQuality !== undefined) {
-        if (settingMaxQuality) settingMaxQuality.checked = allSettings.maxQuality;
+    },
+    onApplyVolumeToPlayers: (volume, muted) => {
+      if (videoPreview) {
+        videoPreview.setVolume(volume);
+        videoPreview.setMuted(muted);
       }
-      
-      if (allSettings.playbackVolume !== undefined) {
-        storedVolume = Math.max(0, Math.min(1, Number(allSettings.playbackVolume)));
-      }
-      if (allSettings.playbackMuted !== undefined) {
-        isMutedState = Boolean(allSettings.playbackMuted);
-      }
-    }
-    syncVolumeUI();
-
-    // Detect NVENC
-    hasNvenc = await window.clipSend.detectEncoders();
-    const nvencOption = document.querySelector('#setting-hw-accel option[value="nvenc"]');
-    if (nvencOption && !hasNvenc) {
-      nvencOption.disabled = true;
-      nvencOption.textContent = 'NVIDIA (NVENC) - Not Detected';
-      if (settingHwAccel.value === 'nvenc') {
-        settingHwAccel.value = 'auto';
-        window.clipSend.setSetting('hwAccel', 'auto');
-      }
-    }
-  }
-  loadSettings();
-
-  settingsBtn?.addEventListener('click', () => {
-    settingsModal.style.display = 'flex';
-  });
-
-  closeSettingsBtn?.addEventListener('click', () => {
-    settingsModal.style.display = 'none';
-  });
-
-  browseExportDirBtn?.addEventListener('click', async () => {
-    const dir = await window.clipSend.pickDirectory();
-    if (dir) {
-      settingExportDir.value = dir;
-      window.clipSend.setSetting('defaultExportDirectory', dir);
-    }
-  });
-
-  clearExportDirBtn?.addEventListener('click', () => {
-    settingExportDir.value = '';
-    window.clipSend.setSetting('defaultExportDirectory', '');
-  });
-
-  settingHwAccel?.addEventListener('change', (e) => {
-    window.clipSend.setSetting('hwAccel', e.target.value);
-    clearExportPlan();
-  });
-
-  settingMaxQuality?.addEventListener('change', (e) => {
-    window.clipSend.setSetting('maxQuality', e.target.checked);
-    clearExportPlan();
-  });
-
-  settingDisableDownscale?.addEventListener('change', (e) => {
-    window.clipSend.setSetting('disableAutoDownscale', e.target.checked);
-    clearExportPlan();
-  });
-
-  settingShowWaveform?.addEventListener('change', (e) => {
-    window.clipSend.setSetting('showWaveform', e.target.checked);
-    if (timeline) {
-      timeline.setShowWaveform(e.target.checked);
-      if (e.target.checked && currentMediaInfo && currentMediaInfo.filePath && !timeline.waveformPeaks) {
-        loadWaveform(currentMediaInfo.filePath, exportState.selectedAudioTrackIndex);
+      if (mergePlayer) {
+        mergePlayer.setVolume(volume);
+        mergePlayer.setMuted(muted);
       }
     }
   });
+  settings.load();
 
   // --- Feedback ---
   const feedbackBtn = document.getElementById('feedback-btn');

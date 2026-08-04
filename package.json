@@ -4,9 +4,16 @@
   "description": "",
   "main": "main/main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder build --win --publish never",
-    "test": "jest"
+    "start": "npm run build:renderer && electron .",
+    "build:renderer": "esbuild renderer/app.js --bundle --format=esm --outfile=renderer/dist/app.bundle.js && esbuild renderer/app.js --bundle --format=cjs --outfile=renderer/dist/app.bundle.cjs",
+    "build": "npm run build:renderer && electron-builder build --win --publish never",
+    "test": "npm run build:renderer && jest"
+  },
+  "jest": {
+    "transform": {
+      "renderer[\\\\/].*\\.js$": "<rootDir>/test/renderer/esbuild-transform.js",
+      "\\.[jt]sx?$": "babel-jest"
+    }
   },
   "build": {
     "appId": "com.clipsend.app",
@@ -27,16 +34,22 @@
     "asarUnpack": [
       "bin/**/*"
     ],
-    "electronLanguages": ["en-US"]
+    "electronLanguages": [
+      "en-US"
+    ]
   },
   "keywords": [],
   "author": "Ayinaki",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "babel-jest": "^30.4.1",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3",
-    "jest": "^30.4.2"
+    "esbuild": "^0.25.12",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
+    "jsdom": "^26.1.0"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
