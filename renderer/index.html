@@ -329,9 +329,21 @@
               </div>
             </div>
             <div class="merge-transport-controls">
+              <button class="transport-btn jump-in-btn" id="merge-jump-in-btn" title="Jump to Trim In">&#xE892;</button>
+              <button class="transport-btn set-in-btn" id="merge-set-in-btn" title="Set Trim In" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">[</button>
               <button class="transport-btn play-btn" id="merge-play-btn" title="Play/Pause">&#xE768;</button>
+              <button class="transport-btn set-out-btn" id="merge-set-out-btn" title="Set Trim Out" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">]</button>
+              <button class="transport-btn jump-out-btn" id="merge-jump-out-btn" title="Jump to Trim Out">&#xE893;</button>
             </div>
-            <span class="merge-clip-indicator" id="merge-clip-indicator"></span>
+            <div class="merge-right-controls">
+              <div class="merge-trim-info" id="merge-trim-info">
+                <span class="trim-label">In <span id="merge-trim-in" class="trim-value">0:00</span></span>
+                <span class="trim-label">Out <span id="merge-trim-out" class="trim-value">0:00</span></span>
+                <span class="trim-label trim-duration">Dur <span id="merge-trim-dur" class="trim-value">0:00</span></span>
+                <button class="transport-btn merge-reset-trim-btn" id="merge-reset-trim-btn" title="Reset Trim for this clip">Reset</button>
+              </div>
+              <span class="merge-clip-indicator" id="merge-clip-indicator"></span>
+            </div>
           </div>
           <div class="merge-timeline-container" style="height: 140px; display: flex; flex-direction: column; background: var(--bg-primary); border-top: 1px solid var(--panel-border);">
             <div style="padding: 8px 12px; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between;">

@@ -10,6 +10,9 @@
 const SCRUBBER_HEIGHT = 12;
 const PLAYHEAD_W = 2;
 
+// Minimum trim length when setting in/out points (seconds)
+const MIN_TRIM_SECONDS = 0.5;
+
 // --- Scrubber colours ---
 const COL_BG         = '#1a1a1a';
 const COL_PROGRESS   = '#0078d7'; // app accent color
@@ -106,7 +109,57 @@ export class MergePlayer {
     if (this.clips.length === 0) return 0;
     if (this.currentClipIndex >= this.boundaries.length) return this.totalDuration;
     const boundary = this.boundaries[this.currentClipIndex];
-    return boundary.start + (this.video.currentTime || 0);
+    const bounds = this._getTrimBounds(this.currentClipIndex);
+    return boundary.start + Math.max(0, (this.video.currentTime || 0) - bounds.trimIn);
+  }
+
+  /**
+   * Set per-clip trim bounds. Mutates the shared clip object and recalculates
+   * the sequence boundaries/redraws, preserving the current playback position
+   * within the new range when possible.
+   */
+  setTrimForClip(index, trimIn, trimOut) {
+    const clip = this.clips[index];
+    if (!clip) return;
+    const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
+    const tIn = Math.max(0, Math.min(typeof trimIn === 'number' ? trimIn : 0, full));
+    const minDur = Math.min(MIN_TRIM_SECONDS, Math.max(0, full - tIn));
+    const tOut = Math.min(full, Math.max(typeof trimOut === 'number' ? trimOut : full, tIn + minDur));
+    clip.trimIn = tIn;
+    clip.trimOut = tOut;
+    this._recalcBoundaries();
+    // Keep the current frame inside the new range
+    if (this.currentClipIndex === index && this.video.src) {
+      const srcTime = this.video.currentTime || 0;
+      if (srcTime < tIn) this.video.currentTime = tIn;
+      else if (srcTime > tOut) this.video.currentTime = Math.max(tIn, tOut);
+    }
+    this._scheduleRedraw();
+  }
+
+  /**
+   * Get the playable source-time window [trimIn, trimOut] for a clip, in the
+   * clip's own seconds. Defaults to the full clip when no trims are set.
+   */
+  _getTrimBounds(index) {
+    const clip = this.clips[index];
+    if (!clip) return { trimIn: 0, trimOut: 0 };
+    const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
+    const rawIn = typeof clip.trimIn === 'number' ? clip.trimIn : 0;
+    const rawOut = typeof clip.trimOut === 'number' ? clip.trimOut : full;
+    return {
+      trimIn: Math.max(0, Math.min(rawIn, full)),
+      trimOut: Math.max(0, Math.min(rawOut, full))
+    };
+  }
+
+  /** Duration a clip contributes to the merged sequence (trimmed length). */
+  getClipDuration(clip) {
+    if (!clip) return 0;
+    const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
+    const tin = typeof clip.trimIn === 'number' ? Math.max(0, Math.min(clip.trimIn, full)) : 0;
+    const tout = typeof clip.trimOut === 'number' ? Math.max(0, Math.min(clip.trimOut, full)) : full;
+    return Math.max(0, tout - tin);
   }
 
   /** Toggle play/pause for the entire sequence. */
@@ -116,12 +169,14 @@ export class MergePlayer {
       this.video.pause();
     } else {
       // If at the very end of the last clip, restart from beginning
-      if (this.currentClipIndex === this.clips.length - 1 &&
-          this.video.currentTime >= this.video.duration - 0.1) {
-        this._loadClip(0, 0, true);
-      } else {
-        this.video.play();
+      if (this.currentClipIndex === this.clips.length - 1) {
+        const bounds = this._getTrimBounds(this.currentClipIndex);
+        if (this.video.currentTime >= bounds.trimOut - 0.1) {
+          this._loadClip(0, 0, true);
+          return;
+        }
       }
+      this.video.play();
     }
   }
 
@@ -180,8 +235,9 @@ export class MergePlayer {
   _recalcBoundaries() {
     this.boundaries = [];
     let cumulative = 0;
-    for (const clip of this.clips) {
-      const dur = clip.mediaInfo.duration;
+    for (let i = 0; i < this.clips.length; i++) {
+      const bounds = this._getTrimBounds(i);
+      const dur = Math.max(0, bounds.trimOut - bounds.trimIn);
       this.boundaries.push({ start: cumulative, end: cumulative + dur });
       cumulative += dur;
     }
@@ -191,7 +247,7 @@ export class MergePlayer {
   /**
    * Load a specific clip into the video element and seek to localOffset.
    * @param {number} index      — clip index
-   * @param {number} localTime  — seconds within that clip
+   * @param {number} localTime  — seconds within that clip's trimmed window (0 = trimIn)
    * @param {boolean} autoplay  — whether to auto-play after loading
    */
   _loadClip(index, localTime = 0, autoplay = false) {
@@ -203,6 +259,8 @@ export class MergePlayer {
     }
     
     const clip = this.clips[index];
+    const bounds = this._getTrimBounds(index);
+    const sourceTime = bounds.trimIn + Math.max(0, localTime);
     const fileSrc = `file://${clip.filePath.replace(/\\/g, '/')}`;
 
     // Avoid reloading if already on this clip's source
@@ -211,7 +269,7 @@ export class MergePlayer {
                          decodeURIComponent(fileSrc).replace(/\\/g, '/');
 
     if (isSameSource) {
-      this.video.currentTime = localTime;
+      this.video.currentTime = sourceTime;
       if (autoplay) this.video.play();
       this._drawScrubber();
       return;
@@ -222,7 +280,7 @@ export class MergePlayer {
 
     const onCanPlay = () => {
       this.video.removeEventListener('canplay', onCanPlay);
-      this.video.currentTime = localTime;
+      this.video.currentTime = sourceTime;
       if (autoplay) this.video.play();
       this._drawScrubber();
     };
@@ -300,12 +358,41 @@ export class MergePlayer {
     this._updateTimecodeDisplay(global);
     this._scheduleRedraw();
 
-    // Preload next clip when approaching end (< 1.5s remaining)
-    if (this.isPlaying && this.video.duration) {
-      const remaining = this.video.duration - this.video.currentTime;
+    const bounds = this._getTrimBounds(this.currentClipIndex);
+    const videoDur = this.video.duration || 0;
+    const currentTime = this.video.currentTime || 0;
+
+    // Trimmed clip reached its out-point — advance before the file truly ends.
+    // (Fully-untouched clips fall through to the 'ended' event instead.)
+    if (this.isPlaying && bounds.trimOut < videoDur - 0.05 && currentTime >= bounds.trimOut) {
+      this._onTrimOutReached();
+      return;
+    }
+
+    // Preload next clip when approaching the trim out-point (< 1.5s remaining)
+    if (this.isPlaying && videoDur) {
+      const remaining = bounds.trimOut - currentTime;
       if (remaining < 1.5) {
         this._preloadNext();
       }
+    }
+  }
+
+  /** Playback hit a clip's trim out-point: advance to the next clip or finish. */
+  _onTrimOutReached() {
+    const nextIdx = this.currentClipIndex + 1;
+    if (nextIdx < this.clips.length) {
+      // Advance to next clip and continue playing
+      this._loadClip(nextIdx, 0, true);
+    } else {
+      // End of sequence — park the video at the out-point (it is mid-file here,
+      // so it would otherwise keep playing the trimmed-away tail)
+      this.video.pause();
+      this.video.currentTime = Math.min(this.video.currentTime, this._getTrimBounds(this.currentClipIndex).trimOut);
+      this.isPlaying = false;
+      this.onPlayStateChange(false);
+      this._updateTimecodeDisplay(this.totalDuration);
+      this._drawScrubber();
     }
   }
 

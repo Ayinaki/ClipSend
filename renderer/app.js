@@ -1382,6 +1382,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (mergeClipIndicator && mergeClips.length > 0) {
         mergeClipIndicator.textContent = `Clip ${mergePlayer.currentClipIndex + 1} / ${mergeClips.length}`;
       }
+      updateMergeTrimDisplay();
     },
     onClipChange: (index) => {
       if (mergeTimelineStrip) {
@@ -1394,6 +1395,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (mergeClipIndicator && mergeClips.length > 0) {
         mergeClipIndicator.textContent = `Clip ${index + 1} / ${mergeClips.length}`;
       }
+      updateMergeTrimDisplay();
     }
   });
 
@@ -1404,6 +1406,12 @@ document.addEventListener('DOMContentLoaded', () => {
   modeMergeBtn?.addEventListener('click', () => { currentMergeMode = true; });
 
   function updateMergeUI() {
+    // Normalize per-clip trims (defaults to the full clip)
+    mergeClips.forEach(c => {
+      if (typeof c.trimIn !== 'number') c.trimIn = 0;
+      if (typeof c.trimOut !== 'number') c.trimOut = (c.mediaInfo && c.mediaInfo.duration) || 0;
+    });
+
     // 0. Toggle empty state vs video visibility
     if (mergeEmptyStage && mergeVideoEl) {
       if (mergeClips.length === 0) {
@@ -1451,6 +1459,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         meta.textContent = `${durStr} • ${clip.mediaInfo.width}x${clip.mediaInfo.height}`;
         
+        // Show the trim range when this clip is trimmed
+        const fullDur = clip.mediaInfo.duration;
+        const tIn = typeof clip.trimIn === 'number' ? clip.trimIn : 0;
+        const tOut = typeof clip.trimOut === 'number' ? clip.trimOut : fullDur;
+        if (tIn > 0.05 || tOut < fullDur - 0.05) {
+          meta.textContent += ` • ✂ ${formatTrimDur(tIn)}–${formatTrimDur(tOut)}`;
+        }
+        
         info.appendChild(title);
         info.appendChild(meta);
         
@@ -1475,7 +1491,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!mergeTimelineStrip) return;
     mergeTimelineStrip.innerHTML = '';
     let totalDur = 0;
-    mergeClips.forEach(c => totalDur += c.mediaInfo.duration);
+    mergeClips.forEach(c => totalDur += mergePlayer.getClipDuration(c));
     
     if (mergeClips.length === 0) {
       mergeTimelineStrip.innerHTML = `
@@ -1492,6 +1508,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (mergeTotalDuration) mergeTotalDuration.textContent = `Total: ${totalDurStr}`;
       
       mergeClips.forEach((clip, index) => {
+        const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
+        const tin = typeof clip.trimIn === 'number' ? Math.max(0, Math.min(clip.trimIn, full)) : 0;
+        const tout = typeof clip.trimOut === 'number' ? Math.max(0, Math.min(clip.trimOut, full)) : full;
+        const dur = mergePlayer.getClipDuration(clip);
+        const inPct = full > 0 ? (tin / full) * 100 : 0;
+        const outPct = full > 0 ? (tout / full) * 100 : 100;
+        const isTrimmed = tin > 0.05 || tout < full - 0.05;
+
         const block = document.createElement('div');
         block.className = 'merge-timeline-block';
         if (index === mergePlayer.currentClipIndex) {
@@ -1501,20 +1525,54 @@ document.addEventListener('DOMContentLoaded', () => {
           block.style.backgroundImage = `url("${clip.thumbnailPath}")`;
         }
         
-        const flexRatio = clip.mediaInfo.duration;
+        const flexRatio = Math.max(dur, 0.01);
         block.style.flexGrow = flexRatio;
         block.style.flexBasis = '0';
         block.style.minWidth = '60px';
         block.style.flexShrink = '0';
         
+        // Trim dim overlays + draggable handles
+        const dimLeft = document.createElement('div');
+        dimLeft.className = 'merge-trim-dim merge-trim-dim-left';
+        dimLeft.style.left = '0';
+        dimLeft.style.width = `${inPct}%`;
+        
+        const dimRight = document.createElement('div');
+        dimRight.className = 'merge-trim-dim merge-trim-dim-right';
+        dimRight.style.right = '0';
+        dimRight.style.width = `${Math.max(0, 100 - outPct)}%`;
+        
+        const handleIn = document.createElement('div');
+        handleIn.className = 'merge-trim-handle merge-trim-handle-in';
+        handleIn.style.left = `${inPct}%`;
+        handleIn.title = 'Drag to set trim in';
+        
+        const handleOut = document.createElement('div');
+        handleOut.className = 'merge-trim-handle merge-trim-handle-out';
+        handleOut.style.left = `${outPct}%`;
+        handleOut.title = 'Drag to set trim out';
+        
+        handleIn.addEventListener('mousedown', (e) => beginTrimDrag(e, block, clip, 'in'));
+        handleOut.addEventListener('mousedown', (e) => beginTrimDrag(e, block, clip, 'out'));
+        
         const durLabel = document.createElement('div');
         durLabel.className = 'merge-timeline-duration';
+        durLabel.textContent = isTrimmed ? `✂ ${formatTrimDur(dur)}` : formatTrimDur(dur);
         
-        const minTl = Math.floor(clip.mediaInfo.duration / 60).toString().padStart(2, '0');
-        const secTl = Math.floor(clip.mediaInfo.duration % 60).toString().padStart(2, '0');
-        durLabel.textContent = `${minTl}:${secTl}`;
-        
+        block.appendChild(dimLeft);
+        block.appendChild(dimRight);
+        block.appendChild(handleIn);
+        block.appendChild(handleOut);
         block.appendChild(durLabel);
+        
+        // Click a block to select & jump to that clip's trim start
+        block.addEventListener('click', (e) => {
+          if (e.target.closest && e.target.closest('.merge-trim-handle')) return;
+          if (mergePlayer.boundaries[index]) {
+            mergePlayer.seekToGlobal(mergePlayer.boundaries[index].start);
+            updateMergeTrimDisplay();
+          }
+        });
         
         // Drag and Drop
         block.draggable = true;
@@ -1578,7 +1636,147 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 5. Sync player with current clip list
     mergePlayer.setClips(mergeClips);
+    updateMergeTrimDisplay();
   }
+
+  // --- Merge trim helpers ---
+
+  /** Format seconds as m:ss for the merge trim readout. */
+  function formatTrimDur(seconds) {
+    const s = Math.max(0, seconds || 0);
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    return `${m}:${sec}`;
+  }
+
+  /** Update the In / Out / Dur readout for the active clip. */
+  function updateMergeTrimDisplay() {
+    const inEl = document.getElementById('merge-trim-in');
+    const outEl = document.getElementById('merge-trim-out');
+    const durEl = document.getElementById('merge-trim-dur');
+    const clip = mergeClips[mergePlayer.currentClipIndex];
+    if (!clip) {
+      if (inEl) inEl.textContent = '0:00';
+      if (outEl) outEl.textContent = '0:00';
+      if (durEl) durEl.textContent = '0:00';
+      return;
+    }
+    const full = clip.mediaInfo.duration;
+    const tin = typeof clip.trimIn === 'number' ? clip.trimIn : 0;
+    const tout = typeof clip.trimOut === 'number' ? clip.trimOut : full;
+    if (inEl) inEl.textContent = formatTrimDur(tin);
+    if (outEl) outEl.textContent = formatTrimDur(tout);
+    if (durEl) durEl.textContent = formatTrimDur(tout - tin);
+  }
+
+  /** Update a block's dim overlays/handles/duration label without rebuilding. */
+  function applyTrimOverlay(blockEl, clip) {
+    const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
+    const tin = typeof clip.trimIn === 'number' ? Math.max(0, Math.min(clip.trimIn, full)) : 0;
+    const tout = typeof clip.trimOut === 'number' ? Math.max(0, Math.min(clip.trimOut, full)) : full;
+    const inPct = full > 0 ? (tin / full) * 100 : 0;
+    const outPct = full > 0 ? (tout / full) * 100 : 100;
+    const dur = Math.max(0, tout - tin);
+
+    const dimL = blockEl.querySelector('.merge-trim-dim-left');
+    const dimR = blockEl.querySelector('.merge-trim-dim-right');
+    const hIn = blockEl.querySelector('.merge-trim-handle-in');
+    const hOut = blockEl.querySelector('.merge-trim-handle-out');
+    const label = blockEl.querySelector('.merge-timeline-duration');
+
+    if (dimL) dimL.style.width = `${inPct}%`;
+    if (dimR) dimR.style.width = `${Math.max(0, 100 - outPct)}%`;
+    if (hIn) hIn.style.left = `${inPct}%`;
+    if (hOut) hOut.style.left = `${outPct}%`;
+    if (label) {
+      const isTrimmed = tin > 0.05 || tout < full - 0.05;
+      label.textContent = isTrimmed ? `✂ ${formatTrimDur(dur)}` : formatTrimDur(dur);
+    }
+  }
+
+  /** Start dragging a block's trim handle. Live-updates overlays, commits on mouseup. */
+  function beginTrimDrag(e, blockEl, clip, edge) {
+    e.preventDefault();
+    e.stopPropagation();
+    const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
+    const rect = blockEl.getBoundingClientRect();
+
+    const onMove = (ev) => {
+      const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / Math.max(1, rect.width)));
+      const sec = frac * full;
+      if (edge === 'in') {
+        const tOut = typeof clip.trimOut === 'number' ? clip.trimOut : full;
+        clip.trimIn = Math.max(0, Math.min(sec, tOut - 0.5));
+      } else {
+        const tIn = typeof clip.trimIn === 'number' ? clip.trimIn : 0;
+        clip.trimOut = Math.min(full, Math.max(sec, tIn + 0.5));
+      }
+      applyTrimOverlay(blockEl, clip);
+      updateMergeTrimDisplay();
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      mergePlayer.setClips(mergeClips);
+      updateMergeUI();
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  // --- Merge trim transport buttons ---
+  const mergeSetInBtn = document.getElementById('merge-set-in-btn');
+  const mergeSetOutBtn = document.getElementById('merge-set-out-btn');
+  const mergeJumpInBtn = document.getElementById('merge-jump-in-btn');
+  const mergeJumpOutBtn = document.getElementById('merge-jump-out-btn');
+  const mergeResetTrimBtn = document.getElementById('merge-reset-trim-btn');
+
+  mergeSetInBtn?.addEventListener('click', () => {
+    const idx = mergePlayer.currentClipIndex;
+    const clip = mergeClips[idx];
+    if (!clip) return;
+    const full = clip.mediaInfo.duration;
+    const tout = typeof clip.trimOut === 'number' ? clip.trimOut : full;
+    const cur = mergeVideoEl.currentTime || 0;
+    const tin = Math.max(0, Math.min(cur, tout - 0.5));
+    mergePlayer.setTrimForClip(idx, tin, tout);
+    updateMergeUI();
+  });
+
+  mergeSetOutBtn?.addEventListener('click', () => {
+    const idx = mergePlayer.currentClipIndex;
+    const clip = mergeClips[idx];
+    if (!clip) return;
+    const full = clip.mediaInfo.duration;
+    const tin = typeof clip.trimIn === 'number' ? clip.trimIn : 0;
+    const cur = mergeVideoEl.currentTime || 0;
+    const tout = Math.min(full, Math.max(cur, tin + 0.5));
+    mergePlayer.setTrimForClip(idx, tin, tout);
+    updateMergeUI();
+  });
+
+  mergeJumpInBtn?.addEventListener('click', () => {
+    const idx = mergePlayer.currentClipIndex;
+    if (!mergeClips[idx] || !mergePlayer.boundaries[idx]) return;
+    mergePlayer.seekToGlobal(mergePlayer.boundaries[idx].start);
+  });
+
+  mergeJumpOutBtn?.addEventListener('click', () => {
+    const idx = mergePlayer.currentClipIndex;
+    const b = mergePlayer.boundaries[idx];
+    if (!mergeClips[idx] || !b) return;
+    mergePlayer.seekToGlobal(Math.max(b.start, b.end - 0.01));
+  });
+
+  mergeResetTrimBtn?.addEventListener('click', () => {
+    const idx = mergePlayer.currentClipIndex;
+    const clip = mergeClips[idx];
+    if (!clip) return;
+    mergePlayer.setTrimForClip(idx, 0, clip.mediaInfo.duration);
+    updateMergeUI();
+  });
 
   const addClipsBtn = document.getElementById('add-clips-btn');
   addClipsBtn?.addEventListener('click', async () => {
@@ -1668,13 +1866,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 2. Start Export
+      // 2. Start Export — pass per-clip trims so each clip is trimmed before merging
       mergeProgressContainer.style.display = 'flex';
       mergeProgressFill.style.width = '0%';
       mergeProgressText.textContent = '0%';
       mergeCancelBtn.disabled = false;
 
-      const result = await window.clipSend.startMerge(filePaths);
+      const trims = mergeClips.map(c => ({
+        trimIn: typeof c.trimIn === 'number' ? c.trimIn : 0,
+        trimOut: typeof c.trimOut === 'number' ? c.trimOut : (c.mediaInfo && c.mediaInfo.duration) || 0
+      }));
+
+      const result = await window.clipSend.startMerge(filePaths, undefined, trims);
       
       if (!result) {
         // Cancelled via save dialog

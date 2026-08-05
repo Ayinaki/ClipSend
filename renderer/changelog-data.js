@@ -1,5 +1,15 @@
 window.changelogData = [
   {
+    "version": "v1.9.1: Merge Mode Per-Clip Trimming",
+    "date": "August 2026",
+    "changes": [
+      "Feature: Added per-clip trimming inside Merge Mode — drag the amber trim handles on each timeline block (or use the new Set In / Set Out / Jump buttons) to choose exactly which section of each clip makes it into the merged output.",
+      "Feature: Trimmed-away portions of each clip are dimmed on the merge timeline, and blocks scale to show the trimmed duration while the total readout reflects the final merged length.",
+      "Feature: The merge preview player honors trims during playback and scrubbing, and the export pipeline trims each selected range to a temporary file before the lossless concatenation step, keeping the fast path when clips are otherwise compatible.",
+      "Feature: Added a Reset button to clear the active clip's trim, and per-clip trim ranges are shown in the clip list sidebar."
+    ]
+  },
+  {
     "version": "v1.9.0: Updater Fix & Dialog Overlap Fix",
     "date": "August 2026",
     "changes": [

@@ -25,6 +25,7 @@ Merge Mode allows users to select multiple video clips, arrange them in sequence
 - **Multi-clip Loading:** Supports adding multiple clips simultaneously via the "Add Clips" dialog or by drag-and-dropping multiple files onto the stage or the Clip List sidebar.
 - **Clip List Panel:** A visual sidebar showing all loaded clips, allowing users to reorder clips intuitively via native HTML5 Drag and Drop.
 - **Proportional Timeline:** The timeline scrubber visually represents the stitched video, drawing segments proportional to each clip's duration. Extremely short clips are enforced a minimum visual width (in pixels) to ensure they remain clickable and discoverable, with a non-linear mapping system keeping the playhead accurate.
+- **Per-Clip Trimming:** Each clip in the merge timeline can be trimmed independently — drag the amber trim handles on a block, or select a clip and use the Set In / Set Out / Jump transport buttons. Trimmed-away regions are dimmed, blocks scale to their trimmed length, and the preview player honors the trims during playback and scrubbing.
 - **Continuous Playback:** Smoothly swaps the video source during playback as the playhead crosses clip boundaries. Volume and mute states persist seamlessly across clip transitions.
 
 ### Mode Switching
@@ -40,6 +41,7 @@ The export system relies heavily on FFmpeg, governed by a multi-step planning an
 - **Planning (`export-planner.js`):** Calculates the exact video bitrate needed to hit the target file size (e.g. 8MB or 25MB for Discord), applying a 5% safety margin and accounting for audio track size and 1.5% muxing overhead. Generates the exact FFmpeg argument array.
 - **Hardware Acceleration (`encoder.js` & `merger.js`):** Supports NVIDIA NVENC (`h264_nvenc`) when selected and available. The pipeline seamlessly adjusts its rate-control parameters depending on the encoder (e.g., using `-rc vbr` and `-maxrate` for size-targeted NVENC exports instead of the 2-pass ABR required for CPU `libx264`).
 - **Merge Fallback (`merger.js`):** When exporting merged clips, the pipeline attempts a lossless fast path (`concat` demuxer with `-c copy`) if all clips share identical video/audio codecs, resolutions, and framerates. If they differ, it falls back to a complex re-encode using the `concat` filter to normalize all clips to the first clip's parameters, automatically utilizing NVENC if configured.
+- **Merge Trimming (`merger.js`):** When any clip has a trim range, that clip is first re-encoded to a uniform temporary file (accurate `-ss`/`-t` trim, h264/aac, NVENC or CPU) before the concat step, so the merged output contains exactly the selected sections. Untouched clips keep the original files, and all temp files are cleaned up automatically. Progress is weighted across the trim + concat phases.
 
 ## Architecture Notes
 - **Process Communication:** The application maintains strict isolation. The UI (`renderer/`) communicates with the Node.js backend (`main/`) exclusively via asynchronous IPC invocations defined in `preload.js` and handled in `ipc-handlers.js`.
