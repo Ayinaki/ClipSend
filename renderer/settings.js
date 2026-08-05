@@ -4,6 +4,8 @@
 // invalidation, IPC) are injected via the `context` object so this module
 // is testable in jsdom with a fake api and no Electron bridge.
 
+import { openModal, closeModal } from './utils/modals.js';
+
 const DEFAULT_VOLUME = 0.6;
 
 /**
@@ -115,8 +117,8 @@ export function createSettingsController(context) {
   }
 
   function wire() {
-    if (openBtn && modal) openBtn.addEventListener('click', () => { modal.style.display = 'flex'; });
-    if (closeBtn && modal) closeBtn.addEventListener('click', () => { modal.style.display = 'none'; });
+    if (openBtn && modal) openBtn.addEventListener('click', () => { openModal(modal); });
+    if (closeBtn && modal) closeBtn.addEventListener('click', () => { closeModal(modal); });
 
     if (browseBtn && exportDir) {
       browseBtn.addEventListener('click', async () => {

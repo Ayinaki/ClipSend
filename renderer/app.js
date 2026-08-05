@@ -7,6 +7,7 @@ import { formatTimecode } from './utils/timecode.js';
 import { createEstimateBar, createProgressUI, createWarningsUI, initWindowControls, initTitlebarActions } from './titlebar.js';
 import { createSettingsController } from './settings.js';
 import { buildPlanWarnings } from './export-flow.js';
+import { openModal, closeModal, closeAllModals } from './utils/modals.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // Disable browser media session action handlers so hardware media keys do not trigger video playback
@@ -627,7 +628,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentExportFilePath = null;
 
   function hideExportModal() {
-    exportModal.style.display = 'none';
+    closeModal(exportModal);
     currentExportFilePath = null;
   }
 
@@ -701,7 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
       exportCopyClipboardBtn.style.display = isTrimMode ? 'block' : 'none';
     }
 
-    if (exportModal) exportModal.style.display = 'flex';
+    if (exportModal) openModal(exportModal);
   }
 
   initTitlebarActions({
@@ -1161,7 +1162,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastFeedbackTime = 0;
 
   function closeFeedbackModal() {
-    feedbackModal.style.display = 'none';
+    closeModal(feedbackModal);
     feedbackStatus.textContent = '';
     feedbackMessage.value = '';
     feedbackContact.value = '';
@@ -1188,7 +1189,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   feedbackBtn?.addEventListener('click', () => {
-    feedbackModal.style.display = 'flex';
+    openModal(feedbackModal);
     updateFeedbackUI();
   });
 
@@ -1300,14 +1301,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function closeChangelogModal() {
-    changelogModal.style.display = 'none';
+    closeModal(changelogModal);
   }
 
   changelogBtn?.addEventListener('click', () => {
     if (!changelogContent.querySelector('.timeline')) {
       renderChangelog();
     }
-    changelogModal.style.display = 'flex';
+    openModal(changelogModal);
   });
 
   closeChangelogBtn?.addEventListener('click', closeChangelogModal);
@@ -1318,20 +1319,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (changelogModal && changelogModal.style.display === 'flex') {
-        closeChangelogModal();
-      }
-      if (feedbackModal && feedbackModal.style.display === 'flex') {
-        closeFeedbackModal();
-      }
-      const exportModal = document.getElementById('export-modal');
-      if (exportModal && exportModal.style.display === 'flex') {
-        exportModal.style.display = 'none';
-      }
-      const settingsModal = document.getElementById('settings-modal');
-      if (settingsModal && settingsModal.style.display === 'flex') {
-        settingsModal.style.display = 'none';
-      }
+      closeAllModals();
     }
   });
 
@@ -1771,15 +1759,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (span) span.textContent = 'Download & Install';
     }
     if (updateLaterBtn) updateLaterBtn.disabled = false;
-    if (updateModal) updateModal.style.display = 'flex';
+    openModal(updateModal);
   }
 
   updateBadgeBtn?.addEventListener('click', openUpdateModal);
   closeUpdateModalBtn?.addEventListener('click', () => {
-    if (updateModal) updateModal.style.display = 'none';
+    if (updateModal) closeModal(updateModal);
   });
   updateLaterBtn?.addEventListener('click', () => {
-    if (updateModal) updateModal.style.display = 'none';
+    if (updateModal) closeModal(updateModal);
   });
 
   startUpdateBtn?.addEventListener('click', async () => {
@@ -1851,7 +1839,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (updateProgressPercent) updateProgressPercent.textContent = ok ? '100%' : '0%';
       if (updateProgressBarFill) updateProgressBarFill.style.width = ok ? '100%' : '0%';
       if (updateProgressSection) updateProgressSection.style.display = 'flex';
-      if (updateModal) updateModal.style.display = 'flex';
+      openModal(updateModal);
     });
   }
 

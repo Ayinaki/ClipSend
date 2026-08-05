@@ -8,6 +8,24 @@ const {
   processUpdateAttemptMarker
 } = require('../main/updater');
 
+describe('artifact naming contract (electron-updater latest.yml vs published asset)', () => {
+  test('build artifactName renders to ClipSend.Setup.<version>.exe (dotted, matches release assets)', () => {
+    const pkg = require('../package.json');
+    const template = pkg.build.artifactName;
+    expect(template).toBe('${productName}.Setup.${version}.${ext}');
+
+    const rendered = template
+      .replace('${productName}', pkg.build.productName)
+      .replace('${version}', pkg.version)
+      .replace('${ext}', 'exe');
+    // electron-updater reads the installer URL from latest.yml; the name here
+    // must be byte-identical to the asset actually uploaded to the GitHub
+    // Release (dots, not hyphens) or updates 404 with "Cannot download".
+    const product = pkg.build.productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    expect(rendered).toMatch(new RegExp(`^${product}\\.Setup\\.\\d+\\.\\d+\\.\\d+\\.exe$`));
+  });
+});
+
 describe('updater semver comparison', () => {
   test('correctly identifies newer patch versions', () => {
     expect(isNewerVersion('1.5.6', '1.5.7')).toBe(true);

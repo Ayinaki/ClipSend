@@ -6,6 +6,7 @@
 // keeps them unit-testable in jsdom without the Electron bridge.
 
 import { formatPlanDisplay } from './export-flow.js';
+import { openModal, closeModal } from './utils/modals.js';
 
 /**
  * Export estimate bar (renders the calculated plan in the title bar center).
@@ -160,17 +161,17 @@ export function createWarningsUI(elements) {
 
   if (button && modal) {
     button.addEventListener('click', () => {
-      modal.style.display = 'flex';
+      openModal(modal);
     });
   }
   if (closeBtn && modal) {
     closeBtn.addEventListener('click', () => {
-      modal.style.display = 'none';
+      closeModal(modal);
     });
   }
   if (modal) {
     modal.addEventListener('click', (e) => {
-      if (e.target === modal) modal.style.display = 'none';
+      if (e.target === modal) closeModal(modal);
     });
   }
 

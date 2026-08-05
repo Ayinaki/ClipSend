@@ -120,4 +120,27 @@ describe('built renderer bundle (smoke)', () => {
     document.getElementById('settings-btn').click();
     expect(document.getElementById('settings-modal').style.display).toBe('flex');
   });
+
+  test('only one modal is visible at a time (no stacking)', () => {
+    const modalIds = ['settings-modal', 'changelog-modal', 'feedback-modal', 'export-modal', 'warnings-modal', 'update-modal'];
+
+    function visibleModals() {
+      return modalIds.filter(id => document.getElementById(id).style.display === 'flex');
+    }
+
+    // Open settings, then changelog: settings must close.
+    document.getElementById('settings-btn').click();
+    expect(visibleModals()).toEqual(['settings-modal']);
+
+    document.getElementById('changelog-btn').click();
+    expect(visibleModals()).toEqual(['changelog-modal']);
+
+    // Open feedback on top of changelog: changelog must close.
+    document.getElementById('feedback-btn').click();
+    expect(visibleModals()).toEqual(['feedback-modal']);
+
+    // Escape closes everything (dispatch on body so it bubbles like a real keypress).
+    document.body.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(visibleModals()).toEqual([]);
+  });
 });

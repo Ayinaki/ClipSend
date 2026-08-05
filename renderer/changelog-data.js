@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v1.9.0: Updater Fix & Dialog Overlap Fix",
+    "date": "August 2026",
+    "changes": [
+      "Fix: Auto-updates now actually work — the installer published to GitHub Releases is now named consistently with the update metadata (latest.yml), so the app can download and install updates in-app instead of failing with a 404.",
+      "Fix: Settings, Changelog, Feedback, Export, Warnings, and Update dialogs can no longer stack on top of each other — opening one closes any other."
+    ]
+  },
+  {
     "version": "v1.8.20: Live Feedback Proxy",
     "date": "August 2026",
     "changes": [
