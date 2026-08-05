@@ -330,7 +330,7 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('merge:export', async (event, { filePaths, outputPath }) => {
+  ipcMain.handle('merge:export', async (event, { filePaths, outputPath, trims }) => {
     if (!outputPath) {
       const defaultName = `Merged Video - ${new Date().toISOString().slice(0,10)}.mp4`;
       const defaultExportDir = store.get('defaultExportDirectory');
@@ -365,7 +365,7 @@ function registerIpcHandlers() {
     try {
       const result = await merger.runMerge(filePaths, outputPath, (percent, status) => {
         event.sender.send('merge:progress', { percent, status });
-      }, { encoder });
+      }, { encoder, trims });
       return result;
     } catch (error) {
       // If NVENC failed during merge re-encode, retry with CPU
@@ -381,7 +381,7 @@ function registerIpcHandlers() {
           try {
             const retryResult = await merger.runMerge(filePaths, outputPath, (percent, status) => {
               event.sender.send('merge:progress', { percent, status });
-            }, { encoder: 'libx264' });
+            }, { encoder: 'libx264', trims });
             return retryResult;
           } catch (retryError) {
             return { success: false, error: retryError.message };

@@ -648,6 +648,39 @@ button:disabled {
   box-sizing: border-box;
   transition: width 0.2s ease, filter 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
+
+/* Trim overlays on merge timeline blocks */
+.merge-trim-dim {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.merge-trim-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  margin-left: -2px;
+  background: #ffd54f;
+  box-shadow: 0 0 4px rgba(255, 213, 79, 0.6);
+  cursor: ew-resize;
+  z-index: 2;
+  border-radius: 1px;
+}
+.merge-trim-handle:hover {
+  background: #fff176;
+  width: 6px;
+  margin-left: -3px;
+}
+
+.merge-timeline-duration {
+  position: relative;
+  z-index: 3;
+}
 .merge-timeline-block:hover {
   filter: brightness(1.15);
   border-color: #555;
@@ -733,6 +766,38 @@ button:disabled {
   gap: 2px;
   align-items: center;
   justify-self: center;
+}
+
+.merge-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-self: end;
+  min-width: 0;
+}
+
+.merge-trim-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.merge-reset-trim-btn {
+  width: auto;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.merge-reset-trim-btn:hover {
+  background: rgba(244, 67, 54, 0.15);
+  color: #fff;
+  border-color: rgba(244, 67, 54, 0.4);
 }
 .progress-text {
   font-size: 13px;

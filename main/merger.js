@@ -56,6 +56,33 @@ async function mapConcurrent(items, limit, fn) {
 }
 
 /**
+ * Build a per-clip trim plan from raw trim values.
+ *
+ * Pure helper (unit-testable). Returns one entry per input file with
+ * normalized/clamped trim bounds and a `isTrimmed` flag. Trims that are
+ * within 0.05s of the full range are treated as "no trim" so untouched
+ * clips keep the fast lossless path.
+ *
+ * @param {string[]} filePaths       Ordered clip paths
+ * @param {Array<{trimIn?:number, trimOut?:number}|null>|undefined} trims
+ * @param {number[]} clipDurations   Probed durations aligned with filePaths
+ * @returns {Array<{filePath:string, duration:number, trimIn:number, trimOut:number, trimDuration:number, isTrimmed:boolean}>}
+ */
+function normalizeTrimPlan(filePaths, trims, clipDurations) {
+  return filePaths.map((fp, i) => {
+    const duration = clipDurations && clipDurations[i] ? clipDurations[i] : 0;
+    const t = trims && trims[i];
+    const rawIn = t && typeof t.trimIn === 'number' ? t.trimIn : 0;
+    const rawOut = t && typeof t.trimOut === 'number' ? t.trimOut : duration;
+    const trimIn = Math.max(0, Math.min(rawIn, duration));
+    const trimOut = Math.max(trimIn, Math.min(rawOut, duration));
+    const trimDuration = trimOut - trimIn;
+    const isTrimmed = trimIn > 0.05 || trimOut < duration - 0.05;
+    return { filePath: fp, duration, trimIn, trimOut, trimDuration, isTrimmed };
+  });
+}
+
+/**
  * Merger — handles multi-clip video concatenation via FFmpeg.
  */
 class Merger {
@@ -143,24 +170,85 @@ class Merger {
    * @param {string[]} filePaths    Ordered clip paths
    * @param {string}   outputPath   Output file path
    * @param {Function} onProgress   (percent, statusString) => void
+   * @param {Object}   [options]
+   * @param {Array<{trimIn?:number, trimOut?:number}|null>} [options.trims] — per-clip trim ranges aligned with filePaths.
+   *   When any clip has a meaningful trim, that clip is first re-encoded to a
+   *   uniform temporary file (frame-consistent trim) before the concat step.
    * @returns {Promise<Object>}     { success, filePath, finalSizeMB, strategy }
    */
   async runMerge(filePaths, outputPath, onProgress, options = {}) {
     this.cancelled = false;
     const encoder = options.encoder || 'libx264';
+    const trims = options.trims || [];
 
     const compat = await this.checkCompatibility(filePaths);
-    const totalDuration = compat.clips.reduce((sum, c) => sum + c.duration, 0);
+    const trimPlan = normalizeTrimPlan(filePaths, trims, compat.clips.map(c => c.duration));
 
+    // Reject degenerate trim ranges before doing any work
+    for (let i = 0; i < trimPlan.length; i++) {
+      if (trimPlan[i].isTrimmed && trimPlan[i].trimDuration < 0.2) {
+        throw new Error(
+          `Clip ${i + 1} has an invalid trim range (${trimPlan[i].trimDuration.toFixed(2)}s) — make the selection longer.`
+        );
+      }
+    }
+
+    const trimmedTasks = trimPlan.filter(c => c.isTrimmed);
+    const trimTotal = trimmedTasks.reduce((s, c) => s + c.trimDuration, 0);
+    const outputTotal = trimPlan.reduce((s, c) => s + c.trimDuration, 0);
+    const totalWork = trimTotal + outputTotal;
+    const trimWeight = totalWork > 0 ? trimTotal / totalWork : 0;
+
+    const tempFiles = [];
+    let effectivePaths = filePaths.slice();
     let strategy;
 
     try {
-      if (compat.compatible) {
+      // Phase 1: trim pass — re-encode each trimmed clip to a uniform temp file
+      if (trimmedTasks.length > 0) {
+        let accumulated = 0;
+        for (let i = 0; i < trimmedTasks.length; i++) {
+          if (this.cancelled) {
+            throw new Error('Merge cancelled by user.');
+          }
+          const task = trimmedTasks[i];
+          const planIndex = trimPlan.indexOf(task);
+          const label = `Trimming clip ${planIndex + 1}/${trimPlan.length}...`;
+
+          if (onProgress) onProgress((accumulated / totalWork) * 100, label);
+
+          // Register the temp path BEFORE encoding so a failure/cancel still cleans it up
+          const tempPath = path.join(
+            os.tmpdir(),
+            `clipsend-merge-trim-${Date.now()}-${Math.floor(Math.random() * 100000)}.mp4`
+          );
+          tempFiles.push(tempPath);
+          await this._trimClipToTempFile(task, tempPath, encoder, (pct) => {
+            if (onProgress) {
+              const done = accumulated + (pct / 100) * task.trimDuration;
+              onProgress((done / totalWork) * 100, label);
+            }
+          });
+          effectivePaths[planIndex] = tempPath;
+          accumulated += task.trimDuration;
+        }
+      }
+
+      // Phase 2: concat the effective file list (temps + untouched originals)
+      const effCompat = await this.checkCompatibility(effectivePaths);
+      const effTotalDuration = effCompat.clips.reduce((sum, c) => sum + c.duration, 0);
+      const concatBase = trimWeight * 100;
+
+      if (effCompat.compatible) {
         strategy = 'concat_demuxer';
-        await this._runConcatDemuxer(filePaths, outputPath, totalDuration, onProgress);
+        await this._runConcatDemuxer(effectivePaths, outputPath, effTotalDuration, (pct) => {
+          if (onProgress) onProgress(concatBase + pct * (1 - trimWeight), 'Merging (lossless concat)...');
+        });
       } else {
         strategy = 'concat_filter';
-        await this._runConcatFilter(filePaths, compat.clips, outputPath, totalDuration, onProgress, encoder);
+        await this._runConcatFilter(effectivePaths, effCompat.clips, outputPath, effTotalDuration, (pct) => {
+          if (onProgress) onProgress(concatBase + pct * (1 - trimWeight), 'Merging (re-encoding)...');
+        }, encoder);
       }
 
       if (this.cancelled) {
@@ -176,7 +264,8 @@ class Merger {
         filePath: outputPath,
         finalSizeMB: parseFloat(sizeMB.toFixed(2)),
         strategy,
-        reason: compat.reason || null
+        reason: effCompat.reason || null,
+        trimmedClips: trimmedTasks.length
       };
 
     } catch (err) {
@@ -191,6 +280,16 @@ class Merger {
         return { success: false, cancelled: true, strategy };
       }
       throw err;
+    } finally {
+      // Clean up trim temp files on success, failure, and cancellation
+      for (const tmp of tempFiles) {
+        try {
+          if (fs.promises?.unlink) await fs.promises.unlink(tmp);
+          else if (fs.unlinkSync) fs.unlinkSync(tmp);
+        } catch (e) {
+          /* ignore missing file */
+        }
+      }
     }
   }
 
@@ -284,6 +383,46 @@ class Merger {
         }
       });
     });
+  }
+
+  // =========================================================================
+  // Private: trim pass — re-encode a clip's trim range to a uniform temp file
+  // =========================================================================
+
+  /**
+   * Re-encode the trimmed portion of a clip to a temporary MP4 so the final
+   * concat step sees clean, frame-consistent input with uniform codecs.
+   * @param {Object} task      — { filePath, trimIn, trimDuration } from the trim plan
+   * @param {string} tempPath  — pre-registered temp output path
+   * @returns {Promise<string>} temp file path
+   */
+  async _trimClipToTempFile(task, tempPath, encoder = 'libx264', onProgress) {
+    let videoCodecArgs;
+    if (encoder === 'h264_nvenc') {
+      videoCodecArgs = ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '18', '-b:v', '0'];
+    } else {
+      videoCodecArgs = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18'];
+    }
+
+    const args = [
+      '-y',
+      '-ss', task.trimIn.toFixed(3),
+      '-i', task.filePath,
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
+      '-t', task.trimDuration.toFixed(3),
+      ...videoCodecArgs,
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      tempPath
+    ];
+
+    if (onProgress) onProgress(0);
+
+    await this._runProcess(args, task.trimDuration, onProgress);
+    return tempPath;
   }
 
   // =========================================================================
@@ -471,4 +610,4 @@ class Merger {
   }
 }
 
-module.exports = { Merger };
+module.exports = { Merger, normalizeTrimPlan };
