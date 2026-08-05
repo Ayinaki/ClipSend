@@ -468,7 +468,7 @@ function registerIpcHandlers() {
   // worker.js). The Discord webhook URL is a secret on the worker only — it
   // must never be baked into the installer. Replace the placeholder below
   // with the deployed worker URL (see serverless/README.md).
-  const FEEDBACK_PROXY_URL = 'https://clipsend-feedback.YOUR_WORKER_SUBDOMAIN.workers.dev';
+  const FEEDBACK_PROXY_URL = 'https://clipsend-feedback.ayinakidev.workers.dev';
 
   ipcMain.handle('submit-feedback', async (event, payload) => {
     try {

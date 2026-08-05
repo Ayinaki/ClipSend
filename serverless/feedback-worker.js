@@ -73,7 +73,9 @@ export default {
       return json({ success: false, error: 'Method not allowed.' }, 405);
     }
 
-    const webhookUrl = env.DISCORD_WEBHOOK_URL;
+    // Trim in case a trailing space/newline slipped into the secret during
+    // `wrangler secret put` (common on Windows when pasting).
+    const webhookUrl = (env.DISCORD_WEBHOOK_URL || '').trim();
     if (!webhookUrl) {
       console.error('DISCORD_WEBHOOK_URL secret is not configured.');
       return json({ success: false, error: 'Feedback service is not configured.' }, 500);
@@ -118,7 +120,9 @@ export default {
       return json({ success: true });
     } catch (e) {
       console.error('Failed to reach Discord webhook:', e);
-      return json({ success: false, error: 'Could not reach Discord.' }, 502);
+      // Include the underlying cause so a misconfigured secret (e.g. trailing
+      // whitespace) is easy to spot instead of a generic message.
+      return json({ success: false, error: 'Could not reach Discord.', detail: e.message }, 502);
     }
   }
 };

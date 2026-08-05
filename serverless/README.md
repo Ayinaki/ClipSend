@@ -24,16 +24,18 @@ cd serverless
 npm i -g wrangler        # or use: npx wrangler
 
 wrangler login
-wrangler deploy          # prints your workers.dev URL, e.g. clipsend-feedback.xxxx.workers.dev
+wrangler deploy          # prints your workers.dev URL, e.g. clipsend-feedback.ayinakidev.workers.dev
 
-# Store the Discord webhook URL as a secret (paste the full URL, press Enter)
-wrangler secret put DISCORD_WEBHOOK_URL
+# Store the Discord webhook URL as a secret. Piping it in (instead of
+# pasting into the prompt) avoids trailing newline/space mangling on Windows.
+# Note: use `npx wrangler` if wrangler is not installed globally.
+type .\webhook-url.txt | npx wrangler secret put DISCORD_WEBHOOK_URL
 ```
 
 Test it:
 
 ```bash
-curl -X POST https://clipsend-feedback.xxxx.workers.dev \
+curl -X POST https://clipsend-feedback.ayinakidev.workers.dev \
   -H "Content-Type: application/json" \
   -d '{"type":"general","message":"Hello from the test harness!","version":"1.8.18"}'
 ```
@@ -43,7 +45,7 @@ curl -X POST https://clipsend-feedback.xxxx.workers.dev \
 Edit `main/ipc-handlers.js` and replace the placeholder:
 
 ```js
-const FEEDBACK_PROXY_URL = 'https://clipsend-feedback.xxxx.workers.dev';
+const FEEDBACK_PROXY_URL = 'https://clipsend-feedback.ayinakidev.workers.dev';
 ```
 
 That value is public (it's just the worker's address), so it is safe to
@@ -59,7 +61,7 @@ installer (v1.8.13 → current). Assume it is compromised:
    invalidates the old URL everywhere.
 3. Click **New Webhook** → name it `ClipSend Feedback`, choose the channel
    where feedback should land → **Copy Webhook URL** → **Save**.
-4. `wrangler secret put DISCORD_WEBHOOK_URL` with the new URL.
+4. `type .\webhook-url.txt | npx wrangler secret put DISCORD_WEBHOOK_URL` with the new URL (see step 1).
 
 Now the old leaked URL returns `Unknown Webhook` and is dead.
 

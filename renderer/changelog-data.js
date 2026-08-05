@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v1.8.20: Live Feedback Proxy",
+    "date": "August 2026",
+    "changes": [
+      "Live Feedback Proxy"
+    ]
+  },
+  {
     "version": "v1.8.19: Feedback Relayed Through Secure Proxy",
     "date": "August 2026",
     "changes": [
