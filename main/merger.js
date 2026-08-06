@@ -608,6 +608,112 @@ class Merger {
       });
     });
   }
+
+  // =========================================================================
+  // Post-merge conversion — honors shared export settings (format / resolution
+  // / target size) that the fast lossless merge path can't satisfy.
+  // =========================================================================
+
+  /**
+   * Re-encode the merged file when the export settings ask for something other
+   * than the default MP4 + native + no-size-cap output. Returns the final path
+   * and size; the intermediate MP4 is removed.
+   */
+  async postConvertMerged(inputPath, { format = 'mp4', resolution = null, targetSizeMB = null, totalDurationSec = 0, onProgress } = {}) {
+    const ext = format === 'gif' ? 'gif' : format === 'mp3' ? 'mp3' : 'mp4';
+    const dir = path.dirname(inputPath);
+    const base = path.basename(inputPath, path.extname(inputPath));
+    const finalPath = path.join(dir, `${base}.${ext}`);
+    // In-place MP4 conversion needs a temp file (can't read and write the same path).
+    const convertPath = finalPath === inputPath
+      ? path.join(dir, `${base}.convert.mp4`)
+      : finalPath;
+
+    // Optional scale filter for a non-native resolution.
+    let scaleFilter = null;
+    if (resolution) {
+      const parts = String(resolution).toLowerCase().split('x');
+      const w = parseInt(parts[0], 10);
+      const h = parseInt(parts[1], 10);
+      if (w > 0 && h > 0) {
+        scaleFilter = `scale=${w}:${h}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
+      }
+    }
+
+    if (format === 'gif') {
+      const fpsFilter = 'fps=15';
+      const preFilter = scaleFilter ? `${scaleFilter},${fpsFilter}` : fpsFilter;
+      const palettePath = path.join(os.tmpdir(), `clipsend-palette-${Date.now()}.png`);
+      try {
+        // Pass 1: generate an optimized palette
+        await this._runProcess(
+          ['-y', '-i', inputPath, '-vf', `${preFilter},palettegen=stats_mode=diff`, palettePath],
+          0, null
+        );
+        // Pass 2: apply the palette with dithering
+        const lavfi = scaleFilter
+          ? `[0:v]${preFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5`
+          : `[0:v][1:v]paletteuse=dither=bayer:bayer_scale=5`;
+        await this._runProcess(
+          ['-y', '-i', inputPath, '-i', palettePath, '-lavfi', lavfi, convertPath],
+          0, onProgress
+        );
+      } finally {
+        try {
+          if (fs.promises?.unlink) await fs.promises.unlink(palettePath);
+          else if (fs.unlinkSync) fs.unlinkSync(palettePath);
+        } catch (e) {
+          /* ignore missing palette */
+        }
+      }
+    } else if (format === 'mp3') {
+      await this._runProcess(
+        ['-y', '-i', inputPath, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', convertPath],
+        totalDurationSec, onProgress
+      );
+    } else {
+      // MP4 re-encode for non-native resolution and/or an explicit target size
+      const args = ['-y', '-i', inputPath];
+      if (scaleFilter) args.push('-vf', scaleFilter);
+      if (targetSizeMB && totalDurationSec > 0) {
+        const totalBps = (targetSizeMB * 8 * 1024 * 1024) / totalDurationSec;
+        const audioBps = 192 * 1024;
+        const videoBps = Math.max(64 * 1024, Math.round(totalBps - audioBps));
+        args.push('-b:v', String(videoBps));
+      }
+      args.push(
+        '-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
+        convertPath
+      );
+      await this._runProcess(args, totalDurationSec, onProgress);
+    }
+
+    // Finalize: swap the converted file into place and drop the intermediate MP4.
+    if (convertPath !== finalPath) {
+      try {
+        if (fs.promises?.unlink) await fs.promises.unlink(inputPath);
+        else if (fs.unlinkSync) fs.unlinkSync(inputPath);
+      } catch (e) {
+        /* ignore */
+      }
+      if (fs.promises?.rename) await fs.promises.rename(convertPath, finalPath);
+      else fs.renameSync(convertPath, finalPath);
+    } else if (finalPath !== inputPath) {
+      try {
+        if (fs.promises?.unlink) await fs.promises.unlink(inputPath);
+        else if (fs.unlinkSync) fs.unlinkSync(inputPath);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    const stats = await fs.promises.stat(finalPath);
+    return {
+      path: finalPath,
+      sizeMB: parseFloat((stats.size / (1024 * 1024)).toFixed(2))
+    };
+  }
 }
 
 module.exports = { Merger, normalizeTrimPlan };

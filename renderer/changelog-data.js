@@ -1,10 +1,26 @@
 window.changelogData = [
   {
+    "version": "v2.0.0: Major UI & Workflow Overhaul",
+    "date": "August 2026",
+    "changes": [
+      "Feature: Added a first-run onboarding tour that walks new users through Trim, Merge, Export, and keyboard shortcuts with hand-drawn UI previews, skippable at any point and replayable from Settings.",
+      "Feature: Added timeline zoom - Ctrl+wheel (or the + / - buttons) zooms the waveform and ruler around the cursor, with a zoom % readout, click-to-reset, Ctrl+drag panning, and auto-follow so the playhead never runs off-screen during playback. Sub-second ruler ticks make frame-accurate trimming easy.",
+      "Feature: Export now drives the Windows taskbar progress bar in real time and fires a native completion notification with the output file and size - clicking it brings the app back to the foreground.",
+      "Feature: The app window now remembers its position, size, and maximized state across restarts, with a safety check that recenters the window if the saved position is off-screen (e.g. a monitor was unplugged).",
+      "Feature: Merge Mode now honors the shared export settings - output format (MP4/GIF/MP3), resolution override, and target size are applied to the merged result, and the Export Settings panel is visible without scrolling.",
+      "Feature: Added loop playback for the merged sequence, scroll-locked scrubber alignment, and sharper 640px-wide timeline thumbnails.",
+      "Enhancement: Every modal (Settings, Changelog, Feedback, Export, Warnings, Update, and the tour) now shares a consistent focused-layer treatment - a blurred backdrop and a subtle fade-and-settle entrance, both disabled under reduced motion.",
+      "Enhancement: Replaced the native number-input spinner on the Custom Target Size field with a clean plain input.",
+      "Enhancement: Added toast notifications for lightweight feedback (trims reset, clips added, clipboard copy).",
+      "Fix: The test suite now runs deterministically by excluding the scratch worktree copies that previously raced on a shared log file."
+    ]
+  },
+  {
     "version": "v1.9.1: Merge Mode Per-Clip Trimming",
     "date": "August 2026",
     "changes": [
-      "Feature: Added per-clip trimming inside Merge Mode — drag the amber trim handles on each timeline block (or use the new Set In / Set Out / Jump buttons) to choose exactly which section of each clip makes it into the merged output.",
-      "Feature: Trimmed-away portions of each clip are dimmed on the merge timeline, and blocks scale to show the trimmed duration while the total readout reflects the final merged length.",
+      "Feature: Added per-clip trimming inside Merge Mode - drag the amber trim handles on each timeline block (or use the new Set In / Set Out / Jump buttons) to choose exactly which section of each clip makes it into the merged output.",
+      "Feature: Trimmed-away portions of each clip are dimmed on the merge timeline while the blocks themselves stay fixed in place - they're sized by each clip's source length, so adjusting a trim never shifts the rest of the timeline - and the total readout reflects the final merged length.",
       "Feature: The merge preview player honors trims during playback and scrubbing, and the export pipeline trims each selected range to a temporary file before the lossless concatenation step, keeping the fast path when clips are otherwise compatible.",
       "Feature: Added a Reset button to clear the active clip's trim, and per-clip trim ranges are shown in the clip list sidebar."
     ]
@@ -13,8 +29,8 @@ window.changelogData = [
     "version": "v1.9.0: Updater Fix & Dialog Overlap Fix",
     "date": "August 2026",
     "changes": [
-      "Fix: Auto-updates now actually work — the installer published to GitHub Releases is now named consistently with the update metadata (latest.yml), so the app can download and install updates in-app instead of failing with a 404.",
-      "Fix: Settings, Changelog, Feedback, Export, Warnings, and Update dialogs can no longer stack on top of each other — opening one closes any other."
+      "Fix: Auto-updates now actually work - the installer published to GitHub Releases is now named consistently with the update metadata (latest.yml), so the app can download and install updates in-app instead of failing with a 404.",
+      "Fix: Settings, Changelog, Feedback, Export, Warnings, and Update dialogs can no longer stack on top of each other - opening one closes any other."
     ]
   },
   {
@@ -35,33 +51,33 @@ window.changelogData = [
     "version": "v1.8.18: Auto-Updater Rebuilt on electron-updater",
     "date": "August 2026",
     "changes": [
-      "Fix: Replaced the custom PowerShell-based updater with the maintained electron-updater engine. Updates now install reliably — the installer runs directly (no script orchestration), downloads are verified against the published checksum, per-machine installs trigger the proper elevation prompt, and the app relaunches after install.",
+      "Fix: Replaced the custom PowerShell-based updater with the maintained electron-updater engine. Updates now install reliably - the installer runs directly (no script orchestration), downloads are verified against the published checksum, per-machine installs trigger the proper elevation prompt, and the app relaunches after install.",
       "Fix: The update dialog now reports whether a previous update actually applied when the app next starts, so silent failures are no longer invisible.",
-      "Note: The installer now opens on screen after the download so the update can be completed manually. If Windows SmartScreen warns that the publisher is unrecognized, click \"More info\" then \"Run anyway\" to continue — signing the installer with a trusted certificate would remove this prompt entirely."
+      "Note: The installer now opens on screen after the download so the update can be completed manually. If Windows SmartScreen warns that the publisher is unrecognized, click \"More info\" then \"Run anyway\" to continue - signing the installer with a trusted certificate would remove this prompt entirely."
     ]
   },
   {
     "version": "v1.8.17: Title Bar Window Dragging Fix",
     "date": "August 2026",
     "changes": [
-      "Fix: The window can now be dragged from anywhere on the title bar again — the center and right sections (previously blocked by the relocated export estimate and window controls) are draggable regions again, while buttons and controls stay fully clickable."
+      "Fix: The window can now be dragged from anywhere on the title bar again - the center and right sections (previously blocked by the relocated export estimate and window controls) are draggable regions again, while buttons and controls stay fully clickable."
     ]
   },
   {
     "version": "v1.8.16: Auto-Updater Fix, Title Bar Estimates & MP3 Export",
     "date": "August 2026",
     "changes": [
-      "Fix: Auto-updates now actually apply — the installer runs in in-place update mode (--updated), the app relaunches visibly after install, and the update waits until the new executable is fully in place instead of racing the installer stub.",
+      "Fix: Auto-updates now actually apply - the installer runs in in-place update mode (--updated), the app relaunches visibly after install, and the update waits until the new executable is fully in place instead of racing the installer stub.",
       "Fix: Update install results are now surfaced in the update dialog instead of failing silently.",
       "Feature: The export estimate (bitrate, resolution, size) and Start Export button now live in the center of the title bar instead of the sidebar.",
-      "Feature: New MP3 (Audio) output format — export audio-only from any selected track at 192 kbps."
+      "Feature: New MP3 (Audio) output format - export audio-only from any selected track at 192 kbps."
     ]
   },
   {
     "version": "v1.8.15: NVENC Fallback & Export Modal Fixes",
     "date": "August 2026",
     "changes": [
-      "Fix: Resolved an infinite retry loop when NVENC hardware encoding failed — CPU fallback retries now force libx264 instead of reusing the NVENC plan, so exports complete successfully on systems without working GPU encoding.",
+      "Fix: Resolved an infinite retry loop when NVENC hardware encoding failed - CPU fallback retries now force libx264 instead of reusing the NVENC plan, so exports complete successfully on systems without working GPU encoding.",
       "Fix: Merge strategy (lossless concat vs re-encode) now displays correctly in the export complete modal instead of being silently dropped."
     ]
   },
@@ -238,7 +254,7 @@ window.changelogData = [
     "version": "v1.5.5: Medium Clip Safety Margin Refinement",
     "date": "July 2026",
     "changes": [
-      "Fix: Expanded short-to-medium clip safety margin curve (up to 10s duration) to ensure clips between 5s–10s stay strictly under target file size caps."
+      "Fix: Expanded short-to-medium clip safety margin curve (up to 10s duration) to ensure clips between 5s-10s stay strictly under target file size caps."
     ]
   },
   {

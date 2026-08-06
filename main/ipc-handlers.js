@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const { openFileDialog, openMultipleFilesDialog, showSaveDialog, pickDirectoryDialog } = require('./file-manager');
 const { probeFile, extractThumbnail } = require('./probe-service');
 const { calculatePlan } = require('./export-planner');
+const { updateTaskbarProgress, clearTaskbarProgress, setTaskbarError, notifyExportComplete } = require('./taskbar');
 const { Encoder } = require('./encoder');
 const { Merger } = require('./merger');
 const { extractWaveform } = require('./waveform-service');
@@ -62,6 +63,25 @@ function createProgressThrottler(sendFn, minIntervalMs = 100) {
       sendFn(percent, status);
     }
   };
+}
+
+function finishExport(win, result, label, opts = {}) {
+  if (!result || !result.success) {
+    // A user-cancelled export isn't an error worth a red taskbar.
+    if (result && result.cancelled) {
+      clearTaskbarProgress(win);
+      return;
+    }
+    setTaskbarError(win);
+    return;
+  }
+  clearTaskbarProgress(win);
+  // Multi-segment merged exports encode each segment to a temp file first
+  // (clipsend-seg-*); only the final merged output deserves a toast, so the
+  // renderer suppresses notifications for those intermediate steps.
+  if (opts.notify !== false) {
+    notifyExportComplete({ win, filePath: result.filePath, finalSizeMB: result.finalSizeMB, label });
+  }
 }
 
 async function limitConcurrentSettled(items, concurrencyLimit, fn) {
@@ -269,17 +289,25 @@ function registerIpcHandlers() {
     }
 
     try {
+      const win = BrowserWindow.fromWebContents(event.sender);
       const throttledSend = createProgressThrottler((percent, status) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('export:progress', { percent, status });
         }
+        updateTaskbarProgress(win, percent);
       });
+
+      // Intermediate temp segments (multi-segment merged exports) must not
+      // fire completion toasts — the final merged file is what matters.
+      const isTempSegment = !!outputPath && path.basename(outputPath).startsWith('clipsend-seg-');
 
       if (plan.outputFormat === 'gif') {
         const result = await gifExporter.runEncode(plan, outputPath, throttledSend);
+        finishExport(win, result, 'GIF', { notify: !isTempSegment });
         return result;
       } else {
         const result = await encoder.runEncode(plan, outputPath, throttledSend);
+        finishExport(win, result, plan.outputFormat === 'mp3' ? 'MP3' : 'Trimmed clip', { notify: !isTempSegment });
         return result;
       }
     } catch (error) {
@@ -295,6 +323,17 @@ function registerIpcHandlers() {
           return { success: false, fallbackToCpu: true };
         }
       }
+      const win = BrowserWindow.fromWebContents(event.sender);
+      // The GIF exporter surfaces a user cancel by throwing 'Export cancelled
+      // by user' (unlike the encoder, which returns a cancelled result).
+      // Normalize it so a cancel clears the taskbar instead of painting the
+      // red error state, and the renderer's graceful cancel path runs instead
+      // of showing a failure alert.
+      if (/cancell/i.test(String(error && error.message))) {
+        clearTaskbarProgress(win);
+        return { success: false, cancelled: true };
+      }
+      setTaskbarError(win);
       return { success: false, error: error.message };
     }
   });
@@ -330,9 +369,47 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('merge:export', async (event, { filePaths, outputPath, trims }) => {
+  ipcMain.handle('merge:export', async (event, { filePaths, outputPath, trims, options = {} }) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const sendMergeProgress = (percent, status) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('merge:progress', { percent, status });
+      }
+      updateTaskbarProgress(win, percent);
+    };
+
+    // Shared export settings: format (mp4/gif/mp3), non-native resolution, and
+    // an explicit target size. The fast lossless merge path is preserved unless
+    // one of these asks for a post-conversion.
+    const postFormat = options.format === 'gif' || options.format === 'mp3' ? options.format : 'mp4';
+    const postResolution = options.resolution && options.resolution !== 'native' ? options.resolution : null;
+    const postTargetSizeMB = options.targetSizeMB && options.targetSizeMB > 0 ? options.targetSizeMB : null;
+
+    const applyPostConvert = async (result) => {
+      if (result.success && (postFormat !== 'mp4' || postResolution || postTargetSizeMB)) {
+        try {
+          const converted = await merger.postConvertMerged(outputPath, {
+            format: postFormat,
+            resolution: postResolution,
+            targetSizeMB: postTargetSizeMB,
+            totalDurationSec: options.totalDurationSec || 0,
+            onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${postFormat.toUpperCase()}...`)
+          });
+          result.filePath = converted.path;
+          result.finalSizeMB = converted.sizeMB;
+          result.strategy = `${result.strategy} + ${postFormat.toUpperCase()} convert`;
+        } catch (err) {
+          // Cancelled mid-conversion: the merged file still exists, so surface
+          // the merge as done rather than reporting a failure.
+          if (/cancell/i.test(String(err.message))) return result;
+          throw err;
+        }
+      }
+      return result;
+    };
+
     if (!outputPath) {
-      const defaultName = `Merged Video - ${new Date().toISOString().slice(0,10)}.mp4`;
+      const defaultName = `Merged Video - ${new Date().toISOString().slice(0,10)}.${postFormat}`;
       const defaultExportDir = store.get('defaultExportDirectory');
       if (defaultExportDir && fs.existsSync(defaultExportDir)) {
         const targetPath = path.join(defaultExportDir, defaultName);
@@ -363,10 +440,10 @@ function registerIpcHandlers() {
     }
 
     try {
-      const result = await merger.runMerge(filePaths, outputPath, (percent, status) => {
-        event.sender.send('merge:progress', { percent, status });
-      }, { encoder, trims });
-      return result;
+      const result = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder, trims });
+      const final = await applyPostConvert(result);
+      finishExport(win, final, 'Merged video');
+      return final;
     } catch (error) {
       // If NVENC failed during merge re-encode, retry with CPU
       if (encoder === 'h264_nvenc' && error.ffmpegStderr) {
@@ -379,21 +456,24 @@ function registerIpcHandlers() {
           errText.includes('Initialize failed')
         ) {
           try {
-            const retryResult = await merger.runMerge(filePaths, outputPath, (percent, status) => {
-              event.sender.send('merge:progress', { percent, status });
-            }, { encoder: 'libx264', trims });
-            return retryResult;
+            const retryResult = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder: 'libx264', trims });
+            const retryFinal = await applyPostConvert(retryResult);
+            finishExport(win, retryFinal, 'Merged video');
+            return retryFinal;
           } catch (retryError) {
+            setTaskbarError(win);
             return { success: false, error: retryError.message };
           }
         }
       }
+      setTaskbarError(win);
       return { success: false, error: error.message };
     }
   });
 
-  ipcMain.handle('merge:cancel', () => {
+  ipcMain.handle('merge:cancel', (event) => {
     merger.cancel();
+    clearTaskbarProgress(BrowserWindow.fromWebContents(event.sender));
   });
   
   ipcMain.handle('settings:set', (event, key, value) => {
@@ -432,9 +512,10 @@ function registerIpcHandlers() {
     });
   });
 
-  ipcMain.handle('export:cancel', () => {
+  ipcMain.handle('export:cancel', (event) => {
     encoder.cancel();
     gifExporter.cancel();
+    clearTaskbarProgress(BrowserWindow.fromWebContents(event.sender));
   });
 
   ipcMain.handle('shell:showItemInFolder', (event, filePath) => {

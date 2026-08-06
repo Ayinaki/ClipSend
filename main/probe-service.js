@@ -112,8 +112,10 @@ async function extractThumbnail(filePath, tempDir) {
       '-ss', '00:00:01.000',
       '-i', filePath,
       '-vframes', '1',
-      '-vf', 'scale=160:-1',
-      '-q:v', '5',
+      // 640px-wide thumbnails so they stay sharp when stretched to fill the
+      // merge timeline blocks (a single frame, so cost is negligible).
+      '-vf', 'scale=640:-1',
+      '-q:v', '3',
       outputPath
     ];
     
@@ -126,8 +128,8 @@ async function extractThumbnail(filePath, tempDir) {
           '-ss', '00:00:00.000',
           '-i', filePath,
           '-vframes', '1',
-          '-vf', 'scale=160:-1',
-          '-q:v', '5',
+          '-vf', 'scale=640:-1',
+          '-q:v', '3',
           outputPath
         ];
         execFile(ffmpegPath, argsFallback, { maxBuffer: 10 * 1024 * 1024 }, (error2) => {

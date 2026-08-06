@@ -1,6 +1,6 @@
 {
   "name": "video-compressor",
-  "version": "1.9.1",
+  "version": "2.0.0",
   "description": "",
   "main": "main/main.js",
   "scripts": {
@@ -13,7 +13,11 @@
     "transform": {
       "renderer[\\\\/].*\\.js$": "<rootDir>/test/renderer/esbuild-transform.js",
       "\\.[jt]sx?$": "babel-jest"
-    }
+    },
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/\\.freebuff/"
+    ]
   },
   "build": {
     "appId": "com.clipsend.app",

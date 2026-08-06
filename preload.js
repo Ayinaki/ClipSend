@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('clipSend', {
   // Merge Export
   checkMergeCompat: (filePaths) => ipcRenderer.invoke('merge:checkCompat', { filePaths }),
   resolveMergeDestination: () => ipcRenderer.invoke('merge:resolveDestination'),
-  startMerge: (filePaths, outputPath, trims) => ipcRenderer.invoke('merge:export', { filePaths, outputPath, trims }),
+  startMerge: (filePaths, outputPath, trims, options) => ipcRenderer.invoke('merge:export', { filePaths, outputPath, trims, options }),
   cancelMerge: () => ipcRenderer.invoke('merge:cancel'),
   onMergeProgress: (callback) => {
     ipcRenderer.on('merge:progress', (event, data) => callback(data));
