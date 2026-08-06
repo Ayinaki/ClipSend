@@ -8,6 +8,8 @@ import { createEstimateBar, createProgressUI, createWarningsUI, initWindowContro
 import { createSettingsController } from './settings.js';
 import { buildPlanWarnings } from './export-flow.js';
 import { openModal, closeModal, closeAllModals } from './utils/modals.js';
+import { toast, clearToasts } from './utils/toast.js';
+import { createOnboardingController } from './onboarding.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // Disable browser media session action handlers so hardware media keys do not trigger video playback
@@ -201,15 +203,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentPlan = null;
   let currentMediaInfo = null;
+  let loopEnabled = false;   // loop playback toggle (trim mode)
+  let presetTouched = false; // user explicitly changed the target-size preset
 
   const customSizeInputContainer = document.getElementById('custom-size-input-container');
   const customSizeInput = document.getElementById('custom-size-input');
 
   // Hardcode presets to match presets.js (normally we'd IPC this, but hardcoding for simplicity in UI)
   const presets = [
-    { id: 'discord-free', label: '10 MB — Discord (Free)', sizeMB: 10, mode: 'size-limit' },
-    { id: 'discord-nitro-basic', label: '50 MB — Discord (Nitro Basic)', sizeMB: 50, mode: 'size-limit' },
-    { id: 'discord-nitro', label: '500 MB — Discord (Nitro)', sizeMB: 500, mode: 'size-limit' },
+    { id: 'discord-free', label: '10 MB - Discord (Free)', sizeMB: 10, mode: 'size-limit' },
+    { id: 'discord-nitro-basic', label: '50 MB - Discord (Nitro Basic)', sizeMB: 50, mode: 'size-limit' },
+    { id: 'discord-nitro', label: '500 MB - Discord (Nitro)', sizeMB: 500, mode: 'size-limit' },
     { id: 'custom-size', label: 'Custom Target Size', mode: 'size-limit', isCustom: true },
     { id: 'auto-crf', label: 'Auto (Best Quality)', mode: 'auto', crfValue: 19 }
   ];
@@ -225,6 +229,10 @@ document.addEventListener('DOMContentLoaded', () => {
   presetSelect.value = 'discord-free';
 
   presetSelect.addEventListener('change', () => {
+    // Only an explicit size choice made while in Merge mode applies to merge
+    // exports - a preset changed in Trim mode (e.g. to calculate a plan) must
+    // not silently turn a lossless merge into a size-capped re-encode.
+    if (currentMergeMode) presetTouched = true;
     clearExportPlan();
     const selectedPreset = presets.find(p => p.id === presetSelect.value);
     if (selectedPreset && selectedPreset.isCustom) {
@@ -660,6 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await window.clipSend.copyFileToClipboard(currentExportFilePath);
         if (result.success) {
           exportCopyClipboardBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied!';
+          toast('Copied to clipboard', 'success');
           setTimeout(() => {
             exportCopyClipboardBtn.innerHTML = originalText;
             exportCopyClipboardBtn.disabled = false;
@@ -764,6 +773,30 @@ document.addEventListener('DOMContentLoaded', () => {
       // MP3 exports each segment as its own file, so the merged option doesn't apply
       multiExportModeContainer.style.display = (segments && segments.length > 1 && currentFormat !== 'mp3') ? 'block' : 'none';
     }
+
+    // Timeline header: total duration vs kept (trimmed) duration
+    const trimTimelineInfo = document.getElementById('trim-timeline-info');
+    if (trimTimelineInfo) {
+      const total = timeline.duration || 0;
+      const trimmed = timeline.getTrimDuration();
+      const isTrimmed = segments && (segments.length > 1 || trimmed < total - 0.05);
+      trimTimelineInfo.textContent = isTrimmed
+        ? `${formatTrimDur(total)} \u2022 Trimmed ${formatTrimDur(trimmed)}`
+        : formatTrimDur(total);
+    }
+
+    // Segment indicator (multi-trim only)
+    const segIndicator = document.getElementById('trim-segment-indicator');
+    if (segIndicator) {
+      if (segments && segments.length > 1) {
+        const active = timeline.getActiveSegment();
+        const idx = segments.findIndex(s => s.id === active.id) + 1;
+        segIndicator.textContent = `Segment ${idx} / ${segments.length}`;
+        segIndicator.style.display = 'inline-block';
+      } else {
+        segIndicator.style.display = 'none';
+      }
+    }
     
     clearExportPlan(); // Plan is invalid if trim changes
   }
@@ -777,6 +810,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  const trimResetBtn = document.getElementById('trim-reset-btn');
+  trimResetBtn?.addEventListener('click', () => {
+    if (!timeline) return;
+    timeline.resetAll();
+    // Reset also exits multi-trim so the checkbox and timeline agree
+    if (multiTrimEnable) {
+      multiTrimEnable.checked = false;
+      timeline.setMultiTrim(false);
+    }
+    updateTrimDisplay();
+    toast('Trims reset to the full clip', 'success');
+  });
 
   async function loadTrimFileFromResult(result) {
     if (!result) return;
@@ -806,11 +852,33 @@ document.addEventListener('DOMContentLoaded', () => {
           (time) => {
             if (controlBar) controlBar.updateTimecode(time);
             if (timeline) timeline.setPlayhead(time);
+            // Loop playback: when the playhead crosses the trim out-point
+            // while playing, jump back to the in-point and keep going. Gated
+            // on isPlaying so scrubbing/frame-stepping near the end doesn't
+            // yank a paused playhead, and on a minimum range so a tiny trim
+            // can't thrash the seek.
+            if (loopEnabled && timeline) {
+              const ti = timeline.getTrimIn();
+              const to = timeline.getTrimOut();
+              if (to - ti > 0.1 && videoPreview.isPlaying() && time >= to - 0.05) {
+                videoPreview.seekTo(ti);
+              }
+            }
           }
         );
         
         videoPreview.onPlayStateChange((isPlaying) => {
           if (controlBar) controlBar.setPlayState(isPlaying);
+          if (timeline) timeline.setPlaying(isPlaying);
+        });
+
+        // Loop the trimmed range (or full video when untrimmed) on natural end.
+        videoElement.addEventListener('ended', () => {
+          if (loopEnabled && timeline) {
+            const ti = timeline.getTrimIn();
+            videoElement.currentTime = ti;
+            videoElement.play();
+          }
         });
       }
       
@@ -827,37 +895,11 @@ document.addEventListener('DOMContentLoaded', () => {
               if (timeline) timeline.setPlayhead(seconds);
             },
             onFrameStep: (frames) => videoPreview.frameStep(frames, fps),
-            onJumpIn: () => {
-              if (timeline) {
-                const ti = timeline.getTrimIn();
-                videoPreview.seekTo(ti);
-                timeline.setPlayhead(ti);
-                controlBar.updateTimecode(ti);
-              }
-            },
-            onSetIn: () => {
-              if (timeline) {
-                timeline.setTrimIn(videoPreview.getCurrentTime());
-                updateTrimDisplay();
-              }
-            },
-            onStop: () => {
-              videoPreview.pause();
-            },
-            onSetOut: () => {
-              if (timeline) {
-                timeline.setTrimOut(videoPreview.getCurrentTime());
-                updateTrimDisplay();
-              }
-            },
-            onJumpOut: () => {
-              if (timeline) {
-                const to = timeline.getTrimOut();
-                videoPreview.seekTo(to);
-                timeline.setPlayhead(to);
-                controlBar.updateTimecode(to);
-              }
-            }
+            onJumpIn: () => trimJumpIn(),
+            onSetIn: () => trimSetIn(),
+            onStop: () => videoPreview.pause(),
+            onSetOut: () => trimSetOut(),
+            onJumpOut: () => trimJumpOut()
           }
         );
       } else {
@@ -875,11 +917,22 @@ document.addEventListener('DOMContentLoaded', () => {
             // Find active segment to update timecode to current edge if needed, but timeline handles that internally via onSeek.
             // We just need to update the trim display.
             updateTrimDisplay();
+          },
+          onZoomChange: (percent) => {
+            const readout = document.getElementById('timeline-zoom-readout');
+            if (readout) readout.textContent = `${percent}%`;
           }
         });
       }
 
       cropManager.reset(videoElement);
+
+      const trimTimelineTitle = document.getElementById('trim-timeline-title');
+      if (trimTimelineTitle && result.mediaInfo && result.mediaInfo.filePath) {
+        const name = result.mediaInfo.filePath.split('\\').pop().split('/').pop();
+        trimTimelineTitle.textContent = name;
+        trimTimelineTitle.title = name;
+      }
 
       loadPreviewRemux(result.mediaInfo.filePath, exportState.selectedAudioTrackIndex);
       loadWaveform(result.mediaInfo.filePath, exportState.selectedAudioTrackIndex);
@@ -913,15 +966,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // The empty-state "Browse" card button is an alias for the sidebar button.
+  document.getElementById('empty-open-btn')?.addEventListener('click', () => openFileBtn.click());
+
   // --- Trim Drag and Drop ---
   const dropTrimStage = document.getElementById('trim-stage');
   const trimDropOverlay = document.getElementById('trim-drop-overlay');
   const dropModeTrimBtn = document.getElementById('mode-trim-btn');
   const ALLOWED_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm'];
 
+  // Depth counter: dragenter/dragleave bubble, so moving between the stage's
+  // children fires spurious dragleaves. Counting entries keeps the overlay
+  // visible until the drag truly leaves the stage - instead of staying stuck
+  // forever when the user drags away without dropping. (The overlay itself
+  // has pointer-events: none, so its own dragleave can never fire.)
+  let trimDragDepth = 0;
+
+  /** True when the drag carries OS files (vs. the app's own block reorders). */
+  function isFileDrag(e) {
+    return !!(e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files'));
+  }
+
   dropTrimStage.addEventListener('dragenter', (e) => {
     if (!dropModeTrimBtn.classList.contains('active')) return;
+    if (!isFileDrag(e)) return; // ignore internal drags (e.g. block reorder)
     e.preventDefault();
+    trimDragDepth++;
     trimDropOverlay.style.display = 'flex';
   });
 
@@ -930,14 +1000,15 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
   });
 
-  trimDropOverlay.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    trimDropOverlay.style.display = 'none';
+  dropTrimStage.addEventListener('dragleave', () => {
+    trimDragDepth = Math.max(0, trimDragDepth - 1);
+    if (trimDragDepth === 0) trimDropOverlay.style.display = 'none';
   });
 
   dropTrimStage.addEventListener('drop', async (e) => {
     if (!dropModeTrimBtn.classList.contains('active')) return;
     e.preventDefault();
+    trimDragDepth = 0;
     trimDropOverlay.style.display = 'none';
 
     const files = e.dataTransfer.files;
@@ -999,9 +1070,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mergeSidebarDropOverlay) mergeSidebarDropOverlay.style.display = 'none';
   }
 
+  // Shared depth counter across both merge zones (same reasoning as the trim
+  // drop zone: a counter is the only reliable way to know the drag really
+  // left instead of crossing a child or zone boundary).
+  let mergeDragDepth = 0;
+
   function handleMergeDragEnter(e) {
     if (!dropModeMergeBtn.classList.contains('active')) return;
+    if (!isFileDrag(e)) return; // ignore internal drags (e.g. block reorder)
     e.preventDefault();
+    mergeDragDepth++;
     showMergeDropOverlays();
   }
 
@@ -1010,16 +1088,15 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
   }
 
-  function handleMergeDragLeave(e) {
-    e.preventDefault();
-    // We only hide if we're actually leaving the container boundaries, but
-    // since we overlay both, hiding it here is safe.
-    hideMergeDropOverlays();
+  function handleMergeDragLeave() {
+    mergeDragDepth = Math.max(0, mergeDragDepth - 1);
+    if (mergeDragDepth === 0) hideMergeDropOverlays();
   }
 
   async function handleMergeDrop(e) {
     if (!dropModeMergeBtn.classList.contains('active')) return;
     e.preventDefault();
+    mergeDragDepth = 0;
     hideMergeDropOverlays();
 
     // Check if export is in progress by checking if addClipsBtn is disabled
@@ -1067,6 +1144,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (result && result.success) {
         mergeClips.push(...result.clips);
         updateMergeUI();
+        const n = result.clips.length;
+        toast(`Added ${n} clip${n === 1 ? '' : 's'}`, 'success');
       } else if (result && result.error) {
         alert('Error adding clips: ' + result.error);
       }
@@ -1084,14 +1163,30 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) {
       el.addEventListener('dragenter', handleMergeDragEnter);
       el.addEventListener('dragover', handleMergeDragOver);
+      el.addEventListener('dragleave', handleMergeDragLeave);
       el.addEventListener('drop', handleMergeDrop);
     }
   });
 
-  [mergeDropOverlay, mergeSidebarDropOverlay].forEach(el => {
-    if (el) {
-      el.addEventListener('dragleave', handleMergeDragLeave);
-    }
+  // Safety net 1: if an internal drag ends or is cancelled while an overlay
+  // is showing, reset both drop overlays.
+  window.addEventListener('dragend', () => {
+    trimDragDepth = 0;
+    mergeDragDepth = 0;
+    if (trimDropOverlay) trimDropOverlay.style.display = 'none';
+    hideMergeDropOverlays();
+  });
+
+  // Safety net 2: OS file drags never fire dragend in the page, so an Esc
+  // cancel (or a missed final dragleave) could leave a counter > 0. A
+  // document-level dragleave with no relatedTarget only happens when the
+  // drag leaves the window entirely - reset there too.
+  document.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget) return;
+    trimDragDepth = 0;
+    mergeDragDepth = 0;
+    if (trimDropOverlay) trimDropOverlay.style.display = 'none';
+    hideMergeDropOverlays();
   });
 
 
@@ -1317,6 +1412,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === changelogModal) closeChangelogModal();
   });
 
+  // --- Onboarding (first-run tour) ---
+  const onboarding = createOnboardingController({
+    api: window.clipSend,
+    elements: {
+      modal: document.getElementById('onboarding-modal'),
+      closeBtn: document.getElementById('onboarding-close-btn'),
+      skipBtn: document.getElementById('onboarding-skip-btn'),
+      prevBtn: document.getElementById('onboarding-prev-btn'),
+      nextBtn: document.getElementById('onboarding-next-btn'),
+      dots: document.getElementById('onboarding-dots'),
+      stepTitle: document.getElementById('onboarding-title'),
+      stepBody: document.getElementById('onboarding-copy'),
+      stepVisual: document.getElementById('onboarding-visual')
+    }
+  });
+  onboarding.init();
+
+  // The tour is never lost to a skipped first run: replay it from Settings.
+  document.getElementById('replay-onboarding-btn')?.addEventListener('click', () => onboarding.show());
+
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeAllModals();
@@ -1331,26 +1446,41 @@ document.addEventListener('DOMContentLoaded', () => {
   const trimStage = document.getElementById('trim-stage');
   const mergeStage = document.getElementById('merge-stage');
 
+  /** Replay the fade/slide transition when a stage becomes visible. */
+  function animateStage(el) {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    el.style.animation = 'none';
+    void el.offsetWidth; // restart the CSS animation
+    el.style.animation = 'stage-in 0.18s ease-out';
+  }
+
   modeTrimBtn?.addEventListener('click', () => {
+    currentMergeMode = false;
     modeTrimBtn.classList.add('active');
     modeMergeBtn.classList.remove('active');
     trimSidebar.style.display = 'block';
     mergeSidebar.style.display = 'none';
     trimStage.style.display = 'flex';
     mergeStage.style.display = 'none';
+    animateStage(trimStage);
+    clearToasts(); // stale toasts from the other mode shouldn't linger
+    updateExportPanelForMode();
     // Force resize to ensure timeline canvas renders correctly now that it's visible
     window.dispatchEvent(new Event('resize'));
   });
 
   modeMergeBtn?.addEventListener('click', () => {
+    currentMergeMode = true;
     modeMergeBtn.classList.add('active');
     modeTrimBtn.classList.remove('active');
+    updateExportPanelForMode();
     mergeSidebar.style.display = 'flex';
     mergeSidebar.style.flexDirection = 'column';
-    mergeSidebar.style.flex = '1';
     trimSidebar.style.display = 'none';
     mergeStage.style.display = 'flex';
     trimStage.style.display = 'none';
+    animateStage(mergeStage);
+    clearToasts();
     // Force resize to ensure scrubber canvas renders correctly now that it's visible
     window.dispatchEvent(new Event('resize'));
   });
@@ -1366,6 +1496,72 @@ document.addEventListener('DOMContentLoaded', () => {
   const mergePlayBtn = document.getElementById('merge-play-btn');
   const mergeClipIndicator = document.getElementById('merge-clip-indicator');
   let currentMergeMode = false; // tracks which mode is active for keyboard shortcuts
+
+  // Reorder drag helpers: a shared insertion caret element that shows exactly
+  // where the dragged block will land, plus a ghosted block while dragging.
+  let mergeDropIndicator = null;
+  function ensureDropIndicator() {
+    if (!mergeDropIndicator) {
+      mergeDropIndicator = document.createElement('div');
+      mergeDropIndicator.className = 'merge-drop-indicator';
+    }
+    mergeTimelineStrip.appendChild(mergeDropIndicator); // re-attach after strip rebuilds
+  }
+  function positionDropIndicator(x) {
+    if (!mergeDropIndicator) return;
+    mergeDropIndicator.style.left = `${x}px`;
+    mergeDropIndicator.classList.add('visible');
+  }
+  function hideDropIndicator() {
+    if (mergeDropIndicator) mergeDropIndicator.classList.remove('visible');
+  }
+
+  // Clean up ghost/caret state whenever a reorder drag ends (drop or cancel).
+  mergeTimelineStrip?.addEventListener('dragend', () => {
+    mergeTimelineStrip.querySelectorAll('.merge-timeline-block').forEach(b =>
+      b.classList.remove('dragging', 'drag-over-left', 'drag-over-right'));
+    hideDropIndicator();
+  });
+
+  // Dragging onto the strip's gaps or trailing empty space means "insert at
+  // that slot" (a natural move-to-end gesture): the caret follows the cursor
+  // there too, and dropping inserts/appends at the computed slot.
+  function mergeSlotFromClientX(clientX) {
+    const blocks = mergeTimelineStrip.querySelectorAll('.merge-timeline-block');
+    if (!blocks.length) return { index: 0, x: 12 };
+    let index = blocks.length;
+    for (let i = 0; i < blocks.length; i++) {
+      const rect = blocks[i].getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2) { index = i; break; }
+    }
+    if (index >= blocks.length) {
+      const last = blocks[blocks.length - 1];
+      return { index, x: last.offsetLeft + last.offsetWidth + 3 };
+    }
+    return { index, x: blocks[index].offsetLeft };
+  }
+
+  mergeTimelineStrip?.addEventListener('dragover', (e) => {
+    if (isFileDrag(e)) return; // OS file drags use the stage drop overlay instead
+    if (e.target && e.target.closest && e.target.closest('.merge-timeline-block')) return; // block handler owns it
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    positionDropIndicator(mergeSlotFromClientX(e.clientX).x);
+  });
+
+  mergeTimelineStrip?.addEventListener('drop', (e) => {
+    if (isFileDrag(e)) return;
+    if (e.target && e.target.closest && e.target.closest('.merge-timeline-block')) return;
+    e.preventDefault();
+    hideDropIndicator();
+    const draggedIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (isNaN(draggedIdx)) return;
+    let targetIdx = mergeSlotFromClientX(e.clientX).index;
+    if (draggedIdx < targetIdx) targetIdx--;
+    const [movedItem] = mergeClips.splice(draggedIdx, 1);
+    mergeClips.splice(targetIdx, 0, movedItem);
+    updateMergeUI();
+  });
 
   // Instantiate MergePlayer
   const mergePlayer = new MergePlayer({
@@ -1391,6 +1587,13 @@ document.addEventListener('DOMContentLoaded', () => {
           if (i === index) block.classList.add('active-clip');
           else block.classList.remove('active-clip');
         });
+        // Keep the active block in view when the timeline is scrolled
+        const activeBlock = blocks[index];
+        if (activeBlock && typeof activeBlock.scrollIntoView === 'function') {
+          try {
+            activeBlock.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+          } catch (e) { /* jsdom-safe */ }
+        }
       }
       if (mergeClipIndicator && mergeClips.length > 0) {
         mergeClipIndicator.textContent = `Clip ${index + 1} / ${mergeClips.length}`;
@@ -1402,8 +1605,23 @@ document.addEventListener('DOMContentLoaded', () => {
   mergePlayBtn?.addEventListener('click', () => mergePlayer.togglePlay());
 
   // Track mode for keyboard shortcuts
-  modeTrimBtn?.addEventListener('click', () => { currentMergeMode = false; });
-  modeMergeBtn?.addEventListener('click', () => { currentMergeMode = true; });
+  // The shared Export Settings panel is mostly trim machinery (plan estimate,
+  // multi-trim output mode); hide those bits while in Merge mode so they can't
+  // show a stale trim plan or an irrelevant "Output Mode" dropdown.
+  function updateExportPanelForMode() {
+    const isMerge = currentMergeMode;
+    if (calculateBtn) calculateBtn.style.display = isMerge ? 'none' : '';
+    const mec = document.getElementById('multi-export-mode-container');
+    if (mec) {
+      if (isMerge) {
+        mec.style.display = 'none';
+      } else {
+        const isMp3 = formatSelect ? formatSelect.value === 'mp3' : false;
+        const hasMultiSegments = !!(timeline && timeline.getSegments && timeline.getSegments().length > 1);
+        mec.style.display = (!isMp3 && hasMultiSegments) ? 'block' : 'none';
+      }
+    }
+  }
 
   function updateMergeUI() {
     // Normalize per-clip trims (defaults to the full clip)
@@ -1425,6 +1643,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 1. Clip List
     if (!mergeClipList) return;
+    const clipListHeader = document.getElementById('merge-clip-list-header');
+    if (clipListHeader) {
+      clipListHeader.textContent = mergeClips.length > 0 ? `Clip List (${mergeClips.length})` : 'Clip List';
+    }
     mergeClipList.innerHTML = '';
     
     if (mergeClips.length === 0) {
@@ -1437,6 +1659,10 @@ document.addEventListener('DOMContentLoaded', () => {
       mergeClips.forEach((clip, index) => {
         const item = document.createElement('div');
         item.className = 'merge-clip-item';
+        
+        const indexBadge = document.createElement('span');
+        indexBadge.className = 'merge-clip-index';
+        indexBadge.textContent = index + 1;
         
         const img = document.createElement('img');
         if (clip.thumbnailPath) img.src = clip.thumbnailPath;
@@ -1464,8 +1690,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const tIn = typeof clip.trimIn === 'number' ? clip.trimIn : 0;
         const tOut = typeof clip.trimOut === 'number' ? clip.trimOut : fullDur;
         if (tIn > 0.05 || tOut < fullDur - 0.05) {
-          meta.textContent += ` • ✂ ${formatTrimDur(tIn)}–${formatTrimDur(tOut)}`;
+          meta.textContent += ` • ✂ ${formatTrimDur(tIn)}-${formatTrimDur(tOut)}`;
         }
+        // Full info on hover (the line itself may be ellipsized)
+        meta.title = meta.textContent;
         
         info.appendChild(title);
         info.appendChild(meta);
@@ -1478,8 +1706,10 @@ document.addEventListener('DOMContentLoaded', () => {
           mergePlayer.removeClipAtIndex(index);
           mergeClips.splice(index, 1);
           updateMergeUI();
+          toast('Clip removed');
         };
         
+        item.appendChild(indexBadge);
         item.appendChild(img);
         item.appendChild(info);
         item.appendChild(removeBtn);
@@ -1505,7 +1735,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const totalS = Math.floor(totalDur % 60).toString().padStart(2, '0');
       const totalDurStr = totalH > 0 ? `${totalH}:${totalM}:${totalS}` : `${totalM}:${totalS}`;
       
-      if (mergeTotalDuration) mergeTotalDuration.textContent = `Total: ${totalDurStr}`;
+      if (mergeTotalDuration) {
+        mergeTotalDuration.textContent = `${mergeClips.length} ${mergeClips.length === 1 ? 'clip' : 'clips'} • Total: ${totalDurStr}`;
+      }
       
       mergeClips.forEach((clip, index) => {
         const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
@@ -1525,10 +1757,15 @@ document.addEventListener('DOMContentLoaded', () => {
           block.style.backgroundImage = `url("${clip.thumbnailPath}")`;
         }
         
-        const flexRatio = Math.max(dur, 0.01);
+        // Blocks are sized by the clip's FULL source duration so the timeline
+        // stays fixed in place — trims are shown as dimmed regions inside the
+        // block instead of resizing it (which would shift every later clip).
+        const flexRatio = Math.max(full, 0.01);
         block.style.flexGrow = flexRatio;
         block.style.flexBasis = '0';
-        block.style.minWidth = '60px';
+        // Generous min width keeps thumbnails usable with many clips; the strip
+        // scrolls horizontally instead of squashing blocks into nothing.
+        block.style.minWidth = '120px';
         block.style.flexShrink = '0';
         
         // Trim dim overlays + draggable handles
@@ -1541,6 +1778,14 @@ document.addEventListener('DOMContentLoaded', () => {
         dimRight.className = 'merge-trim-dim merge-trim-dim-right';
         dimRight.style.right = '0';
         dimRight.style.width = `${Math.max(0, 100 - outPct)}%`;
+        
+        // Bright window outlining exactly the kept (exported) portion, so it's
+        // obvious where the crop is. Hidden when the clip isn't trimmed.
+        const keepWin = document.createElement('div');
+        keepWin.className = 'merge-trim-keep';
+        keepWin.style.left = `${inPct}%`;
+        keepWin.style.width = `${Math.max(0, outPct - inPct)}%`;
+        if (!isTrimmed) keepWin.style.display = 'none';
         
         const handleIn = document.createElement('div');
         handleIn.className = 'merge-trim-handle merge-trim-handle-in';
@@ -1555,14 +1800,21 @@ document.addEventListener('DOMContentLoaded', () => {
         handleIn.addEventListener('mousedown', (e) => beginTrimDrag(e, block, clip, 'in'));
         handleOut.addEventListener('mousedown', (e) => beginTrimDrag(e, block, clip, 'out'));
         
+        const indexChip = document.createElement('span');
+        indexChip.className = 'merge-timeline-index';
+        indexChip.textContent = index + 1;
+        indexChip.title = `Clip ${index + 1} of ${mergeClips.length}`;
+        
         const durLabel = document.createElement('div');
         durLabel.className = 'merge-timeline-duration';
         durLabel.textContent = isTrimmed ? `✂ ${formatTrimDur(dur)}` : formatTrimDur(dur);
         
         block.appendChild(dimLeft);
         block.appendChild(dimRight);
+        block.appendChild(keepWin);
         block.appendChild(handleIn);
         block.appendChild(handleOut);
+        block.appendChild(indexChip);
         block.appendChild(durLabel);
         
         // Click a block to select & jump to that clip's trim start
@@ -1581,20 +1833,25 @@ document.addEventListener('DOMContentLoaded', () => {
         block.addEventListener('dragstart', (e) => {
           e.dataTransfer.setData('text/plain', index);
           e.dataTransfer.effectAllowed = 'move';
+          // Ghost the block and show the insertion caret at its current slot
+          block.classList.add('dragging');
+          ensureDropIndicator();
+          positionDropIndicator(block.offsetLeft);
         });
         
         block.addEventListener('dragover', (e) => {
+          if (isFileDrag(e)) return; // OS file drags use the stage drop overlay, not the reorder caret
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
           const rect = block.getBoundingClientRect();
           const mid = rect.left + rect.width / 2;
-          if (e.clientX < mid) {
-            block.classList.add('drag-over-left');
-            block.classList.remove('drag-over-right');
-          } else {
-            block.classList.add('drag-over-right');
-            block.classList.remove('drag-over-left');
-          }
+          const before = e.clientX < mid;
+          block.classList.toggle('drag-over-left', before);
+          block.classList.toggle('drag-over-right', !before);
+          // Caret sits at the block's left edge (insert before) or right edge
+          // + half the strip gap (insert after).
+          const x = before ? block.offsetLeft : block.offsetLeft + block.offsetWidth + 3;
+          positionDropIndicator(x);
         });
         
         block.addEventListener('dragleave', () => {
@@ -1602,10 +1859,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         block.addEventListener('drop', (e) => {
+          if (isFileDrag(e)) return; // file drops are handled by the stage overlay handler
           e.preventDefault();
           block.classList.remove('drag-over-left', 'drag-over-right');
           const draggedIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
-          if (isNaN(draggedIdx) || draggedIdx === index) return;
+          if (isNaN(draggedIdx) || draggedIdx === index) {
+            hideDropIndicator();
+            return;
+          }
           
           const rect = block.getBoundingClientRect();
           const mid = rect.left + rect.width / 2;
@@ -1616,7 +1877,7 @@ document.addEventListener('DOMContentLoaded', () => {
           
           const [movedItem] = mergeClips.splice(draggedIdx, 1);
           mergeClips.splice(targetIdx, 0, movedItem);
-          
+          hideDropIndicator();
           updateMergeUI();
         });
         
@@ -1627,11 +1888,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Export button state
     if (exportMergedBtn) exportMergedBtn.disabled = mergeClips.length < 2;
 
-    // 4. Clip indicator
+    // 4. Clip indicator (hidden entirely when no clips are loaded, so the
+    //    chip doesn't render as an empty box)
     if (mergeClipIndicator) {
-      mergeClipIndicator.textContent = mergeClips.length > 0
-        ? `Clip ${mergePlayer.currentClipIndex + 1} / ${mergeClips.length}`
-        : '';
+      if (mergeClips.length > 0) {
+        mergeClipIndicator.textContent = `Clip ${mergePlayer.currentClipIndex + 1} / ${mergeClips.length}`;
+        mergeClipIndicator.style.display = '';
+      } else {
+        mergeClipIndicator.textContent = '';
+        mergeClipIndicator.style.display = 'none';
+      }
     }
 
     // 5. Sync player with current clip list
@@ -1680,17 +1946,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const dimL = blockEl.querySelector('.merge-trim-dim-left');
     const dimR = blockEl.querySelector('.merge-trim-dim-right');
+    const keep = blockEl.querySelector('.merge-trim-keep');
     const hIn = blockEl.querySelector('.merge-trim-handle-in');
     const hOut = blockEl.querySelector('.merge-trim-handle-out');
     const label = blockEl.querySelector('.merge-timeline-duration');
 
+    const isTrimmed = tin > 0.05 || tout < full - 0.05;
+
     if (dimL) dimL.style.width = `${inPct}%`;
     if (dimR) dimR.style.width = `${Math.max(0, 100 - outPct)}%`;
+    if (keep) {
+      keep.style.display = isTrimmed ? 'block' : 'none';
+      keep.style.left = `${inPct}%`;
+      keep.style.width = `${Math.max(0, outPct - inPct)}%`;
+    }
     if (hIn) hIn.style.left = `${inPct}%`;
     if (hOut) hOut.style.left = `${outPct}%`;
     if (label) {
-      const isTrimmed = tin > 0.05 || tout < full - 0.05;
       label.textContent = isTrimmed ? `✂ ${formatTrimDur(dur)}` : formatTrimDur(dur);
+      label.title = isTrimmed ? `Trim ${formatTrimDur(tin)} - ${formatTrimDur(tout)}` : '';
     }
   }
 
@@ -1726,6 +2000,55 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('mouseup', onUp);
   }
 
+  // --- Trim set-in/out & jump helpers (shared with the I/O keyboard shortcuts) ---
+  function trimSetIn() {
+    if (!timeline || !videoPreview) return;
+    timeline.setTrimIn(videoPreview.getCurrentTime());
+    updateTrimDisplay();
+    toast(`In set to ${formatTimecode(timeline.getTrimIn(), fps)}`);
+  }
+
+  function trimSetOut() {
+    if (!timeline || !videoPreview) return;
+    timeline.setTrimOut(videoPreview.getCurrentTime());
+    updateTrimDisplay();
+    toast(`Out set to ${formatTimecode(timeline.getTrimOut(), fps)}`);
+  }
+
+  function trimJumpIn() {
+    if (!timeline || !videoPreview || !controlBar) return;
+    const ti = timeline.getTrimIn();
+    videoPreview.seekTo(ti);
+    timeline.setPlayhead(ti);
+    controlBar.updateTimecode(ti);
+  }
+
+  function trimJumpOut() {
+    if (!timeline || !videoPreview || !controlBar) return;
+    const to = timeline.getTrimOut();
+    videoPreview.seekTo(to);
+    timeline.setPlayhead(to);
+    controlBar.updateTimecode(to);
+  }
+
+  // --- Loop playback toggle (Trim) ---
+  const trimLoopBtn = document.getElementById('trim-loop-btn');
+  function setTrimLoop(on) {
+    loopEnabled = on;
+    trimLoopBtn?.classList.toggle('active', on);
+    trimLoopBtn?.setAttribute('title', on ? 'Loop on - click to disable' : 'Loop playback (I / O to set range)');
+    toast(on ? 'Loop on - plays the trimmed range' : 'Loop off', on ? 'success' : undefined);
+  }
+  trimLoopBtn?.addEventListener('click', () => setTrimLoop(!loopEnabled));
+
+  // --- Timeline zoom controls (Ctrl+wheel on the canvas, +/- buttons, click readout to reset) ---
+  const zoomInBtn = document.getElementById('timeline-zoom-in');
+  const zoomOutBtn = document.getElementById('timeline-zoom-out');
+  const zoomReadout = document.getElementById('timeline-zoom-readout');
+  zoomInBtn?.addEventListener('click', () => { if (timeline) timeline.zoomBy(1.5); });
+  zoomOutBtn?.addEventListener('click', () => { if (timeline) timeline.zoomBy(1 / 1.5); });
+  zoomReadout?.addEventListener('click', () => { if (timeline) timeline.resetView(); });
+
   // --- Merge trim transport buttons ---
   const mergeSetInBtn = document.getElementById('merge-set-in-btn');
   const mergeSetOutBtn = document.getElementById('merge-set-out-btn');
@@ -1733,7 +2056,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const mergeJumpOutBtn = document.getElementById('merge-jump-out-btn');
   const mergeResetTrimBtn = document.getElementById('merge-reset-trim-btn');
 
-  mergeSetInBtn?.addEventListener('click', () => {
+  // Named helpers shared by the transport buttons and the I/O keyboard shortcuts.
+  function mergeSetTrimIn() {
     const idx = mergePlayer.currentClipIndex;
     const clip = mergeClips[idx];
     if (!clip) return;
@@ -1743,9 +2067,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const tin = Math.max(0, Math.min(cur, tout - 0.5));
     mergePlayer.setTrimForClip(idx, tin, tout);
     updateMergeUI();
-  });
+    toast(`In set to ${formatTrimDur(mergeClips[idx].trimIn)}`, 'success');
+  }
 
-  mergeSetOutBtn?.addEventListener('click', () => {
+  function mergeSetTrimOut() {
     const idx = mergePlayer.currentClipIndex;
     const clip = mergeClips[idx];
     if (!clip) return;
@@ -1755,20 +2080,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const tout = Math.min(full, Math.max(cur, tin + 0.5));
     mergePlayer.setTrimForClip(idx, tin, tout);
     updateMergeUI();
-  });
+    toast(`Out set to ${formatTrimDur(mergeClips[idx].trimOut)}`, 'success');
+  }
 
-  mergeJumpInBtn?.addEventListener('click', () => {
+  function mergeJumpTrimIn() {
     const idx = mergePlayer.currentClipIndex;
     if (!mergeClips[idx] || !mergePlayer.boundaries[idx]) return;
     mergePlayer.seekToGlobal(mergePlayer.boundaries[idx].start);
-  });
+  }
 
-  mergeJumpOutBtn?.addEventListener('click', () => {
+  function mergeJumpTrimOut() {
     const idx = mergePlayer.currentClipIndex;
     const b = mergePlayer.boundaries[idx];
     if (!mergeClips[idx] || !b) return;
     mergePlayer.seekToGlobal(Math.max(b.start, b.end - 0.01));
-  });
+  }
+
+  mergeSetInBtn?.addEventListener('click', mergeSetTrimIn);
+  mergeSetOutBtn?.addEventListener('click', mergeSetTrimOut);
+  mergeJumpInBtn?.addEventListener('click', mergeJumpTrimIn);
+  mergeJumpOutBtn?.addEventListener('click', mergeJumpTrimOut);
+
+  // --- Loop playback toggle (Merge) ---
+  const mergeLoopBtn = document.getElementById('merge-loop-btn');
+  function setMergeLoop(on) {
+    mergePlayer.setLoop(on);
+    mergeLoopBtn?.classList.toggle('active', on);
+    mergeLoopBtn?.setAttribute('title', on ? 'Loop on - click to disable' : 'Loop playback (I / O to set range)');
+    toast(on ? 'Loop on - repeats the merged sequence' : 'Loop off', on ? 'success' : undefined);
+  }
+  mergeLoopBtn?.addEventListener('click', () => setMergeLoop(!mergePlayer.loop));
 
   mergeResetTrimBtn?.addEventListener('click', () => {
     const idx = mergePlayer.currentClipIndex;
@@ -1776,6 +2117,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!clip) return;
     mergePlayer.setTrimForClip(idx, 0, clip.mediaInfo.duration);
     updateMergeUI();
+    toast('Trim reset for this clip', 'success');
   });
 
   const addClipsBtn = document.getElementById('add-clips-btn');
@@ -1787,6 +2129,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (result && result.success) {
         mergeClips.push(...result.clips);
         updateMergeUI();
+        const n = result.clips.length;
+        toast(`Added ${n} clip${n === 1 ? '' : 's'}`, 'success');
       } else if (result && result.error) {
         alert('Error adding clips: ' + result.error);
       }
@@ -1797,6 +2141,9 @@ document.addEventListener('DOMContentLoaded', () => {
       addClipsBtn.textContent = 'Add Clips...';
     }
   });
+
+  // The empty-stage "Add Clips" card button is an alias for the sidebar button.
+  document.getElementById('merge-empty-open-btn')?.addEventListener('click', () => addClipsBtn?.click());
 
   // Merge mode export logic
   const mergeWarningsContainer = document.getElementById('merge-warnings');
@@ -1857,7 +2204,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const compatCheck = await window.clipSend.checkMergeCompat(filePaths);
       if (compatCheck && compatCheck.success) {
         if (!compatCheck.compatible) {
-          showMergeWarnings([`Clips have different formats — merge will re-encode (slower). Reason: ${compatCheck.reason}`]);
+          showMergeWarnings([`Clips have different formats - merge will re-encode (slower). Reason: ${compatCheck.reason}`]);
         }
       } else if (compatCheck && !compatCheck.success) {
         alert(`Failed to check compatibility: ${compatCheck.error}`);
@@ -1877,7 +2224,28 @@ document.addEventListener('DOMContentLoaded', () => {
         trimOut: typeof c.trimOut === 'number' ? c.trimOut : (c.mediaInfo && c.mediaInfo.duration) || 0
       }));
 
-      const result = await window.clipSend.startMerge(filePaths, undefined, trims);
+      // Export settings from the shared panel. The fast lossless merge path is
+      // kept unless the user asks for a gif/mp3 output, a non-native
+      // resolution, or an explicit target size (preset changed from default).
+      const exportFormat = formatSelect ? formatSelect.value : 'mp4';
+      const exportResolution = resolutionSelect ? resolutionSelect.value : 'native';
+      const exportPreset = presets.find(p => p.id === (presetSelect ? presetSelect.value : ''));
+      let exportTargetSizeMB = null;
+      if (presetTouched && exportPreset) {
+        if (exportPreset.isCustom) {
+          const v = parseFloat(customSizeInput ? customSizeInput.value : '');
+          if (!isNaN(v) && v > 0) exportTargetSizeMB = v;
+        } else {
+          exportTargetSizeMB = exportPreset.sizeMB;
+        }
+      }
+
+      const result = await window.clipSend.startMerge(filePaths, undefined, trims, {
+        format: exportFormat,
+        resolution: exportResolution,
+        targetSizeMB: exportTargetSizeMB,
+        totalDurationSec: mergePlayer.totalDuration || 0
+      });
       
       if (!result) {
         // Cancelled via save dialog
@@ -2048,8 +2416,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Keyboard shortcuts ---
   document.addEventListener('keydown', (e) => {
-    // Ignore when typing in the timecode field
-    if (e.target.getAttribute('contenteditable') === 'true') return;
+    // Ignore when typing in the timecode field or a form control
+    const target = e.target;
+    if (target.getAttribute && target.getAttribute('contenteditable') === 'true') return;
+    const tag = target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
     if (currentMergeMode) {
       // Merge mode shortcuts
@@ -2058,6 +2429,22 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'Space':
           e.preventDefault();
           mergePlayer.togglePlay();
+          break;
+        case 'KeyI':
+          e.preventDefault();
+          mergeSetTrimIn();
+          break;
+        case 'KeyO':
+          e.preventDefault();
+          mergeSetTrimOut();
+          break;
+        case 'Home':
+          e.preventDefault();
+          mergeJumpTrimIn();
+          break;
+        case 'End':
+          e.preventDefault();
+          mergeJumpTrimOut();
           break;
       }
     } else {
@@ -2075,6 +2462,22 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'ArrowRight':
           e.preventDefault();
           videoPreview.frameStep(1, fps);
+          break;
+        case 'KeyI':
+          e.preventDefault();
+          trimSetIn();
+          break;
+        case 'KeyO':
+          e.preventDefault();
+          trimSetOut();
+          break;
+        case 'Home':
+          e.preventDefault();
+          trimJumpIn();
+          break;
+        case 'End':
+          e.preventDefault();
+          trimJumpOut();
           break;
       }
     }

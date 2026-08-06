@@ -4,11 +4,22 @@
   --panel-border: #2a2a2a;
   --text-color: #cccccc;
   --text-muted: #777777;
-  --accent-color: #0060a8;
-  --accent-hover: #004578;
-  --error-color: #d32f2f;
-  --success-color: #388a77;
-  --success-hover: #2d6b5c;
+  /* One accent hue, used everywhere (color-consistency lock): a calm teal.
+     Two working shades of the same hue: the brighter accent for chrome
+     (rings, sliders, overlays, fills) and a deeper success shade for filled
+     buttons, where white text needs WCAG AA contrast.
+
+     Contrast audit (see commit message):
+       white on #00796b = 5.3:1 (AA)   white on #00685c = 6.7:1 (AA)
+       #ef5350 error on dark = 5.2:1 (AA)   #999 on #1a1a1a = 6.1:1 (AA)
+  */
+  --accent-color: #2ba87e;
+  --accent-hover: #23946d;
+  --error-color: #ef5350;
+  --success-color: #00796b;
+  --success-hover: #00685c;
+  /* Bright teal-mint readouts (timecodes) - same hue family as the accent. */
+  --timecode-color: #3ddc97;
   --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   --font-mono: 'Consolas', 'Courier New', monospace;
 }
@@ -134,6 +145,12 @@ body {
   color: var(--text-primary);
   font-weight: 500;
   color: #ddd;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  padding: 0 5px;
+  line-height: 14px;
+  white-space: nowrap;
 }
 
 .titlebar-estimate-sep {
@@ -156,7 +173,7 @@ body {
 .win-btn {
   background: transparent;
   border: none;
-  color: #666;
+  color: #999; /* 6.1:1 on the title bar, vs 3.0:1 before */
   width: 46px;
   height: 28px;
   font-family: "Segoe MDL2 Assets", "Segoe UI Symbol", sans-serif;
@@ -188,6 +205,7 @@ body {
 /* Sidebar */
 .sidebar {
   width: 260px;
+  flex-shrink: 0; /* the sidebar must never be squeezed by stage content */
   background-color: var(--panel-bg);
   border-right: 1px solid var(--panel-border);
   display: flex;
@@ -201,7 +219,9 @@ body {
 /* Custom Scrollbars */
 .sidebar-content,
 #merge-clip-list,
-#warnings-modal-content {
+#warnings-modal-content,
+#changelog-content,
+#update-notes-container {
   scrollbar-width: thin;
   scrollbar-color: #444 transparent;
   scrollbar-gutter: stable;
@@ -209,26 +229,34 @@ body {
 
 .sidebar-content::-webkit-scrollbar,
 #merge-clip-list::-webkit-scrollbar,
-#warnings-modal-content::-webkit-scrollbar {
+#warnings-modal-content::-webkit-scrollbar,
+#changelog-content::-webkit-scrollbar,
+#update-notes-container::-webkit-scrollbar {
   width: 8px;
 }
 
 .sidebar-content::-webkit-scrollbar-track,
 #merge-clip-list::-webkit-scrollbar-track,
-#warnings-modal-content::-webkit-scrollbar-track {
+#warnings-modal-content::-webkit-scrollbar-track,
+#changelog-content::-webkit-scrollbar-track,
+#update-notes-container::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .sidebar-content::-webkit-scrollbar-thumb,
 #merge-clip-list::-webkit-scrollbar-thumb,
-#warnings-modal-content::-webkit-scrollbar-thumb {
+#warnings-modal-content::-webkit-scrollbar-thumb,
+#changelog-content::-webkit-scrollbar-thumb,
+#update-notes-container::-webkit-scrollbar-thumb {
   background-color: #444;
   border-radius: 4px;
 }
 
 .sidebar-content::-webkit-scrollbar-thumb:hover,
 #merge-clip-list::-webkit-scrollbar-thumb:hover,
-#warnings-modal-content::-webkit-scrollbar-thumb:hover {
+#warnings-modal-content::-webkit-scrollbar-thumb:hover,
+#changelog-content::-webkit-scrollbar-thumb:hover,
+#update-notes-container::-webkit-scrollbar-thumb:hover {
   background-color: #555;
 }
 
@@ -263,6 +291,13 @@ body {
   gap: 8px;
 }
 
+/* The shared Export Settings panel follows the Export Merged Video button in
+   Merge mode (which has no panel-style margin), so give it its own top gap to
+   keep the 10px spacing rhythm consistent with the rest of the sidebar. */
+#export-settings-panel {
+  margin-top: 10px;
+}
+
 /* Inputs & Buttons */
 .full-width {
   width: 100%;
@@ -272,11 +307,14 @@ body {
 .mt-10 { margin-top: 10px; }
 
 button {
-  background-color: var(--accent-color);
+  /* Filled buttons use the deep success teal so white text passes WCAG AA
+     (5.3:1). The brighter accent is reserved for non-text chrome. */
+  background-color: var(--success-color);
   color: white;
   border: 1px solid rgba(0,0,0,0.2);
   padding: 6px 12px;
-  border-radius: 3px;
+  /* Shape-consistency lock: controls and panels share a 4px radius. */
+  border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -284,19 +322,19 @@ button {
 }
 
 button:hover {
-  background-color: var(--accent-hover);
+  background-color: var(--success-hover);
 }
 
 button:disabled {
   background-color: #333;
-  color: #777;
+  color: #888; /* WCAG exempts disabled controls; #888 keeps them legible */
   cursor: not-allowed;
   border-color: #222;
 }
 
 .primary-btn {
   background-color: var(--success-color);
-  color: #000;
+  color: #fff; /* white on #00796b = 5.3:1, WCAG AA */
 }
 
 .primary-btn:hover {
@@ -348,6 +386,17 @@ button:disabled {
 }
 .form-input::placeholder {
   color: #666;
+}
+/* The custom-size field is a plain number entry - drop the browser's native
+   up/down stepper so it matches the other inputs. */
+#custom-size-input::-webkit-outer-spin-button,
+#custom-size-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+#custom-size-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .input-group {
@@ -443,6 +492,7 @@ button:disabled {
 /* Stage & State Views */
 .stage {
   flex: 1;
+  min-width: 0; /* let wide stage content scroll internally instead of widening the layout */
   display: flex;
   flex-direction: column;
   background-color: #050505;
@@ -480,14 +530,29 @@ button:disabled {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.mode-toggle .toggle-btn .toggle-icon {
+  opacity: 0.75;
 }
 .mode-toggle .toggle-btn:hover {
   color: var(--text-primary);
 }
+.mode-toggle .toggle-btn:active {
+  transform: scale(0.96);
+}
 .mode-toggle .toggle-btn.active {
-  background: #333;
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  /* Deep success teal so the white label passes AA (5.3:1). */
+  background: var(--success-color);
+  color: #fff;
+  /* Subtle inner highlight instead of an outer neon glow. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.mode-toggle .toggle-btn.active .toggle-icon {
+  opacity: 1;
 }
 .modal-content {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
@@ -614,6 +679,12 @@ button:disabled {
 .merge-clip-meta {
   font-size: 10px;
   color: var(--text-secondary);
+  /* Keep list items a consistent single line — the trim range must not wrap
+     the item taller (which made the clip list grow a scrollbar and made the
+     sidebar look like it was shrinking when trims were edited). */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .merge-clip-remove {
   background: transparent;
@@ -646,7 +717,36 @@ button:disabled {
   align-items: flex-end;
   overflow: hidden;
   box-sizing: border-box;
-  transition: width 0.2s ease, filter 0.2s, border-color 0.2s, box-shadow 0.2s;
+  transition: width 0.2s ease, filter 0.2s, border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+}
+
+/* The block being dragged is ghosted so the insertion caret reads clearly. */
+.merge-timeline-block.dragging {
+  opacity: 0.4;
+  filter: brightness(0.75);
+  cursor: grabbing;
+  border-color: var(--accent-color);
+  border-style: dashed;
+}
+
+/* Insertion caret: a glowing accent line showing exactly where the dragged
+   block will land. Positioned live from JS during the drag. */
+.merge-drop-indicator {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 78%;
+  border-radius: 2px;
+  background: var(--accent-color);
+  box-shadow: 0 0 10px rgba(43, 168, 126, 0.8);
+  pointer-events: none;
+  z-index: 7;
+  display: none;
+  transition: left 0.12s ease-out;
+}
+.merge-drop-indicator.visible {
+  display: block;
 }
 
 /* Trim overlays on merge timeline blocks */
@@ -654,32 +754,86 @@ button:disabled {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.65);
+  /* Striped overlay so cut-away sections read as clearly "removed". */
+  background: repeating-linear-gradient(135deg, rgba(0,0,0,0.82) 0px, rgba(0,0,0,0.82) 10px, rgba(0,0,0,0.6) 10px, rgba(0,0,0,0.6) 20px);
   z-index: 1;
   pointer-events: none;
+}
+
+/* Bright window outlining the kept (exported) portion of each clip. */
+.merge-trim-keep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  border: 2px solid rgba(43, 168, 126, 0.85);
+  box-shadow: inset 0 0 14px rgba(43, 168, 126, 0.18), 0 0 4px rgba(43, 168, 126, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+  z-index: 2;
 }
 
 .merge-trim-handle {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 4px;
-  margin-left: -2px;
-  background: #ffd54f;
-  box-shadow: 0 0 4px rgba(255, 213, 79, 0.6);
+  width: 6px;
+  margin-left: -3px;
+  /* Neutral white handles read as selection handles (Final-Cut language)
+     and stay visible against the teal keep-window border. The dark ring
+     keeps them readable on bright video frames. */
+  background: #f2f2f2;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 6px rgba(255, 255, 255, 0.55);
   cursor: ew-resize;
-  z-index: 2;
+  z-index: 3;
+  border-radius: 2px;
+}
+.merge-trim-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.4);
   border-radius: 1px;
 }
 .merge-trim-handle:hover {
-  background: #fff176;
-  width: 6px;
-  margin-left: -3px;
+  background: #ffffff;
+  width: 8px;
+  margin-left: -4px;
 }
 
 .merge-timeline-duration {
   position: relative;
-  z-index: 3;
+  z-index: 4;
+  /* Let clicks pass through to the block (select) and to the trim handles
+     beneath, so handles stay draggable across their full height. */
+  pointer-events: none;
+}
+
+/* Clip index chip on each timeline block */
+.merge-timeline-index {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 4;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
 }
 .merge-timeline-block:hover {
   filter: brightness(1.15);
@@ -689,14 +843,14 @@ button:disabled {
   cursor: grabbing;
 }
 .merge-timeline-block.active-clip {
-  box-shadow: inset 0 3px 0 0 var(--accent-color);
-  border-color: #555;
+  box-shadow: inset 0 3px 0 0 var(--accent-color), 0 0 0 1px rgba(43, 168, 126, 0.6), 0 0 14px rgba(43, 168, 126, 0.3);
+  border-color: #2f9c77;
 }
 .merge-timeline-block.drag-over-left {
-  border-left: 3px solid #0078d7;
+  border-left: 3px solid var(--accent-color);
 }
 .merge-timeline-block.drag-over-right {
-  border-right: 3px solid #0078d7;
+  border-right: 3px solid var(--accent-color);
 }
 .merge-timeline-duration {
   width: 100%;
@@ -706,6 +860,27 @@ button:disabled {
   padding: 4px 0;
   white-space: nowrap;
   text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+#merge-timeline-strip {
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
+/* Playhead overlay drawn directly on the clip blocks row, mirroring the
+   scrubber playhead so the current position is visible next to the trims. */
+.merge-timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #ffffff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 3px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  z-index: 6;
+  display: none;
 }
 
 #merge-timeline-strip::-webkit-scrollbar {
@@ -729,9 +904,14 @@ button:disabled {
   box-sizing: border-box;
   background: #161616;
   border-top: 1px solid var(--panel-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.merge-scrubber-area::-webkit-scrollbar {
+  display: none;
 }
 .merge-scrubber-area canvas {
-  width: 100%;
   display: block;
   border-radius: 4px;
   overflow: hidden;
@@ -757,7 +937,7 @@ button:disabled {
 .merge-timecode {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: #a6e22e;
+  color: var(--timecode-color);
   letter-spacing: 0.5px;
   line-height: 1;
 }
@@ -783,9 +963,20 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 11px;
   white-space: nowrap;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 4px 10px;
 }
 
-.merge-reset-trim-btn {
+.merge-trim-info .trim-value {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Scoped to the chip (2 classes) so these beat the later `.transport-btn`
+   rules, which would otherwise force a 24x24 icon-box size on Reset. */
+.merge-trim-info .merge-reset-trim-btn {
   width: auto;
   height: 18px;
   padding: 0 6px;
@@ -793,8 +984,10 @@ button:disabled {
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
+  border-radius: 3px;
+  line-height: 1;
 }
-.merge-reset-trim-btn:hover {
+.merge-trim-info .merge-reset-trim-btn:hover {
   background: rgba(244, 67, 54, 0.15);
   color: #fff;
   border-color: rgba(244, 67, 54, 0.4);
@@ -837,6 +1030,33 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   justify-self: end;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.merge-add-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+.merge-clip-index {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .error-text { color: var(--error-color); margin: 0; }
@@ -844,7 +1064,9 @@ button:disabled {
 /* Video & Timeline Area */
 .video-container {
   flex: 1;
-  background-color: #000;
+  /* Soft letterbox backdrop instead of flat black — the video floats on a
+     subtle blue-tinted vignette so the frame edges read clearly. */
+  background: radial-gradient(ellipse at center, #11161c 0%, #000 72%);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -886,13 +1108,93 @@ button:disabled {
 }
 
 .timeline-container {
-  height: 56px;
+  height: 76px;
   width: 100%;
   background-color: #121212;
   border-left: 1px solid var(--panel-border);
   border-right: 1px solid var(--panel-border);
   border-bottom: 1px solid #1a1a1a;
   box-sizing: border-box;
+}
+
+/* Header above the trim timeline (filename + duration readout) */
+.trim-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background-color: #121212;
+  border: 1px solid var(--panel-border);
+  border-bottom: none;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.trim-timeline-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ddd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.trim-timeline-info {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.trim-timeline-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Timeline zoom cluster (minus / readout / plus) */
+.timeline-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #161616;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1px;
+}
+.zoom-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #bbb;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 3px;
+}
+.zoom-btn:hover {
+  background: #333;
+  color: #fff;
+}
+.zoom-btn:active {
+  transform: scale(0.9);
+}
+.zoom-readout {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--timecode-color);
+  min-width: 34px;
+  text-align: center;
+  user-select: none;
+  cursor: pointer;
+}
+.zoom-readout:hover {
+  color: #fff;
 }
 
 #timeline-canvas {
@@ -944,6 +1246,16 @@ button:disabled {
   border-color: #444;
 }
 
+/* Loop toggle — teal fill + ring when active so the state is obvious. */
+.transport-btn.loop-btn.active {
+  background: rgba(43, 168, 126, 0.22);
+  color: var(--timecode-color);
+  border-color: var(--accent-color);
+}
+.transport-btn.loop-btn.active svg {
+  color: var(--timecode-color);
+}
+
 
 .left-controls {
   display: flex;
@@ -963,7 +1275,7 @@ button:disabled {
 .time-display {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: #a6e22e;
+  color: var(--timecode-color);
   outline: none;
   letter-spacing: 0.5px;
   line-height: 1;
@@ -993,20 +1305,63 @@ button:disabled {
   cursor: pointer;
 }
 
+.trim-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-self: end;
+  min-width: 0;
+}
+
 .trim-info {
   display: flex;
-  gap: 15px;
+  align-items: center;
+  gap: 12px;
   font-family: var(--font-mono);
-  font-size: 12px;
-  justify-self: end;
+  font-size: 11px;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 4px 10px;
 }
 
 .trim-label {
   color: #777;
 }
 .trim-value {
-  color: #ccc;
+  color: #fff;
+  font-weight: 600;
   margin-left: 4px;
+}
+
+.trim-info .trim-reset-btn {
+  width: auto;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  line-height: 1;
+}
+.trim-info .trim-reset-btn:hover {
+  background: rgba(244, 67, 54, 0.15);
+  color: #fff;
+  border-color: rgba(244, 67, 54, 0.4);
+}
+
+.trim-segment-indicator {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
 
 /* Warnings & Export Info */
@@ -1069,7 +1424,9 @@ button:disabled {
 .titlebar-progress-text {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--success-color);
+  /* Bright teal-mint readout: the deep success shade is for button FILLS,
+     not text on dark chrome (would drop to ~3.1:1). */
+  color: var(--timecode-color);
   min-width: 32px;
   text-align: right;
   font-weight: 500;
@@ -1113,11 +1470,29 @@ button:disabled {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
+  /* Every dialog gets the same focused-layer treatment: a soft blur plus a
+     slightly lightened dim so the blur stays visible behind the content. */
+  background-color: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   z-index: 1000;
   display: flex;
   justify-content: center;
   align-items: center;
+  /* The backdrop (blur + dim) fades in with its dialog instead of snapping
+     in. Restarts whenever display flips from none to flex. */
+  animation: modal-backdrop-in 0.18s ease-out;
+}
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .modal-overlay {
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .modal-content {
@@ -1126,5 +1501,269 @@ button:disabled {
   max-width: 90%;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   border: 1px solid #444;
+  /* The dialog settles into place: slight scale + rise as it appears. */
+  animation: modal-dialog-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modal-dialog-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay,
+  .modal-content {
+    animation: none;
+  }
 }
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+/* Transport press-state micro-interaction */
+.transport-btn:active {
+  transform: scale(0.9);
+}
+
+.primary-btn {
+  transition: background-color 0.15s ease, transform 0.06s ease;
+}
+.primary-btn:active {
+  transform: scale(0.98);
+}
+
+/* --- Drop Card (empty states) ---
+   A product card that previews the actual tool instead of a generic icon:
+   a ghost mock of the real UI (waveform timeline / merge blocks) sits on
+   top with centered copy beneath it, so the layout stays balanced at any
+   window width. Drag & drop is the primary affordance, so the browse
+   button is quiet (secondary) rather than a loud CTA. */
+.drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 28px 32px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px; /* shape-consistency lock */
+  background: rgba(255, 255, 255, 0.02);
+  max-width: 460px;
+  box-sizing: border-box;
+}
+.drop-card-visual svg {
+  display: block;
+  width: 340px;
+  height: auto;
+}
+.drop-card-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 340px;
+}
+.drop-card-copy h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #eee;
+}
+.drop-card-copy p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.drop-card-actions {
+  margin-top: 8px;
+}
+.drop-card-hint {
+  font-size: 11px;
+  /* Muted hint, consistent with the rest of the app's secondary text. */
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* --- Toasts --- */
+.toast-container {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 3000;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  max-width: 320px;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-left: 3px solid var(--accent-color);
+  border-radius: 6px;
+  padding: 9px 14px;
+  font-size: 12px;
+  color: #ddd;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast.toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast.toast-leaving {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.toast-success {
+  border-left-color: var(--success-color);
+}
+.toast-error {
+  border-left-color: var(--error-color);
+}
+
+/* Mode-switch transition: the stage fades/slides in when toggling Trim/Merge. */
+@keyframes stage-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Honor reduced-motion: animations above MOTION_INTENSITY 3 must collapse. */
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: none;
+  }
+  .toast-leaving {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* --- First-run Onboarding Tour --- */
+/* The backdrop fade and dialog settle are shared with every modal via
+   .modal-overlay / .modal-content above; only the step visuals keep their
+   own animation here. */
+.onboarding-modal {
+  width: 540px;
+  max-width: 94%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.onboarding-visual {
+  /* Fixed height stage: every step's mock renders at 380x96, so the modal
+     body never jumps between steps. */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 126px;
+  background: #0c0c0c;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 15px 20px;
+  box-sizing: border-box;
+}
+.onboarding-visual svg {
+  display: block;
+  width: 380px;
+  max-width: 100%;
+  height: auto;
+  animation: onboarding-pop 0.2s ease-out;
+}
+@keyframes onboarding-pop {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.onboarding-body {
+  padding: 16px 24px 4px;
+}
+.onboarding-body h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.onboarding-body p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.onboarding-body kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: #222;
+  border: 1px solid #3a3a3a;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: #ddd;
+  white-space: nowrap;
+}
+.onboarding-shortcuts {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+.onboarding-shortcuts li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.onboarding-shortcuts li span {
+  margin-left: auto;
+  color: var(--text-muted);
+  text-align: right;
+}
+.onboarding-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 0 2px;
+}
+.onboarding-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #333;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.onboarding-dot.active {
+  background: var(--accent-color);
+  transform: scale(1.3);
+}
+.onboarding-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--panel-border);
+  margin-top: 12px;
+}
+.onboarding-footer .footer-btns {
+  display: flex;
+  gap: 8px;
+}
+.onboarding-footer .footer-btns .secondary-btn,
+.onboarding-footer .footer-btns .primary-btn {
+  min-width: 72px;
+}
+/* Visible focus ring for keyboard users navigating the tour. */
+.onboarding-modal button:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-visual svg {
+    animation: none;
+  }
+  .onboarding-dot {
+    transition: none;
+  }
+}

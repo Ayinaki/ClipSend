@@ -13,9 +13,13 @@ const PLAYHEAD_W = 2;
 // Minimum trim length when setting in/out points (seconds)
 const MIN_TRIM_SECONDS = 0.5;
 
+// Left padding of #merge-timeline-strip (matches .merge-scrubber-area padding),
+// used to convert scrubber-canvas X coords to strip-relative positions.
+const STRIP_PADDING_LEFT = 12;
+
 // --- Scrubber colours ---
 const COL_BG         = '#1a1a1a';
-const COL_PROGRESS   = '#0078d7'; // app accent color
+const COL_PROGRESS   = '#2ba87e'; // app accent color (teal)
 const COL_BOUNDARY   = 'rgba(255,255,255,0.3)';
 const COL_PLAYHEAD   = '#ffffff';
 
@@ -46,6 +50,7 @@ export class MergePlayer {
     this.totalDuration = 0;
     this.currentClipIndex = 0;
     this.isPlaying = false;
+    this.loop = false;         // when true, restart the sequence on reaching the end
     this.preloadedIndex = -1;  // index of the clip currently preloaded
 
     // Scrubber interaction
@@ -89,6 +94,7 @@ export class MergePlayer {
       this.video.load();
       this.currentClipIndex = 0;
       this._updateTimecodeDisplay(0);
+      this._resizeCanvas();
       this._scheduleRedraw();
       return;
     }
@@ -101,6 +107,7 @@ export class MergePlayer {
       this._loadClip(0, 0, false);
     }
 
+    this._resizeCanvas();
     this._scheduleRedraw();
   }
 
@@ -160,6 +167,11 @@ export class MergePlayer {
     const tin = typeof clip.trimIn === 'number' ? Math.max(0, Math.min(clip.trimIn, full)) : 0;
     const tout = typeof clip.trimOut === 'number' ? Math.max(0, Math.min(clip.trimOut, full)) : full;
     return Math.max(0, tout - tin);
+  }
+
+  /** Enable/disable looping the whole merged sequence. */
+  setLoop(loop) {
+    this.loop = Boolean(loop);
   }
 
   /** Toggle play/pause for the entire sequence. */
@@ -384,6 +396,9 @@ export class MergePlayer {
     if (nextIdx < this.clips.length) {
       // Advance to next clip and continue playing
       this._loadClip(nextIdx, 0, true);
+    } else if (this.loop) {
+      // Loop enabled — restart the whole sequence from the first clip
+      this._loadClip(0, 0, true);
     } else {
       // End of sequence — park the video at the out-point (it is mid-file here,
       // so it would otherwise keep playing the trimmed-away tail)
@@ -401,6 +416,9 @@ export class MergePlayer {
     if (nextIdx < this.clips.length) {
       // Advance to next clip and continue playing
       this._loadClip(nextIdx, 0, true);
+    } else if (this.loop) {
+      // Loop enabled — restart the whole sequence from the first clip
+      this._loadClip(0, 0, true);
     } else {
       // End of sequence — stay on last frame, paused
       this.isPlaying = false;
@@ -435,15 +453,38 @@ export class MergePlayer {
 
   _setupScrubberSize() {
     const resize = () => {
-      const rect = this.canvas.getBoundingClientRect();
-      this.canvas.width = rect.width;
-      this.canvas.height = SCRUBBER_HEIGHT;
-      this.canvas.style.height = SCRUBBER_HEIGHT + 'px';
+      this._resizeCanvas();
       this._drawScrubber();
     };
     resize();
     this._resizeHandler = resize;
     window.addEventListener('resize', resize);
+
+    // Keep the scrubber area scrolled in lockstep with the clip strip so the
+    // playhead/progress stay aligned with the blocks when the timeline scrolls.
+    const strip = document.getElementById('merge-timeline-strip');
+    const area = this.canvas.parentElement;
+    if (strip && area) {
+      // Keep the scrubber area and the clip strip scrolled in lockstep so the
+      // playhead/progress stay aligned with the blocks in both directions.
+      this._scrollSync = () => { area.scrollLeft = strip.scrollLeft; };
+      this._scrollSyncReverse = () => { strip.scrollLeft = area.scrollLeft; };
+      strip.addEventListener('scroll', this._scrollSync);
+      area.addEventListener('scroll', this._scrollSyncReverse);
+    }
+  }
+
+  /** Size the scrubber canvas to the clip strip's full content width. */
+  _resizeCanvas() {
+    const strip = document.getElementById('merge-timeline-strip');
+    const area = this.canvas.parentElement;
+    const clientW = area ? area.clientWidth : 0;
+    const contentW = strip ? Math.max(strip.scrollWidth, clientW) : clientW;
+    this.canvas.style.width = contentW + 'px';
+    this.canvas.width = contentW;
+    this.canvas.height = SCRUBBER_HEIGHT;
+    this.canvas.style.height = SCRUBBER_HEIGHT + 'px';
+    if (strip && area) area.scrollLeft = strip.scrollLeft;
   }
 
   // =========================================================================
@@ -467,14 +508,23 @@ export class MergePlayer {
     const boundaries = [];
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
-      // block.offsetLeft is relative to the #merge-timeline-strip container.
-      // Since #merge-timeline-strip padding-left is 12px, and .merge-scrubber-area padding-left is 12px,
-      // canvas X=0 corresponds to block.offsetLeft = 12.
-      const x = block.offsetLeft - 12;
+      // block.offsetLeft is relative to the #merge-timeline-strip container
+      // (it is position:relative). Since #merge-timeline-strip padding-left
+      // matches .merge-scrubber-area padding-left, canvas X=0 corresponds to
+      // block.offsetLeft = STRIP_PADDING_LEFT.
+      const x = block.offsetLeft - STRIP_PADDING_LEFT;
       const w = block.offsetWidth;
+      // Blocks span each clip's FULL source duration (so trims never shift the
+      // layout), but playback only covers the kept (trimmed) window. Map the
+      // scrubber to the kept sub-range so progress/fill and clicks align with
+      // the non-dimmed part of the block; dimmed regions behave as gaps.
+      const bounds = this._getTrimBounds(i);
+      const full = (this.clips[i].mediaInfo && this.clips[i].mediaInfo.duration) || 0;
+      const inFrac = full > 0 ? Math.max(0, Math.min(bounds.trimIn / full, 1)) : 0;
+      const outFrac = full > 0 ? Math.max(0, Math.min(bounds.trimOut / full, 1)) : 1;
       boundaries.push({
-        startX: x,
-        endX: x + w,
+        startX: x + inFrac * w,
+        endX: x + outFrac * w,
         startSec: this.boundaries[i].start,
         endSec: this.boundaries[i].end
       });
@@ -491,7 +541,10 @@ export class MergePlayer {
     ctx.fillStyle = COL_BG;
     ctx.fillRect(0, 0, W, H);
 
-    if (this.totalDuration <= 0 || this.clips.length === 0) return;
+    if (this.totalDuration <= 0 || this.clips.length === 0) {
+      this._updatePlayheadOverlay();
+      return;
+    }
 
     const vBounds = this._getVisualBoundaries();
     const secondsToX = (s) => {
@@ -508,12 +561,24 @@ export class MergePlayer {
       return (s / this.totalDuration) * W;
     };
 
-    // Draw filled progress
+    // Draw filled progress — only over each clip's kept (non-dimmed) range, so
+    // the fill stops at a clip's trim out-point and resumes at the next clip's
+    // trim in-point, matching the playhead instead of painting through the
+    // trimmed-away (dimmed) sections.
     const globalTime = this.getGlobalTime();
-    const elapsedX = secondsToX(globalTime);
-    
     ctx.fillStyle = COL_PROGRESS;
-    ctx.fillRect(0, 0, elapsedX, H);
+    if (vBounds) {
+      for (let i = 0; i < vBounds.length; i++) {
+        const b = vBounds[i];
+        const range = b.endSec - b.startSec;
+        if (range <= 0 || globalTime < b.startSec) continue;
+        const consumed = Math.min(1, (globalTime - b.startSec) / range);
+        ctx.fillRect(b.startX, 0, consumed * (b.endX - b.startX), H);
+      }
+    } else {
+      const elapsedX = (globalTime / this.totalDuration) * W;
+      ctx.fillRect(0, 0, elapsedX, H);
+    }
 
     // Draw clip boundary tick marks
     for (let i = 1; i < this.boundaries.length; i++) {
@@ -523,8 +588,51 @@ export class MergePlayer {
     }
 
     // Draw playhead
+    const elapsedX = secondsToX(globalTime);
     ctx.fillStyle = COL_PLAYHEAD;
     ctx.fillRect(elapsedX - PLAYHEAD_W / 2, 0, PLAYHEAD_W, H);
+
+    // Mirror the playhead on the clip blocks row so the current position is
+    // visible right on the timeline, next to the trim handles.
+    this._updatePlayheadOverlay(elapsedX);
+  }
+
+  /**
+   * Position the playhead overlay div inside #merge-timeline-strip.
+   * canvasX is the playhead X in scrubber-canvas coordinates; pass
+   * null/undefined (or no clips) to hide the overlay.
+   */
+  _updatePlayheadOverlay(canvasX) {
+    const strip = document.getElementById('merge-timeline-strip');
+    if (!strip) return;
+    let ph = this._playheadEl;
+    if (ph && !ph.isConnected) ph = null; // strip was rebuilt (innerHTML='')
+    if (!ph) ph = strip.querySelector('.merge-timeline-playhead');
+    if (canvasX == null || this.clips.length === 0) {
+      if (ph) ph.style.display = 'none';
+      this._playheadEl = ph;
+      return;
+    }
+    if (!ph) {
+      ph = document.createElement('div');
+      ph.className = 'merge-timeline-playhead';
+      strip.appendChild(ph);
+    }
+    this._playheadEl = ph;
+    ph.style.display = 'block';
+    const leftPx = canvasX + STRIP_PADDING_LEFT;
+    ph.style.left = `${leftPx}px`;
+
+    // Keep the playhead in view during playback: scroll the strip when it
+    // leaves the visible window (the strip 'scroll' event syncs the scrubber).
+    const tol = 32;
+    if (typeof strip.scrollTo === 'function') {
+      if (leftPx < strip.scrollLeft + tol) {
+        strip.scrollTo({ left: Math.max(0, leftPx - tol), behavior: 'smooth' });
+      } else if (leftPx > strip.scrollLeft + strip.clientWidth - tol) {
+        strip.scrollTo({ left: Math.max(0, leftPx - strip.clientWidth + tol), behavior: 'smooth' });
+      }
+    }
   }
 
   // =========================================================================
@@ -544,7 +652,10 @@ export class MergePlayer {
 
   _canvasX(e) {
     const rect = this.canvas.getBoundingClientRect();
-    return e.clientX - rect.left;
+    // The canvas is content-wide inside a scrollable area, so map the click to
+    // content coordinates (matching _getVisualBoundaries' offsetLeft coords).
+    const scrollLeft = this.canvas.parentElement ? this.canvas.parentElement.scrollLeft : 0;
+    return e.clientX - rect.left + scrollLeft;
   }
 
   _xToGlobalSeconds(x) {
@@ -614,5 +725,11 @@ export class MergePlayer {
     window.removeEventListener('mousemove', this._onScrubberMoveRef);
     window.removeEventListener('mouseup', this._onScrubberUpRef);
     if (this._resizeHandler) window.removeEventListener('resize', this._resizeHandler);
+    if (this._scrollSync) {
+      const strip = document.getElementById('merge-timeline-strip');
+      const area = this.canvas.parentElement;
+      if (strip) strip.removeEventListener('scroll', this._scrollSync);
+      if (area) area.removeEventListener('scroll', this._scrollSyncReverse);
+    }
   }
 }
