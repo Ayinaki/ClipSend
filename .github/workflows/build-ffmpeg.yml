@@ -1,0 +1,60 @@
+name: Build Minimal FFmpeg (Windows x64)
+
+# Builds a lean ffmpeg.exe + ffprobe.exe (only the features ClipSend uses)
+# instead of the ~98 MB-per-binary gyan.dev builds, cutting the bundled
+# footprint from ~196 MB to ~30 MB.
+#
+# Run it manually (Actions -> "Build Minimal FFmpeg" -> Run workflow), then
+# download the "ffmpeg-minimal-win64" artifact and drop ffmpeg.exe /
+# ffprobe.exe into bin/ before rebuilding the app. Everything stays bundled —
+# users still get a working app straight from the installer, it's just far
+# smaller.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_qsv:
+        description: 'Include Intel QSV hardware encoders (oneVPL cross-build is the most fragile step - disable if the build fails here)'
+        type: boolean
+        default: true
+      build_nvenc:
+        description: 'Include NVIDIA NVENC hardware encoders'
+        type: boolean
+        default: true
+      build_amf:
+        description: 'Include AMD AMF hardware encoders'
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Cross-compile minimal ffmpeg/ffprobe
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build minimal FFmpeg
+        env:
+          BUILD_QSV: ${{ github.event.inputs.build_qsv == 'true' && '1' || '0' }}
+          BUILD_NVENC: ${{ github.event.inputs.build_nvenc == 'true' && '1' || '0' }}
+          BUILD_AMF: ${{ github.event.inputs.build_amf == 'true' && '1' || '0' }}
+        run: bash scripts/build-ffmpeg.sh
+
+      - name: Sanity check the binaries
+        run: |
+          echo "=== ffmpeg ==="
+          wine artifacts/ffmpeg.exe -version 2>/dev/null | head -2 || echo "(wine not installed - skipping runtime check)"
+          echo "=== sizes ==="
+          ls -lh artifacts/
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-minimal-win64
+          path: |
+            artifacts/ffmpeg.exe
+            artifacts/ffprobe.exe
+          if-no-files-found: error
