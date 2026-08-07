@@ -96,7 +96,9 @@ fetch() { # name url [ref]
 
 if [ "$BUILD_X264" = "1" ]; then
   log "Building libx264"
-  fetch x264 https://code.videolan.org/videolan/x264.git
+  # videolan.org's git server is unreachable from GitHub runners; use the
+  # GitHub mirror (x264 is stable - the 2024 mirror is current enough).
+  fetch x264 https://github.com/mirror/x264.git
   (
     cd "$WORK/x264"
     ./configure --host=x86_64-w64-mingw32 --cross-prefix="$CROSS" \
