@@ -123,15 +123,29 @@ fi
 
 if [ "$BUILD_SVT" = "1" ]; then
   log "Building SVT-AV1"
-  fetch svtav1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+  # Pin to a release tag: master moves, and a shallow clone has no tags so the
+  # generated version header falls back to a bare git hash. v4.2.0 is the
+  # current release and satisfies ffmpeg's "SvtAv1Enc >= 0.9.0" check.
+  fetch svtav1 https://gitlab.com/AOMediaCodec/SVT-AV1.git v4.2.0
   cmake -S "$WORK/svtav1" -B "$WORK/svt-build" -G Ninja \
     -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
     -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
     -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
     -DCMAKE_RC_COMPILER=x86_64-w64-mingw32-windres \
     -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_APPS=OFF -DBUILD_TESTING=OFF -DBUILD_DEC=OFF
+    -DBUILD_APPS=OFF -DBUILD_TESTING=OFF -DBUILD_DEC=OFF \
+    -DBUILD_SHARED_LIBS=OFF   # static: ffmpeg must not need a sidecar DLL
   ninja -C "$WORK/svt-build" && ninja -C "$WORK/svt-build" install
+  # Self-report the exact query ffmpeg's configure will run, so a pkg-config
+  # failure here is visible instead of swallowed by ffmpeg's config.log.
+  log "Verifying SvtAv1Enc pkg-config query"
+  ls -la "$PREFIX/lib/pkgconfig/" | grep -i svt || true
+  cat "$PREFIX/lib/pkgconfig/SvtAv1Enc.pc" 2>/dev/null || true
+  if pkg-config --exists --print-errors "SvtAv1Enc >= 0.9.0"; then
+    echo "SvtAv1Enc pkg-config check: OK (version $(pkg-config --modversion SvtAv1Enc))"
+  else
+    echo "SvtAv1Enc pkg-config check: FAILED (exit $?)"
+  fi
 fi
 
 if [ "$BUILD_LAME" = "1" ]; then
@@ -205,7 +219,7 @@ ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,rawvideo,pcm_s16le"
 log "Configuring FFmpeg (minimal)"
 (
   cd "$WORK/FFmpeg"
-  ./configure \
+  if ! ./configure \
     --arch=x86_64 --target-os=mingw32 --cross-prefix="$CROSS" \
     --prefix="$PREFIX" --pkg-config=pkg-config --pkg-config-flags="--static" \
     --enable-gpl --enable-static --disable-shared --enable-w32threads \
@@ -222,6 +236,14 @@ log "Configuring FFmpeg (minimal)"
     --extra-ldflags="-L$PREFIX/lib" \
     --extra-libs="$EXTRA_LIBS" \
     $CONFIG_EXT
+  then
+    # On failure, dump the pkg-config sections of config.log (the authoritative
+    # record) so the CI log shows the real reason instead of the truncated
+    # "ERROR: ... not found using pkg-config" line.
+    echo "---- ffbuild/config.log: pkg-config / external library failures ----"
+    grep -n -A 6 -i "pkg-config\|SvtAv1Enc\|libaom\|libx264\|libmp3lame\|ERROR" ffbuild/config.log | head -120 || true
+    exit 1
+  fi
 
   make -j"$JOBS"
 )
