@@ -107,8 +107,14 @@ fi
 if [ "$BUILD_AOM" = "1" ]; then
   log "Building libaom (AV1)"
   fetch aom https://aomedia.googlesource.com/aom
+  # aom dropped its in-tree mingw toolchain file, so pass the cross compiler
+  # explicitly (same pattern as the SVT/VPL sections below).
   cmake -S "$WORK/aom" -B "$WORK/aom-build" -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE="$WORK/aom/build/cmake/toolchains/x86_64-mingw-gcc.cmake" \
+    -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+    -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
+    -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
+    -DCMAKE_RC_COMPILER=x86_64-w64-mingw32-windres \
+    -DCMAKE_MAKE_PROGRAM="$(command -v ninja)" \
     -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_BUILD_TYPE=Release \
     -DENABLE_TESTS=0 -DENABLE_DOCS=0 -DENABLE_EXAMPLES=0 -DENABLE_TOOLS=0 \
     -DCONFIG_AV1_ENCODER=1 -DCONFIG_AV1_DECODER=1 -DCONFIG_MULTITHREAD=1
