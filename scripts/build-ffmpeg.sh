@@ -15,16 +15,17 @@
 #
 # REQUIRED feature set (audited against main/*.js):
 #   encoders : libx264, libaom-av1, libsvtav1, aac, libmp3lame, mjpeg (thumbs),
-#              rawvideo (gifski y4m), pcm_s16le (waveform),
+#              png (gif palette), rawvideo (gifski y4m), pcm_s16le (waveform),
 #              h264/av1 nvenc + qsv + amf (hardware)
 #   muxers   : mp4/mov (+faststart), matroska/webm, mp3, gif, image2, wav,
-#              pcm_s16le, yuv4mpegpipe, avi, flv, mpegts, ogg
+#              pcm_s16le, yuv4mpegpipe, avi, flv, mpegts, ogg, null (2-pass pass1)
 #   demuxers : mov, matroska, avi, flv, mpegts, mpegps, mp3, wav, ogg, image2,
 #              gif, m4v
 #   decoders : h264/hevc/av1/vp8/vp9/mpeg4/mpeg2video/mjpeg/wmv3/msmpeg4,
 #              aac/mp3/ac3/eac3/opus/vorbis/flac/alac/truehd/pcm_*
 #   filters  : trim, setpts, scale, crop, fps, format, split, concat,
-#              overlay, pad, null, anull
+#              overlay, pad, null, anull, aresample, aformat, anullsrc,
+#              palettegen, paletteuse, setsar
 #   protocols: file, pipe, concat
 #
 # Usage (in CI or locally on Linux):
@@ -211,7 +212,7 @@ EXTRA_LIBS="-lstdc++ -lpthread -static"
 
 # The hardware encoder names are built-in; only the *_nvenc / *_qsv / *_amf
 # entries matter, and they require the SDK lines above.
-ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,rawvideo,pcm_s16le"
+ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,png,rawvideo,pcm_s16le"
 [ "$BUILD_NVENC" = "1" ] && ENCODERS="$ENCODERS,h264_nvenc,av1_nvenc"
 [ "$BUILD_VPL" = "1" ]   && ENCODERS="$ENCODERS,h264_qsv,av1_qsv"
 [ "$BUILD_AMF" = "1" ]   && ENCODERS="$ENCODERS,h264_amf,av1_amf"
@@ -227,11 +228,11 @@ log "Configuring FFmpeg (minimal)"
     --enable-ffmpeg --enable-ffprobe \
     --enable-protocol=file,pipe,concat \
     --enable-demuxer=mov,matroska,avi,flv,mpegts,mpegps,mp3,wav,ogg,image2,gif,m4v,concat \
-    --enable-muxer=mp4,mov,matroska,webm,mp3,gif,image2,wav,pcm_s16le,yuv4mpegpipe,avi,flv,mpegts,ogg \
+    --enable-muxer=mp4,mov,matroska,webm,mp3,gif,image2,wav,pcm_s16le,yuv4mpegpipe,avi,flv,mpegts,ogg,null \
     --enable-decoder=h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd \
     --enable-encoder="$ENCODERS" \
     --enable-parser=h264,hevc,av1,vp8,vp9,mpeg4video,mpegvideo,mjpeg,aac,mp3,ac3,opus,vorbis,flac,truehd \
-    --enable-filter=trim,setpts,scale,crop,fps,format,split,concat,overlay,pad,null,anull \
+    --enable-filter=trim,setpts,scale,crop,fps,format,split,concat,overlay,pad,null,anull,aresample,aformat,anullsrc,palettegen,paletteuse,setsar \
     --extra-cflags="-I$PREFIX/include -static-libgcc" \
     --extra-ldflags="-L$PREFIX/lib" \
     --extra-libs="$EXTRA_LIBS" \
