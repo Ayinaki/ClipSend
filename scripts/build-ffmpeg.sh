@@ -22,7 +22,7 @@
 #              pcm_s16le, yuv4mpegpipe, avi, flv, mpegts, ogg, null (2-pass pass1)
 #   demuxers : mov, matroska, avi, flv, mpegts, mpegps, mp3, wav, ogg, image2,
 #              gif, m4v
-#   decoders : h264/hevc/av1/vp8/vp9/mpeg4/mpeg2video/mjpeg/wmv3/msmpeg4,
+#   decoders : h264/hevc/av1/vp8/vp9/mpeg4/mpeg2video/mjpeg/png/wmv3/msmpeg4,
 #              aac/mp3/ac3/eac3/opus/vorbis/flac/alac/truehd/pcm_*
 #   filters  : trim, setpts, scale, crop, fps, format, split, concat,
 #              overlay, pad, null, anull, aresample, aformat, anullsrc,
@@ -232,7 +232,7 @@ log "Configuring FFmpeg (minimal)"
     --enable-protocol=file,pipe,concat \
     --enable-demuxer=mov,matroska,avi,flv,mpegts,mpegps,mp3,wav,ogg,image2,gif,m4v,concat \
     --enable-muxer=mp4,mov,matroska,webm,mp3,gif,image2,wav,pcm_s16le,yuv4mpegpipe,avi,flv,mpegts,ogg,null \
-    --enable-decoder=h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd \
+    --enable-decoder=h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,png,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd \
     --enable-encoder="$ENCODERS" \
     --enable-parser=h264,hevc,av1,vp8,vp9,mpeg4video,mpegvideo,mjpeg,aac,mp3,ac3,opus,vorbis,flac,truehd \
     --enable-filter=trim,setpts,scale,crop,fps,format,split,concat,overlay,pad,null,anull,aresample,aformat,anullsrc,palettegen,paletteuse,setsar \
