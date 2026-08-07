@@ -59,6 +59,7 @@ BUILD_AMF="${BUILD_AMF:-1}"   # AMD AMF (headers only)
 
 log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+die()  { echo "ERROR: $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 0. Toolchain
@@ -110,7 +111,9 @@ fi
 
 if [ "$BUILD_AOM" = "1" ]; then
   log "Building libaom (AV1)"
-  fetch aom https://aomedia.googlesource.com/aom
+  # Pin to a release tag: aom master already broke this build once (the in-tree
+  # mingw toolchain file was removed). v3.9.1 is the current release.
+  fetch aom https://aomedia.googlesource.com/aom v3.9.1
   # aom dropped its in-tree mingw toolchain file, so pass the cross compiler
   # explicitly (same pattern as the SVT/VPL sections below).
   cmake -S "$WORK/aom" -B "$WORK/aom-build" -G Ninja \
@@ -170,7 +173,9 @@ fi
 
 if [ "$BUILD_VPL" = "1" ]; then
   log "Building Intel oneVPL (QSV)"
-  fetch oneVPL https://github.com/oneapi-src/oneVPL.git
+  # Pin to the current release tag; master drifts and QSV is already the most
+  # fragile cross-build step.
+  fetch oneVPL https://github.com/oneapi-src/oneVPL.git v2023.4.0
   cmake -S "$WORK/oneVPL" -B "$WORK/vpl-build" -G Ninja \
     -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
     -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
@@ -260,6 +265,46 @@ log "Stripping binaries"
 
 cp "$WORK/FFmpeg/ffmpeg.exe" "$OUT/ffmpeg.exe"
 cp "$WORK/FFmpeg/ffprobe.exe" "$OUT/ffprobe.exe"
+
+# ---------------------------------------------------------------------------
+# Post-build assertion: every component the app uses must be present.
+# --disable-everything silently drops anything whose name doesn't match the
+# configure flag (e.g. 's16le' vs 'pcm_s16le') or whose deps are missing
+# (e.g. png without zlib). This check turns those silent drops into a hard
+# build failure instead of a runtime surprise.
+# ---------------------------------------------------------------------------
+log "Asserting required components are present"
+FF="$OUT/ffmpeg.exe"
+require_encoder()  { "$FF" -hide_banner -encoders 2>&1 | grep -qE " $1 " || die "missing encoder: $1"; }
+require_decoder()  { "$FF" -hide_banner -decoders 2>&1 | grep -qE " $1 " || die "missing decoder: $1"; }
+require_muxer()    { "$FF" -hide_banner -muxers 2>&1 | grep -qE " $1 " || die "missing muxer: $1"; }
+# Demuxers list comma-joined aliases (e.g. 'mov,mp4,m4a,3gp'): match by
+# comma-or-space-delimited token so any alias counts.
+require_demuxer()  { "$FF" -hide_banner -demuxers 2>&1 | grep -qE "(^|[ ,])$1([ ,]|$)" || die "missing demuxer: $1"; }
+require_filter()   { "$FF" -hide_banner -filters 2>&1 | grep -qE "^ .. [A-Z]* *$1 " || die "missing filter: $1"; }
+
+for e in libx264 libaom-av1 libsvtav1 aac libmp3lame mjpeg png gif wrapped_avframe pcm_s16le; do
+  require_encoder "$e"
+done
+[ "$BUILD_NVENC" = "1" ] && { require_encoder h264_nvenc; require_encoder av1_nvenc; }
+[ "$BUILD_VPL" = "1" ]   && { require_encoder h264_qsv; require_encoder av1_qsv; }
+[ "$BUILD_AMF" = "1" ]   && { require_encoder h264_amf; require_encoder av1_amf; }
+
+for d in h264 hevc av1 vp8 vp9 mpeg4 mpeg2video mjpeg png aac mp3 ac3 eac3 opus vorbis flac alac truehd; do
+  require_decoder "$d"
+done
+
+for m in mp4 mov matroska webm mp3 gif image2 wav s16le yuv4mpegpipe avi flv mpegts ogg null; do
+  require_muxer "$m"
+done
+for d in mov matroska avi flv mpegts mpeg m4v concat; do
+  require_demuxer "$d"
+done
+for f in trim setpts scale crop fps format split concat overlay pad null anull aresample aformat anullsrc palettegen paletteuse setsar; do
+  require_filter "$f"
+done
+
+log "All required components present"
 
 echo
 echo "Built:"

@@ -20,7 +20,12 @@ encoders (`libx264`, `libaom-av1`, `libsvtav1`, `aac`, `libmp3lame`, `mjpeg`,
 hardware `nvenc`/`qsv`/`amf`), common container demuxers/muxers, and a few
 filters (`trim`, `scale`, `crop`, `concat`, `setpts`...).
 
-### Recommended: build minimal binaries (roughly 30–50 MB total, saves ~150–165 MB)
+### Recommended: build minimal binaries (64 MB total — saves ~130 MB installed)
+
+Measured results (v2.1.1, Aug 2026): `ffmpeg.exe` + `ffprobe.exe` drop from
+**~196 MB to ~64 MB**, the installed footprint (`dist/win-unpacked`) from
+**~509 MB to ~380 MB**, and the NSIS installer from **~144 MB to ~110 MB**.
+The remaining ~316 MB is Electron itself (unpacked `ClipSend.exe` + DLLs).
 
 `scripts/build-ffmpeg.sh` cross-compiles a lean static `ffmpeg.exe` +
 `ffprobe.exe` for Windows x64 on Linux (mingw-w64, the same approach
