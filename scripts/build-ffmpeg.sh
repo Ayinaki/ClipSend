@@ -15,8 +15,8 @@
 #
 # REQUIRED feature set (audited against main/*.js):
 #   encoders : libx264, libaom-av1, libsvtav1, aac, libmp3lame, mjpeg (thumbs),
-#              png (gif palette), rawvideo (gifski y4m), pcm_s16le (waveform),
-#              h264/av1 nvenc + qsv + amf (hardware)
+#              png (gif palette, needs --enable-zlib), rawvideo (gifski y4m),
+#              pcm_s16le (waveform), h264/av1 nvenc + qsv + amf (hardware)
 #   muxers   : mp4/mov (+faststart), matroska/webm, mp3, gif, image2, wav,
 #              pcm_s16le, yuv4mpegpipe, avi, flv, mpegts, ogg, null (2-pass pass1)
 #   demuxers : mov, matroska, avi, flv, mpegts, mpegps, mp3, wav, ogg, image2,
@@ -68,12 +68,12 @@ if ! have x86_64-w64-mingw32-gcc; then
     sudo apt-get update
     sudo apt-get install -y build-essential git make cmake ninja-build nasm pkg-config \
       autoconf automake libtool yasm \
-      gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev
+      gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev libz-mingw-w64-dev
   else
     apt-get update
     apt-get install -y build-essential git make cmake ninja-build nasm pkg-config \
       autoconf automake libtool yasm \
-      gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev
+      gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev libz-mingw-w64-dev
   fi
 fi
 
@@ -224,7 +224,7 @@ log "Configuring FFmpeg (minimal)"
     --arch=x86_64 --target-os=mingw32 --cross-prefix="$CROSS" \
     --prefix="$PREFIX" --pkg-config=pkg-config --pkg-config-flags="--static" \
     --enable-gpl --enable-static --disable-shared --enable-w32threads \
-    --disable-autodetect --disable-everything \
+    --disable-autodetect --disable-everything --enable-zlib \
     --enable-ffmpeg --enable-ffprobe \
     --enable-protocol=file,pipe,concat \
     --enable-demuxer=mov,matroska,avi,flv,mpegts,mpegps,mp3,wav,ogg,image2,gif,m4v,concat \
