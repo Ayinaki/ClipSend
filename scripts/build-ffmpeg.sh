@@ -18,8 +18,8 @@
 #              rawvideo (gifski y4m), pcm_s16le (waveform),
 #              h264/av1 nvenc + qsv + amf (hardware)
 #   muxers   : mp4/mov (+faststart), matroska/webm, mp3, gif, image2, wav,
-#              s16le, yuv4mpegpipe, avi, flv, mpegts, ogg
-#   demuxers : mov, matroska, avi, flv, mpegts, mpeg, mp3, wav, ogg, image2,
+#              pcm_s16le, yuv4mpegpipe, avi, flv, mpegts, ogg
+#   demuxers : mov, matroska, avi, flv, mpegts, mpegps, mp3, wav, ogg, image2,
 #              gif, m4v
 #   decoders : h264/hevc/av1/vp8/vp9/mpeg4/mpeg2video/mjpeg/wmv3/msmpeg4,
 #              aac/mp3/ac3/eac3/opus/vorbis/flac/alac/truehd/pcm_*
@@ -226,8 +226,8 @@ log "Configuring FFmpeg (minimal)"
     --disable-autodetect --disable-everything \
     --enable-ffmpeg --enable-ffprobe \
     --enable-protocol=file,pipe,concat \
-    --enable-demuxer=mov,matroska,avi,flv,mpegts,mpeg,mp3,wav,ogg,image2,gif,m4v,concat \
-    --enable-muxer=mp4,mov,matroska,webm,mp3,gif,image2,wav,s16le,yuv4mpegpipe,avi,flv,mpegts,ogg \
+    --enable-demuxer=mov,matroska,avi,flv,mpegts,mpegps,mp3,wav,ogg,image2,gif,m4v,concat \
+    --enable-muxer=mp4,mov,matroska,webm,mp3,gif,image2,wav,pcm_s16le,yuv4mpegpipe,avi,flv,mpegts,ogg \
     --enable-decoder=h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd \
     --enable-encoder="$ENCODERS" \
     --enable-parser=h264,hevc,av1,vp8,vp9,mpeg4video,mpegvideo,mjpeg,aac,mp3,ac3,opus,vorbis,flac,truehd \
