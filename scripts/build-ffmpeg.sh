@@ -15,7 +15,8 @@
 #
 # REQUIRED feature set (audited against main/*.js):
 #   encoders : libx264, libaom-av1, libsvtav1, aac, libmp3lame, mjpeg (thumbs),
-#              png (gif palette, needs --enable-zlib), rawvideo (gifski y4m),
+#              png (gif palette, needs --enable-zlib), gif (merged gif output),
+#              wrapped_avframe (yuv4mpegpipe default), rawvideo (gifski y4m),
 #              pcm_s16le (waveform), h264/av1 nvenc + qsv + amf (hardware)
 #   muxers   : mp4/mov (+faststart), matroska/webm, mp3, gif, image2, wav,
 #              pcm_s16le, yuv4mpegpipe, avi, flv, mpegts, ogg, null (2-pass pass1)
@@ -212,7 +213,7 @@ EXTRA_LIBS="-lstdc++ -lpthread -static"
 
 # The hardware encoder names are built-in; only the *_nvenc / *_qsv / *_amf
 # entries matter, and they require the SDK lines above.
-ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,png,rawvideo,pcm_s16le"
+ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,png,gif,wrapped_avframe,rawvideo,pcm_s16le"
 [ "$BUILD_NVENC" = "1" ] && ENCODERS="$ENCODERS,h264_nvenc,av1_nvenc"
 [ "$BUILD_VPL" = "1" ]   && ENCODERS="$ENCODERS,h264_qsv,av1_qsv"
 [ "$BUILD_AMF" = "1" ]   && ENCODERS="$ENCODERS,h264_amf,av1_amf"
