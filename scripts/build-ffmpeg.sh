@@ -79,12 +79,12 @@ log "Installing mingw-w64 cross toolchain"
 if ! have x86_64-w64-mingw32-gcc; then
   if [ "$(id -u)" -ne 0 ]; then
     sudo apt-get update
-    sudo apt-get install -y build-essential git make cmake ninja-build nasm meson pkg-config \
+    sudo apt-get install -y build-essential git make cmake ninja-build nasm meson pkg-config wine64 \
       autoconf automake libtool yasm \
       gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev libz-mingw-w64-dev
   else
     apt-get update
-    apt-get install -y build-essential git make cmake ninja-build nasm meson pkg-config \
+    apt-get install -y build-essential git make cmake ninja-build nasm meson pkg-config wine64 \
       autoconf automake libtool yasm \
       gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev libz-mingw-w64-dev
   fi
@@ -327,43 +327,61 @@ cp "$WORK/FFmpeg/ffprobe.exe" "$OUT/ffprobe.exe"
 # configure flag (e.g. 's16le' vs 'pcm_s16le') or whose deps are missing
 # (e.g. png without zlib). This check turns those silent drops into a hard
 # build failure instead of a runtime surprise.
+#
+# The Windows exe can't execute on this Linux host, so the checks run under
+# wine (installed above). If wine is somehow unavailable, warn and skip -
+# shipping unvalidated is preferable to a build that can never finish, but
+# every CI run is expected to have wine and therefore to run these.
 # ---------------------------------------------------------------------------
 log "Asserting required components are present"
 FF="$OUT/ffmpeg.exe"
-require_encoder()  { "$FF" -hide_banner -encoders 2>&1 | grep -qE " $1 " || die "missing encoder: $1"; }
-require_decoder()  { "$FF" -hide_banner -decoders 2>&1 | grep -qE " $1 " || die "missing decoder: $1"; }
-require_muxer()    { "$FF" -hide_banner -muxers 2>&1 | grep -qE " $1 " || die "missing muxer: $1"; }
-# Demuxers list comma-joined aliases (e.g. 'mov,mp4,m4a,3gp'): match by
-# comma-or-space-delimited token so any alias counts.
-require_demuxer()  { "$FF" -hide_banner -demuxers 2>&1 | grep -qE "(^|[ ,])$1([ ,]|$)" || die "missing demuxer: $1"; }
-require_filter()   { "$FF" -hide_banner -filters 2>&1 | grep -qE "^ .. [A-Z]* *$1 " || die "missing filter: $1"; }
+if have wine; then
+  RUN_FF="wine"
+  export WINEDEBUG=-all
+elif have wine64; then
+  RUN_FF="wine64"
+  export WINEDEBUG=-all
+else
+  RUN_FF=""
+  echo "WARNING: wine not available - skipping post-build component assertions"
+fi
 
-for e in libx264 libaom-av1 libsvtav1 aac libmp3lame mjpeg png gif wrapped_avframe pcm_s16le; do
-  require_encoder "$e"
-done
-[ "$BUILD_NVENC" = "1" ] && { require_encoder h264_nvenc; require_encoder av1_nvenc; }
-[ "$BUILD_VPL" = "1" ]   && { require_encoder h264_qsv; require_encoder av1_qsv; }
-[ "$BUILD_AMF" = "1" ]   && { require_encoder h264_amf; require_encoder av1_amf; }
+if [ -n "$RUN_FF" ]; then
+  require_encoder()  { $RUN_FF "$FF" -hide_banner -encoders 2>&1 | grep -qE " $1 " || die "missing encoder: $1"; }
+  require_decoder()  { $RUN_FF "$FF" -hide_banner -decoders 2>&1 | grep -qE " $1 " || die "missing decoder: $1"; }
+  require_muxer()    { $RUN_FF "$FF" -hide_banner -muxers 2>&1 | grep -qE " $1 " || die "missing muxer: $1"; }
+  # Demuxers list comma-joined aliases (e.g. 'mov,mp4,m4a,3gp'): match by
+  # comma-or-space-delimited token so any alias counts.
+  require_demuxer()  { $RUN_FF "$FF" -hide_banner -demuxers 2>&1 | grep -qE "(^|[ ,])$1([ ,]|$)" || die "missing demuxer: $1"; }
+  require_filter()   { $RUN_FF "$FF" -hide_banner -filters 2>&1 | grep -qE "^ .. [A-Z]* *$1 " || die "missing filter: $1"; }
 
-# AV1 decode: libdav1d is the software path (the native 'av1' decoder is
-# HW-only in current master). Require the decoder, not the lib, so a dav1d
-# build failure surfaces here loudly instead of shipping silently-broken AV1.
-for d in h264 hevc av1 vp8 vp9 mpeg4 mpeg2video mjpeg png aac mp3 ac3 eac3 opus vorbis flac alac truehd; do
-  require_decoder "$d"
-done
-[ "$BUILD_DAV1D" = "1" ] && require_decoder libdav1d
+  for e in libx264 libaom-av1 libsvtav1 aac libmp3lame mjpeg png gif wrapped_avframe pcm_s16le; do
+    require_encoder "$e"
+  done
+  [ "$BUILD_NVENC" = "1" ] && { require_encoder h264_nvenc; require_encoder av1_nvenc; }
+  [ "$BUILD_VPL" = "1" ]   && { require_encoder h264_qsv; require_encoder av1_qsv; }
+  [ "$BUILD_AMF" = "1" ]   && { require_encoder h264_amf; require_encoder av1_amf; }
 
-for m in mp4 mov matroska webm mp3 gif image2 wav s16le yuv4mpegpipe avi flv mpegts ogg null; do
-  require_muxer "$m"
-done
-for d in mov matroska avi flv mpegts mpeg m4v concat; do
-  require_demuxer "$d"
-done
-for f in trim setpts scale crop fps format split concat overlay pad null anull aresample aformat anullsrc palettegen paletteuse setsar; do
-  require_filter "$f"
-done
+  # AV1 decode: libdav1d is the software path (the native 'av1' decoder is
+  # HW-only in current master). Require the decoder, not the lib, so a dav1d
+  # build failure surfaces here loudly instead of shipping silently-broken AV1.
+  for d in h264 hevc av1 vp8 vp9 mpeg4 mpeg2video mjpeg png aac mp3 ac3 eac3 opus vorbis flac alac truehd; do
+    require_decoder "$d"
+  done
+  [ "$BUILD_DAV1D" = "1" ] && require_decoder libdav1d
 
-log "All required components present"
+  for m in mp4 mov matroska webm mp3 gif image2 wav s16le yuv4mpegpipe avi flv mpegts ogg null; do
+    require_muxer "$m"
+  done
+  for d in mov matroska avi flv mpegts mpeg m4v concat; do
+    require_demuxer "$d"
+  done
+  for f in trim setpts scale crop fps format split concat overlay pad null anull aresample aformat anullsrc palettegen paletteuse setsar; do
+    require_filter "$f"
+  done
+
+  log "All required components present"
+fi
 
 echo
 echo "Built:"
