@@ -22,12 +22,21 @@
 #              pcm_s16le, yuv4mpegpipe, avi, flv, mpegts, ogg, null (2-pass pass1)
 #   demuxers : mov, matroska, avi, flv, mpegts, mpegps, mp3, wav, ogg, image2,
 #              gif, m4v
-#   decoders : h264/hevc/av1/vp8/vp9/mpeg4/mpeg2video/mjpeg/png/wmv3/msmpeg4,
-#              aac/mp3/ac3/eac3/opus/vorbis/flac/alac/truehd/pcm_*
+#   decoders : h264/hevc/vp8/vp9/mpeg4/mpeg2video/mjpeg/png/wmv3/msmpeg4,
+#              aac/mp3/ac3/eac3/opus/vorbis/flac/alac/truehd/pcm_*,
+#              libdav1d (software AV1 decode) + av1 (HW-only, see below)
 #   filters  : trim, setpts, scale, crop, fps, format, split, concat,
 #              overlay, pad, null, anull, aresample, aformat, anullsrc,
 #              palettegen, paletteuse, setsar
 #   protocols: file, pipe, concat
+#
+#   AV1 DECODE: current FFmpeg master's native 'av1' decoder refuses software
+#   decode ("Your platform doesn't support hardware accelerated AV1 decoding"
+#   when no hwaccel initializes — the get_pixel_format() loop below never
+#   tests the trailing software format), so libdav1d is the ONLY software AV1
+#   decode path. Without it, AV1 clips silently fail everywhere: merge
+#   thumbnails, trims, and re-encodes. libdav1d registers before the native
+#   decoder, so the CLI auto-selects it — no app-side changes needed.
 #
 # Usage (in CI or locally on Linux):
 #   bash scripts/build-ffmpeg.sh
@@ -37,7 +46,8 @@
 #
 # Each external dependency can be skipped with an env flag so a troublesome
 # one doesn't sink the whole build (e.g. BUILD_VPL=0 drops QSV support):
-#   BUILD_X264 BUILD_AOM BUILD_SVT BUILD_LAME BUILD_VPL BUILD_NVENC BUILD_AMF
+#   BUILD_X264 BUILD_AOM BUILD_SVT BUILD_DAV1D BUILD_LAME BUILD_VPL
+#   BUILD_NVENC BUILD_AMF
 # Default: all on.
 
 set -euo pipefail
@@ -52,10 +62,11 @@ CROSS=x86_64-w64-mingw32-
 BUILD_X264="${BUILD_X264:-1}"
 BUILD_AOM="${BUILD_AOM:-1}"
 BUILD_SVT="${BUILD_SVT:-1}"
+BUILD_DAV1D="${BUILD_DAV1D:-1}" # software AV1 decode (native av1 decoder is HW-only)
 BUILD_LAME="${BUILD_LAME:-1}"
-BUILD_VPL="${BUILD_VPL:-1}"   # Intel QSV
+BUILD_VPL="${BUILD_VPL:-1}"     # Intel QSV
 BUILD_NVENC="${BUILD_NVENC:-1}" # NVIDIA NVENC (headers only)
-BUILD_AMF="${BUILD_AMF:-1}"   # AMD AMF (headers only)
+BUILD_AMF="${BUILD_AMF:-1}"     # AMD AMF (headers only)
 
 log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -68,12 +79,12 @@ log "Installing mingw-w64 cross toolchain"
 if ! have x86_64-w64-mingw32-gcc; then
   if [ "$(id -u)" -ne 0 ]; then
     sudo apt-get update
-    sudo apt-get install -y build-essential git make cmake ninja-build nasm pkg-config \
+    sudo apt-get install -y build-essential git make cmake ninja-build nasm meson pkg-config wine64 \
       autoconf automake libtool yasm \
       gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev libz-mingw-w64-dev
   else
     apt-get update
-    apt-get install -y build-essential git make cmake ninja-build nasm pkg-config \
+    apt-get install -y build-essential git make cmake ninja-build nasm meson pkg-config wine64 \
       autoconf automake libtool yasm \
       gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-x86-64-dev libz-mingw-w64-dev
   fi
@@ -155,6 +166,38 @@ if [ "$BUILD_SVT" = "1" ]; then
   fi
 fi
 
+if [ "$BUILD_DAV1D" = "1" ]; then
+  log "Building libdav1d (software AV1 decode)"
+  # Pin to a release tag on the GitHub mirror (code.videolan.org is
+  # unreachable from GitHub runners). dav1d is pure C and static-only, so the
+  # cross build is just meson + ninja with a small cross file.
+  fetch dav1d https://github.com/videolan/dav1d.git 1.5.4
+  cat > "$WORK/dav1d-cross.txt" <<EOF
+[binaries]
+c = '${CROSS}gcc'
+ar = '${CROSS}ar'
+strip = '${CROSS}strip'
+windres = '${CROSS}windres'
+
+[host_machine]
+system = 'windows'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+EOF
+  meson setup "$WORK/dav1d-build" "$WORK/dav1d" \
+    --cross-file="$WORK/dav1d-cross.txt" \
+    --prefix="$PREFIX" --buildtype=release \
+    --default-library=static \
+    -Denable_tools=false -Denable_tests=false
+  ninja -C "$WORK/dav1d-build" && ninja -C "$WORK/dav1d-build" install
+  if pkg-config --exists --print-errors "dav1d >= 1.0"; then
+    echo "dav1d pkg-config check: OK (version $(pkg-config --modversion dav1d))"
+  else
+    echo "dav1d pkg-config check: FAILED (exit $?)"
+  fi
+fi
+
 if [ "$BUILD_LAME" = "1" ]; then
   log "Building libmp3lame"
   if [ ! -d "$WORK/lame" ]; then
@@ -206,11 +249,23 @@ fi
 log "Cloning FFmpeg"
 fetch FFmpeg https://github.com/FFmpeg/FFmpeg.git
 
+# Patch the off-by-one in av1dec.c's get_pixel_format() so the native AV1
+# decoder's software path actually works. The early "already-decided format"
+# loop exits at `pix_fmts[i] == pix_fmt` WITHOUT testing that element — and
+# the software format is always the last element — so software AV1 decode
+# always fell through to the "no hwaccel -> ENOSYS" error. Test every element
+# up to the AV_PIX_FMT_NONE terminator instead. (libdav1d is auto-selected for
+# AV1 inputs, so this is a fallback for -c:v av1 and BUILD_DAV1D=0 builds.)
+log "Patching av1dec.c software-decode fallback"
+sed -i 's/pix_fmts\[i\] != pix_fmt/pix_fmts[i] != AV_PIX_FMT_NONE/' "$WORK/FFmpeg/libavcodec/av1dec.c"
+grep -q "pix_fmts\[i\] != AV_PIX_FMT_NONE" "$WORK/FFmpeg/libavcodec/av1dec.c" || die "av1dec.c patch failed to apply"
+
 EXTRA_LIBS=""
 CONFIG_EXT=""
 [ "$BUILD_X264" = "1" ]  && CONFIG_EXT="$CONFIG_EXT --enable-libx264"
 [ "$BUILD_AOM" = "1" ]   && CONFIG_EXT="$CONFIG_EXT --enable-libaom"
 [ "$BUILD_SVT" = "1" ]   && CONFIG_EXT="$CONFIG_EXT --enable-libsvtav1"
+[ "$BUILD_DAV1D" = "1" ] && CONFIG_EXT="$CONFIG_EXT --enable-libdav1d"
 [ "$BUILD_LAME" = "1" ]  && CONFIG_EXT="$CONFIG_EXT --enable-libmp3lame"
 [ "$BUILD_VPL" = "1" ]   && CONFIG_EXT="$CONFIG_EXT --enable-libvpl"
 [ "$BUILD_NVENC" = "1" ] && CONFIG_EXT="$CONFIG_EXT --enable-ffnvcodec --enable-nvenc"
@@ -225,6 +280,12 @@ ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,png,gif,wrapped_avfr
 [ "$BUILD_VPL" = "1" ]   && ENCODERS="$ENCODERS,h264_qsv,av1_qsv"
 [ "$BUILD_AMF" = "1" ]   && ENCODERS="$ENCODERS,h264_amf,av1_amf"
 
+# --disable-everything drops every decoder, so the software AV1 path must be
+# named here too — --enable-libdav1d alone links the lib but never registers
+# the libdav1d decoder component (caught by the post-build assertion).
+DECODERS="h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,png,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd"
+[ "$BUILD_DAV1D" = "1" ] && DECODERS="$DECODERS,libdav1d"
+
 log "Configuring FFmpeg (minimal)"
 (
   cd "$WORK/FFmpeg"
@@ -237,7 +298,7 @@ log "Configuring FFmpeg (minimal)"
     --enable-protocol=file,pipe,concat \
     --enable-demuxer=mov,matroska,avi,flv,mpegts,mpegps,mp3,wav,ogg,image2,gif,m4v,concat \
     --enable-muxer=mp4,mov,matroska,webm,mp3,gif,image2,wav,pcm_s16le,yuv4mpegpipe,avi,flv,mpegts,ogg,null \
-    --enable-decoder=h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,png,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd \
+    --enable-decoder="$DECODERS" \
     --enable-encoder="$ENCODERS" \
     --enable-parser=h264,hevc,av1,vp8,vp9,mpeg4video,mpegvideo,mjpeg,aac,mp3,ac3,opus,vorbis,flac,truehd \
     --enable-filter=trim,setpts,scale,crop,fps,format,split,concat,overlay,pad,null,anull,aresample,aformat,anullsrc,palettegen,paletteuse,setsar \
@@ -250,7 +311,7 @@ log "Configuring FFmpeg (minimal)"
     # record) so the CI log shows the real reason instead of the truncated
     # "ERROR: ... not found using pkg-config" line.
     echo "---- ffbuild/config.log: pkg-config / external library failures ----"
-    grep -n -A 6 -i "pkg-config\|SvtAv1Enc\|libaom\|libx264\|libmp3lame\|ERROR" ffbuild/config.log | head -120 || true
+    grep -n -A 6 -i "pkg-config\|SvtAv1Enc\|libaom\|libx264\|libmp3lame\|libdav1d\|ERROR" ffbuild/config.log | head -120 || true
     exit 1
   fi
 
@@ -272,39 +333,61 @@ cp "$WORK/FFmpeg/ffprobe.exe" "$OUT/ffprobe.exe"
 # configure flag (e.g. 's16le' vs 'pcm_s16le') or whose deps are missing
 # (e.g. png without zlib). This check turns those silent drops into a hard
 # build failure instead of a runtime surprise.
+#
+# The Windows exe can't execute on this Linux host, so the checks run under
+# wine (installed above). If wine is somehow unavailable, warn and skip -
+# shipping unvalidated is preferable to a build that can never finish, but
+# every CI run is expected to have wine and therefore to run these.
 # ---------------------------------------------------------------------------
 log "Asserting required components are present"
 FF="$OUT/ffmpeg.exe"
-require_encoder()  { "$FF" -hide_banner -encoders 2>&1 | grep -qE " $1 " || die "missing encoder: $1"; }
-require_decoder()  { "$FF" -hide_banner -decoders 2>&1 | grep -qE " $1 " || die "missing decoder: $1"; }
-require_muxer()    { "$FF" -hide_banner -muxers 2>&1 | grep -qE " $1 " || die "missing muxer: $1"; }
-# Demuxers list comma-joined aliases (e.g. 'mov,mp4,m4a,3gp'): match by
-# comma-or-space-delimited token so any alias counts.
-require_demuxer()  { "$FF" -hide_banner -demuxers 2>&1 | grep -qE "(^|[ ,])$1([ ,]|$)" || die "missing demuxer: $1"; }
-require_filter()   { "$FF" -hide_banner -filters 2>&1 | grep -qE "^ .. [A-Z]* *$1 " || die "missing filter: $1"; }
+if have wine; then
+  RUN_FF="wine"
+  export WINEDEBUG=-all
+elif have wine64; then
+  RUN_FF="wine64"
+  export WINEDEBUG=-all
+else
+  RUN_FF=""
+  echo "WARNING: wine not available - skipping post-build component assertions"
+fi
 
-for e in libx264 libaom-av1 libsvtav1 aac libmp3lame mjpeg png gif wrapped_avframe pcm_s16le; do
-  require_encoder "$e"
-done
-[ "$BUILD_NVENC" = "1" ] && { require_encoder h264_nvenc; require_encoder av1_nvenc; }
-[ "$BUILD_VPL" = "1" ]   && { require_encoder h264_qsv; require_encoder av1_qsv; }
-[ "$BUILD_AMF" = "1" ]   && { require_encoder h264_amf; require_encoder av1_amf; }
+if [ -n "$RUN_FF" ]; then
+  require_encoder()  { $RUN_FF "$FF" -hide_banner -encoders 2>&1 | grep -qE " $1 " || die "missing encoder: $1"; }
+  require_decoder()  { $RUN_FF "$FF" -hide_banner -decoders 2>&1 | grep -qE " $1 " || die "missing decoder: $1"; }
+  require_muxer()    { $RUN_FF "$FF" -hide_banner -muxers 2>&1 | grep -qE " $1 " || die "missing muxer: $1"; }
+  # Demuxers list comma-joined aliases (e.g. 'mov,mp4,m4a,3gp'): match by
+  # comma-or-space-delimited token so any alias counts.
+  require_demuxer()  { $RUN_FF "$FF" -hide_banner -demuxers 2>&1 | grep -qE "(^|[ ,])$1([ ,]|$)" || die "missing demuxer: $1"; }
+  require_filter()   { $RUN_FF "$FF" -hide_banner -filters 2>&1 | grep -qE "^ .. [A-Z]* *$1 " || die "missing filter: $1"; }
 
-for d in h264 hevc av1 vp8 vp9 mpeg4 mpeg2video mjpeg png aac mp3 ac3 eac3 opus vorbis flac alac truehd; do
-  require_decoder "$d"
-done
+  for e in libx264 libaom-av1 libsvtav1 aac libmp3lame mjpeg png gif wrapped_avframe pcm_s16le; do
+    require_encoder "$e"
+  done
+  [ "$BUILD_NVENC" = "1" ] && { require_encoder h264_nvenc; require_encoder av1_nvenc; }
+  [ "$BUILD_VPL" = "1" ]   && { require_encoder h264_qsv; require_encoder av1_qsv; }
+  [ "$BUILD_AMF" = "1" ]   && { require_encoder h264_amf; require_encoder av1_amf; }
 
-for m in mp4 mov matroska webm mp3 gif image2 wav s16le yuv4mpegpipe avi flv mpegts ogg null; do
-  require_muxer "$m"
-done
-for d in mov matroska avi flv mpegts mpeg m4v concat; do
-  require_demuxer "$d"
-done
-for f in trim setpts scale crop fps format split concat overlay pad null anull aresample aformat anullsrc palettegen paletteuse setsar; do
-  require_filter "$f"
-done
+  # AV1 decode: libdav1d is the software path (the native 'av1' decoder is
+  # HW-only in current master). Require the decoder, not the lib, so a dav1d
+  # build failure surfaces here loudly instead of shipping silently-broken AV1.
+  for d in h264 hevc av1 vp8 vp9 mpeg4 mpeg2video mjpeg png aac mp3 ac3 eac3 opus vorbis flac alac truehd; do
+    require_decoder "$d"
+  done
+  [ "$BUILD_DAV1D" = "1" ] && require_decoder libdav1d
 
-log "All required components present"
+  for m in mp4 mov matroska webm mp3 gif image2 wav s16le yuv4mpegpipe avi flv mpegts ogg null; do
+    require_muxer "$m"
+  done
+  for d in mov matroska avi flv mpegts mpeg m4v concat; do
+    require_demuxer "$d"
+  done
+  for f in trim setpts scale crop fps format split concat overlay pad null anull aresample aformat anullsrc palettegen paletteuse setsar; do
+    require_filter "$f"
+  done
+
+  log "All required components present"
+fi
 
 echo
 echo "Built:"

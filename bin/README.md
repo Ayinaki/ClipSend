@@ -59,6 +59,15 @@ Notes:
 - The decoder/demuxer lists are deliberately a bit wider than the app's
   own `ALLOWED_EXTENSIONS` (`mp4/mkv/mov/avi/webm`) so odd input files still
   load — trim `flv/mpegts/ogg` etc. if you want the last few MB back.
+- **AV1 decode needs `libdav1d`.** Current FFmpeg master's native `av1`
+  decoder is HW-only (it errors with "Your platform doesn't support hardware
+  accelerated AV1 decoding" when no hwaccel initializes), so the minimal
+  build MUST include dav1d (`--enable-libdav1d`, pinned to `v1.5.4`).
+  Without it, AV1 clips silently fail everywhere: merge thumbnails, trims,
+  and re-encodes. libdav1d registers before the native decoder, so the CLI
+  auto-selects it — no app-side changes. The build script also patches an
+  off-by-one in `av1dec.c`'s `get_pixel_format()` so `-c:v av1` still works
+  as a fallback when dav1d is disabled.
 
 ### Quick check after swapping
 
