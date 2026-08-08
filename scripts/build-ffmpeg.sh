@@ -280,6 +280,12 @@ ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,png,gif,wrapped_avfr
 [ "$BUILD_VPL" = "1" ]   && ENCODERS="$ENCODERS,h264_qsv,av1_qsv"
 [ "$BUILD_AMF" = "1" ]   && ENCODERS="$ENCODERS,h264_amf,av1_amf"
 
+# --disable-everything drops every decoder, so the software AV1 path must be
+# named here too — --enable-libdav1d alone links the lib but never registers
+# the libdav1d decoder component (caught by the post-build assertion).
+DECODERS="h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,png,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd"
+[ "$BUILD_DAV1D" = "1" ] && DECODERS="$DECODERS,libdav1d"
+
 log "Configuring FFmpeg (minimal)"
 (
   cd "$WORK/FFmpeg"
@@ -292,7 +298,7 @@ log "Configuring FFmpeg (minimal)"
     --enable-protocol=file,pipe,concat \
     --enable-demuxer=mov,matroska,avi,flv,mpegts,mpegps,mp3,wav,ogg,image2,gif,m4v,concat \
     --enable-muxer=mp4,mov,matroska,webm,mp3,gif,image2,wav,pcm_s16le,yuv4mpegpipe,avi,flv,mpegts,ogg,null \
-    --enable-decoder=h264,hevc,av1,vp8,vp9,mpeg4,mpeg2video,mjpeg,png,wmv3,msmpeg4v2,msmpeg4v3,aac,mp3,ac3,eac3,opus,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,truehd \
+    --enable-decoder="$DECODERS" \
     --enable-encoder="$ENCODERS" \
     --enable-parser=h264,hevc,av1,vp8,vp9,mpeg4video,mpegvideo,mjpeg,aac,mp3,ac3,opus,vorbis,flac,truehd \
     --enable-filter=trim,setpts,scale,crop,fps,format,split,concat,overlay,pad,null,anull,aresample,aformat,anullsrc,palettegen,paletteuse,setsar \
