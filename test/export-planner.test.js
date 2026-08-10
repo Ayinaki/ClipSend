@@ -480,6 +480,139 @@ describe('calculatePlan — MP3 audio export', () => {
 });
 
 // ---------------------------------------------------------------------------
+// calculatePlan — codec & hardware encoder selection
+// ---------------------------------------------------------------------------
+
+describe('calculatePlan — codec & hardware encoder selection', () => {
+  const CAPS_ALL = {
+    nvenc: { h264: true, av1: true },
+    qsv: { h264: true, av1: true },
+    amf: { h264: true, av1: true },
+    svtav1: true,
+    libx264: true
+  };
+
+  test('AV1 + CPU resolves to libsvtav1 with an mp4 container in auto mode', () => {
+    const plan = calculatePlan(media1080p, 0, 30, {
+      mode: 'auto', crfValue: 19, videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    });
+    expect(plan.encoder).toBe('libsvtav1');
+    expect(plan.codec).toBe('av1');
+    expect(plan.container).toBe('mp4');
+    expect(plan.isSinglePass).toBe(true);
+    expect(plan.singlePassArgs).toContain('libsvtav1');
+    // AV1 now muxes into the picked format (mp4): AAC audio + faststart.
+    expect(plan.singlePassArgs).toContain('aac');
+    expect(plan.singlePassArgs).toContain('+faststart');
+  });
+
+  test('AV1 + CPU size-limit uses 2-pass SVT-AV1 with VBV constraints', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('libsvtav1');
+    // 2-pass plans don't set isSinglePass (encoder.js treats it as 2-pass).
+    expect(plan.isSinglePass).toBeFalsy();
+    expect(plan.pass1Args).toContain('libsvtav1');
+    expect(plan.pass1Args).toContain('-pass');
+    expect(plan.pass1Args[plan.pass1Args.indexOf('-pass') + 1]).toBe('1');
+    expect(plan.pass2Args[plan.pass2Args.indexOf('-pass') + 1]).toBe('2');
+    expect(plan.pass1Args).toContain('-maxrate');
+  });
+
+  test('AV1 + CPU falls back to libaom-av1 when svtav1 is not shipped', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'av1', hwAccel: 'cpu', encoders: { libaom: true, libx264: true }
+    }));
+    expect(plan.encoder).toBe('libaom-av1');
+    expect(plan.pass1Args).toContain('libaom-av1');
+    expect(plan.pass1Args).toContain('-cpu-used');
+  });
+
+  test('AV1 + NVENC resolves to av1_nvenc single-pass when available', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'av1', hwAccel: 'nvenc', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('av1_nvenc');
+    expect(plan.isSinglePass).toBe(true);
+    expect(plan.singlePassArgs).toContain('av1_nvenc');
+    expect(plan.container).toBe('mp4');
+  });
+
+  test('Intel QSV is selected when the user picks it and it is available', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'qsv', encoders: { qsv: { h264: true, av1: false } }
+    }));
+    expect(plan.encoder).toBe('h264_qsv');
+    expect(plan.isSinglePass).toBe(true);
+    expect(plan.singlePassArgs).toContain('h264_qsv');
+  });
+
+  test('AMD AMF is selected when the user picks it and it is available', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'amf', encoders: { amf: { h264: true, av1: true } }
+    }));
+    expect(plan.encoder).toBe('h264_amf');
+    expect(plan.isSinglePass).toBe(true);
+    expect(plan.singlePassArgs).toContain('h264_amf');
+  });
+
+  test('auto mode prefers NVENC over QSV/AMF/CPU for h264', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'auto', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('h264_nvenc');
+  });
+
+  test('auto mode falls through vendors in order for AV1', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'auto', videoCodec: 'av1',
+      encoders: { qsv: { h264: true, av1: true } } // no nvenc/amf
+    }));
+    expect(plan.encoder).toBe('av1_qsv');
+  });
+
+  test('auto mode with no hardware available falls back to CPU', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'auto', encoders: { svtav1: true, libx264: true }
+    }));
+    expect(plan.encoder).toBe('libx264');
+  });
+
+  test('requesting an unavailable vendor falls back to the CPU encoder', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'amf', encoders: { nvenc: { h264: true, av1: false } }
+    }));
+    expect(plan.encoder).toBe('libx264');
+  });
+
+  test('legacy hasNvenc flag still selects NVENC in auto mode', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'auto', hasNvenc: true
+    }));
+    expect(plan.encoder).toBe('h264_nvenc');
+  });
+
+  test('QSV quality mode (auto preset) uses -global_quality', () => {
+    const plan = calculatePlan(media1080p, 0, 60, {
+      mode: 'auto', crfValue: 19, hwAccel: 'qsv',
+      encoders: { qsv: { h264: true, av1: false } }
+    });
+    expect(plan.singlePassArgs).toContain('-global_quality');
+    expect(plan.singlePassArgs).not.toContain('-cq');
+  });
+
+  test('AMF quality mode uses -rc cqp and -qp_i/-qp_p', () => {
+    const plan = calculatePlan(media1080p, 0, 60, {
+      mode: 'auto', crfValue: 19, hwAccel: 'amf',
+      encoders: { amf: { h264: true, av1: false } }
+    });
+    expect(plan.singlePassArgs).toContain('-qp_i');
+    expect(plan.singlePassArgs).toContain('-qp_p');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // calculatePlan — edge cases
 // ---------------------------------------------------------------------------
 

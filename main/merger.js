@@ -2,6 +2,8 @@ const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { buildVideoCodecArgs, audioCodecFor, isHardwareEncoder } = require('./encoder-profiles');
+const { _internals: { computeSizeLimitBitrate } } = require('./export-planner');
 
 let ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg.exe');
 if (ffmpegPath.includes('app.asar')) {
@@ -248,7 +250,7 @@ class Merger {
         strategy = 'concat_filter';
         await this._runConcatFilter(effectivePaths, effCompat.clips, outputPath, effTotalDuration, (pct) => {
           if (onProgress) onProgress(concatBase + pct * (1 - trimWeight), 'Merging (re-encoding)...');
-        }, encoder);
+        }, encoder, options.codec);
       }
 
       if (this.cancelled) {
@@ -397,12 +399,16 @@ class Merger {
    * @returns {Promise<string>} temp file path
    */
   async _trimClipToTempFile(task, tempPath, encoder = 'libx264', onProgress) {
-    let videoCodecArgs;
-    if (encoder === 'h264_nvenc') {
-      videoCodecArgs = ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '18', '-b:v', '0'];
-    } else {
-      videoCodecArgs = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18'];
-    }
+    // Temp trim files are always MP4/H.264 (they must stay stream-compatible
+    // with the untouched source clips for the lossless concat step); the final
+    // container/codec is applied later by postConvertMerged when needed.
+    const videoCodecArgs = buildVideoCodecArgs({
+      encoder,
+      crfValue: 18,
+      maxQuality: false,
+      preset: encoder === 'libx264' ? 'fast' : undefined,
+      pass: 0
+    });
 
     const args = [
       '-y',
@@ -467,7 +473,7 @@ class Merger {
   // Private: FALLBACK PATH — concat filter (re-encode)
   // =========================================================================
 
-  async _runConcatFilter(filePaths, clips, outputPath, totalDuration, onProgress, encoder = 'libx264') {
+  async _runConcatFilter(filePaths, clips, outputPath, totalDuration, onProgress, encoder = 'libx264', codec = 'h264') {
     const targetW = clips[0].width;
     const targetH = clips[0].height;
     const targetFps = clips[0].fps;
@@ -516,12 +522,16 @@ class Merger {
 
     const filterComplex = filterParts.join('; ');
 
-    let videoCodecArgs;
-    if (encoder === 'h264_nvenc') {
-      videoCodecArgs = ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '18', '-b:v', '0'];
-    } else {
-      videoCodecArgs = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18'];
-    }
+    // The concat-filter fallback writes the intermediate MP4 (the final
+    // container/codec is applied by postConvertMerged for AV1 exports), so
+    // audio follows the h264 path unless explicitly told otherwise.
+    const videoCodecArgs = buildVideoCodecArgs({
+      encoder,
+      crfValue: 18,
+      maxQuality: false,
+      preset: encoder === 'libx264' ? 'medium' : undefined,
+      pass: 0
+    });
 
     const args = [
       '-y',
@@ -530,7 +540,7 @@ class Merger {
       '-map', '[outv]',
       '-map', '[outa]',
       ...videoCodecArgs,
-      '-c:a', 'aac',
+      '-c:a', audioCodecFor('mp4'),
       '-b:a', '192k',
       '-movflags', '+faststart',
       outputPath
@@ -547,13 +557,13 @@ class Merger {
   // Private: spawn FFmpeg + progress parsing
   // =========================================================================
 
-  _runProcess(args, totalDurationSec, onProgressUpdate) {
+  _runProcess(args, totalDurationSec, onProgressUpdate, cwd) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(ffmpegPath)) {
         return reject(new Error(`ffmpeg not found at ${ffmpegPath}. Ensure binaries are bundled.`));
       }
 
-      this.currentProcess = spawn(ffmpegPath, args);
+      this.currentProcess = spawn(ffmpegPath, args, cwd ? { cwd } : undefined);
       let errorOutput = '';
       let timeBuffer = '';
 
@@ -619,7 +629,10 @@ class Merger {
    * than the default MP4 + native + no-size-cap output. Returns the final path
    * and size; the intermediate MP4 is removed.
    */
-  async postConvertMerged(inputPath, { format = 'mp4', resolution = null, targetSizeMB = null, totalDurationSec = 0, onProgress } = {}) {
+  async postConvertMerged(inputPath, { format = 'mp4', resolution = null, targetSizeMB = null, totalDurationSec = 0, codec = 'h264', encoder = null, onProgress } = {}) {
+    const isAv1 = codec === 'av1';
+    // The container always follows the format picker — AV1 is muxed into MP4
+    // (AAC audio), not WebM, since the app's format select is mp4/gif/mp3.
     const ext = format === 'gif' ? 'gif' : format === 'mp3' ? 'mp3' : 'mp4';
     const dir = path.dirname(inputPath);
     const base = path.basename(inputPath, path.extname(inputPath));
@@ -650,10 +663,10 @@ class Merger {
           ['-y', '-i', inputPath, '-vf', `${preFilter},palettegen=stats_mode=diff`, palettePath],
           0, null
         );
-        // Pass 2: apply the palette with dithering
-        const lavfi = scaleFilter
-          ? `[0:v]${preFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5`
-          : `[0:v][1:v]paletteuse=dither=bayer:bayer_scale=5`;
+        // Pass 2: apply the palette with dithering. preFilter always includes
+        // fps=15 (with or without a scale filter), so the output stays at the
+        // intended framerate instead of inheriting the source fps.
+        const lavfi = `[0:v]${preFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5`;
         await this._runProcess(
           ['-y', '-i', inputPath, '-i', palettePath, '-lavfi', lavfi, convertPath],
           0, onProgress
@@ -672,21 +685,92 @@ class Merger {
         totalDurationSec, onProgress
       );
     } else {
-      // MP4 re-encode for non-native resolution and/or an explicit target size
+      // MP4 re-encode for non-native resolution, an explicit target size,
+      // or an AV1 codec switch (still muxed into MP4).
       const args = ['-y', '-i', inputPath];
       if (scaleFilter) args.push('-vf', scaleFilter);
+
+      // ipc-handlers always passes a resolved encoder (hardware or CPU);
+      // default to a CPU encoder per codec when absent. Previously the h264
+      // branch hardcoded libx264, silently dropping hardware acceleration.
+      const enc = encoder || (isAv1 ? 'libaom-av1' : 'libx264');
+      let videoBitrateKbps = null;
       if (targetSizeMB && totalDurationSec > 0) {
-        const totalBps = (targetSizeMB * 8 * 1024 * 1024) / totalDurationSec;
-        const audioBps = 192 * 1024;
-        const videoBps = Math.max(64 * 1024, Math.round(totalBps - audioBps));
-        args.push('-b:v', String(videoBps));
+        // Same safety-margin + muxing-overhead math as the trim planner
+        // (computeSizeLimitBitrate), so the merged file lands *under* the cap
+        // instead of right on it. The naive targetSizeMB-based bitrate has no
+        // headroom, and single-pass rate control reliably overshoots it.
+        videoBitrateKbps = Math.max(
+          64,
+          Math.round(computeSizeLimitBitrate(targetSizeMB, totalDurationSec, 192))
+        );
       }
-      args.push(
-        '-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
-        convertPath
-      );
-      await this._runProcess(args, totalDurationSec, onProgress);
+
+      if (videoBitrateKbps) {
+        // CPU encoders get a proper 2-pass encode so the size target is hit
+        // accurately (same as the trim export path); hardware encoders can't
+        // do 2-pass, so they stay single-pass VBR (still margin-buffered).
+        if (!isHardwareEncoder(enc)) {
+          // The x264-on-Windows backslash bug strikes again: the passlog
+          // filename must be RELATIVE and the process cwd set to the output
+          // directory (the same workaround encoder.js uses), or pass 2 fails
+          // to find the stats file written by pass 1.
+          const passLogName = `clipsend-pass-${Date.now()}`;
+          const nullOutput = process.platform === 'win32' ? 'NUL' : '/dev/null';
+          try {
+            // Pass 1: analysis only — no audio, discard the output.
+            const pass1Args = ['-y', '-i', inputPath];
+            if (scaleFilter) pass1Args.push('-vf', scaleFilter);
+            pass1Args.push(
+              ...buildVideoCodecArgs({ encoder: enc, videoBitrateKbps, maxQuality: false, pass: 1 }),
+              '-an', '-f', 'null', '-passlogfile', passLogName, nullOutput
+            );
+            await this._runProcess(pass1Args, totalDurationSec, null, dir);
+
+            // Pass 2: real encode with audio + faststart.
+            const pass2Args = ['-y', '-i', inputPath];
+            if (scaleFilter) pass2Args.push('-vf', scaleFilter);
+            pass2Args.push(
+              ...buildVideoCodecArgs({ encoder: enc, videoBitrateKbps, maxQuality: false, pass: 2 }),
+              '-pix_fmt', 'yuv420p',
+              '-c:a', audioCodecFor('mp4'), '-b:a', '192k',
+              '-movflags', '+faststart',
+              '-passlogfile', passLogName,
+              convertPath
+            );
+            await this._runProcess(pass2Args, totalDurationSec, onProgress, dir);
+          } finally {
+            try { await fs.promises.unlink(path.join(dir, `${passLogName}-0.log`)); } catch (e) { /* ignore */ }
+            try { await fs.promises.unlink(path.join(dir, `${passLogName}-0.log.mbtree`)); } catch (e) { /* ignore */ }
+          }
+        } else {
+          args.push(...buildVideoCodecArgs({ encoder: enc, videoBitrateKbps, maxQuality: false, pass: 0 }));
+          args.push(
+            '-pix_fmt', 'yuv420p',
+            '-c:a', audioCodecFor('mp4'), '-b:a', '192k'
+          );
+          // MP4 (both H.264 and AV1) benefits from faststart for fast playback.
+          args.push('-movflags', '+faststart');
+          args.push(convertPath);
+          await this._runProcess(args, totalDurationSec, onProgress);
+        }
+      } else {
+        args.push(...buildVideoCodecArgs({
+          encoder: enc,
+          crfValue: isAv1 ? 35 : 23,
+          maxQuality: false,
+          preset: enc === 'libx264' ? 'medium' : undefined,
+          pass: 0
+        }));
+        args.push(
+          '-pix_fmt', 'yuv420p',
+          '-c:a', audioCodecFor('mp4'), '-b:a', '192k'
+        );
+        // MP4 (both H.264 and AV1) benefits from faststart for fast playback.
+        args.push('-movflags', '+faststart');
+        args.push(convertPath);
+        await this._runProcess(args, totalDurationSec, onProgress);
+      }
     }
 
     // Finalize: swap the converted file into place and drop the intermediate MP4.

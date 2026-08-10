@@ -201,9 +201,36 @@ export class MergePlayer {
     this.video.pause();
   }
 
-  /** Seek to a global timestamp across the entire merged sequence. */
-  seekToGlobal(globalSeconds) {
-    this._seekToGlobalInternal(globalSeconds, false);
+  /**
+   * Seek to a global timestamp across the entire merged sequence.
+   * @param {number} globalSeconds — timestamp in merged-sequence seconds
+   * @param {boolean} [autoplay]   — resume playback after seeking (used by
+   *                                 click-to-seek while the sequence plays)
+   */
+  seekToGlobal(globalSeconds, autoplay = false) {
+    this._seekToGlobalInternal(globalSeconds, autoplay);
+  }
+
+  /**
+   * Map a viewport client X coordinate to a global timestamp across the
+   * merged sequence. Uses the exact same block geometry as the scrubber, so
+   * clicking a clip block and clicking the scrubber bar land on the same
+   * frame: positions inside the kept (trimmed) window map proportionally,
+   * and positions over trimmed-away (dimmed) regions snap to the nearest
+   * kept edge. Falls back to a proportional estimate when block geometry
+   * isn't available (e.g. during a strip rebuild).
+   */
+  globalSecondsForClientX(clientX) {
+    if (this.totalDuration <= 0 || this.clips.length === 0) return 0;
+    const strip = document.getElementById('merge-timeline-strip');
+    if (!strip) return 0;
+    const rect = strip.getBoundingClientRect();
+    const x = clientX - rect.left + (strip.scrollLeft || 0) - STRIP_PADDING_LEFT;
+    const vBounds = this._getVisualBoundaries();
+    if (vBounds) return this._xToGlobalSeconds(x);
+    const contentW = Math.max(strip.scrollWidth || 0, rect.width || 1);
+    const ratio = Math.max(0, Math.min(1, x / contentW));
+    return ratio * this.totalDuration;
   }
 
   /**

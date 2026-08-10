@@ -712,7 +712,9 @@ button:disabled {
   background-size: cover;
   background-position: center;
   position: relative;
-  cursor: grab;
+  /* Pointer signals the primary gesture: click anywhere to seek. Reordering
+     is a deliberate drag (past a threshold) and flips to grabbing. */
+  cursor: pointer;
   display: flex;
   align-items: flex-end;
   overflow: hidden;
@@ -991,11 +993,6 @@ button:disabled {
   background: rgba(244, 67, 54, 0.15);
   color: #fff;
   border-color: rgba(244, 67, 54, 0.4);
-}
-.progress-text {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
 }
 
 .drop-overlay {
@@ -1364,33 +1361,77 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* Tiny count pill over the titlebar warning button (same muted amber family).
+   The badge anchors to the warning button's top-right corner, overlapping the
+   icon like a classic notification badge. The button is a flex container, so
+   the icon is centered and the badge (absolute) sits ON its corner — never
+   detached at the window edge. Clearance: 5px below the window top + 1px ring
+   keeps it fully inside the frameless window at any zoom. */
+.titlebar-warning-count {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #d9a441;
+  color: #141414;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  font-family: var(--font-family);
+  box-sizing: border-box;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
 /* Warnings & Export Info */
-/* Warning Cards */
+/* Warning Cards - desaturated amber that sits inside the app palette:
+   flat tinted surface + hairline border (no gradients, no neon), keeping the
+   8px radius used across the app's cards. Errors use the audited error red. */
 .warning-card {
   display: flex;
+  align-items: flex-start;
   gap: 12px;
-  background-color: #1a1a1a;
-  border: 1px solid var(--panel-border);
-  border-left: 3px solid #ffeb3b; /* Amber warning accent */
-  border-radius: 4px;
-  padding: 12px;
+  background: rgba(217, 164, 65, 0.06);
+  border: 1px solid rgba(217, 164, 65, 0.22);
+  border-radius: 8px;
+  padding: 12px 14px;
   margin-bottom: 8px;
 }
 .warning-card:last-child {
   margin-bottom: 0;
 }
 
+.warning-card--error {
+  background: rgba(239, 83, 80, 0.06);
+  border-color: rgba(239, 83, 80, 0.28);
+}
+
 .warning-card-icon {
-  color: #ffeb3b;
-  font-size: 16px;
+  color: #d9a441;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: rgba(217, 164, 65, 0.12);
+  border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 1px;
+}
+
+.warning-card--error .warning-card-icon {
+  color: var(--error-color);
+  background: rgba(239, 83, 80, 0.12);
 }
 
 .warning-card-text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  padding-top: 2px;
 }
 
 .warning-card-title {
@@ -1402,7 +1443,7 @@ button:disabled {
 .warning-card-body {
   font-size: 12px;
   color: var(--text-muted);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .plan-label {
@@ -1461,6 +1502,72 @@ button:disabled {
 .titlebar-cancel-btn:hover {
   background-color: rgba(211, 47, 47, 0.1);
   color: var(--error-color);
+}
+
+/* --- Custom animated tooltip bubbles (title bar icon buttons) ---
+   Replaces native `title` tooltips: a single shared bubble is fixed-positioned
+   below the hovered button with a pointer arrow, clamped to the window edges.
+   Fade + rise + settle-in animation; sits above app content but below the
+   modal overlays (z-index 1000/3000). */
+.tooltip-bubble {
+  position: fixed;
+  z-index: 900;
+  top: 0;
+  left: 0;
+  background: #2a2a2a;
+  border: 1px solid #3d3d3d;
+  color: #e8e8e8;
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.94);
+  transform-origin: top center;
+  /* Exit fade on mouse-leave only. The entrance is an animation (below)
+     because transitions won't re-trigger when the class is removed and
+     re-added within the same frame — which is exactly what happens when
+     sliding straight from one button to its neighbour. */
+  transition: opacity 90ms ease-out, transform 90ms ease-out;
+}
+
+/* Pointer arrow (rotated square) — offset via --arrow-x so the tip always
+   points at the hovered button even when the bubble is edge-clamped. */
+.tooltip-bubble::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: var(--arrow-x, 50%);
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: #2a2a2a;
+  border-left: 1px solid #3d3d3d;
+  border-top: 1px solid #3d3d3d;
+}
+
+.tooltip-bubble.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: tooltip-in 150ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Motion-safe: no slide/settle animation for users who disable motion. */
+@media (prefers-reduced-motion: reduce) {
+  .tooltip-bubble {
+    transition: none;
+    animation: none;
+  }
 }
 
 /* Modal Overlay */
@@ -1766,4 +1873,100 @@ button:disabled {
   .onboarding-dot {
     transition: none;
   }
+}
+
+/* --- Crop aspect-ratio preset pills --- */
+.crop-preset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.crop-preset-pill {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5px 4px;
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #bbb);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.crop-preset-pill:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+}
+.crop-preset-pill.active {
+  background-color: var(--success-color);
+  border-color: var(--success-color);
+  color: #fff; /* white on #00796b = 5.3:1, WCAG AA */
+}
+
+/* --- Merge output-size estimate --- */
+.merge-estimate {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.merge-estimate-value {
+  color: var(--timecode-color);
+  font-weight: 600;
+}
+
+/* --- Keyboard shortcuts modal --- */
+.shortcut-group {
+  margin-bottom: 16px;
+}
+.shortcut-group-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+  transition: color 0.15s ease;
+}
+.shortcut-group.active .shortcut-group-title {
+  color: var(--accent-color);
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #ddd;
+}
+.shortcut-row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.03);
+}
+.shortcut-row .shortcut-name {
+  color: var(--text-color);
+}
+.shortcut-keys {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.shortcut-keys kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-color);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-width: 20px;
+  text-align: center;
 }

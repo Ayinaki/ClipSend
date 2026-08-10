@@ -22,13 +22,20 @@ function makeApi(overrides = {}) {
     getAllSettings: jest.fn(async () => ({
       defaultExportDirectory: 'C:\\Exports',
       hwAccel: 'auto',
+      videoCodec: 'h264',
       disableAutoDownscale: false,
       showWaveform: true,
       maxQuality: false,
       playbackVolume: 0.8,
       playbackMuted: false
     })),
-    detectEncoders: jest.fn(async () => true),
+    detectEncoders: jest.fn(async () => ({
+      nvenc: { h264: true, av1: true },
+      qsv: { h264: true, av1: false },
+      amf: { h264: false, av1: false },
+      svtav1: true,
+      libx264: true
+    })),
     setSetting: jest.fn((key, value) => { calls.setSetting.push([key, value]); }),
     pickDirectory: jest.fn(async () => 'C:\\NewDir'),
     ...overrides
@@ -44,6 +51,7 @@ function makeElements() {
     browseBtn: document.getElementById('browse-export-dir-btn'),
     clearBtn: document.getElementById('clear-export-dir-btn'),
     hwAccel: document.getElementById('setting-hw-accel'),
+    videoCodec: document.getElementById('setting-video-codec'),
     disableDownscale: document.getElementById('setting-disable-downscale'),
     showWaveform: document.getElementById('setting-show-waveform'),
     maxQuality: document.getElementById('setting-max-quality'),
@@ -154,10 +162,22 @@ describe('settings controller', () => {
     const settings = createSettingsController({ api, elements: els, timeline, onPlanInvalidated });
     await settings.load();
 
-    els.hwAccel.value = 'nvenc';
+    els.hwAccel.value = 'qsv';
     els.hwAccel.dispatchEvent(new Event('change'));
 
-    expect(api.calls.setSetting).toContainEqual(['hwAccel', 'nvenc']);
+    expect(api.calls.setSetting).toContainEqual(['hwAccel', 'qsv']);
+    expect(onPlanInvalidated).toHaveBeenCalledTimes(1);
+  });
+
+  test('video codec change persists and invalidates the plan', async () => {
+    const onPlanInvalidated = jest.fn();
+    const settings = createSettingsController({ api, elements: els, timeline, onPlanInvalidated });
+    await settings.load();
+
+    els.videoCodec.value = 'av1';
+    els.videoCodec.dispatchEvent(new Event('change'));
+
+    expect(api.calls.setSetting).toContainEqual(['videoCodec', 'av1']);
     expect(onPlanInvalidated).toHaveBeenCalledTimes(1);
   });
 
@@ -175,16 +195,40 @@ describe('settings controller', () => {
     expect(onShowWaveformChange).toHaveBeenCalledWith(false);
   });
 
-  test('disables the NVENC option when no encoder is detected', async () => {
-    api = makeApi({ detectEncoders: jest.fn(async () => false) });
+  test('disables vendor options whose encoder was not detected', async () => {
+    api = makeApi({ detectEncoders: jest.fn(async () => ({
+      nvenc: { h264: false, av1: false },
+      qsv: { h264: false, av1: false },
+      amf: { h264: false, av1: false },
+      svtav1: true,
+      libx264: true
+    })) });
+    const onEncodersDetected = jest.fn();
     const settings = createSettingsController({
-      api, elements: els, timeline,
-      onNvencDetected: jest.fn()
+      api, elements: els, timeline, onEncodersDetected
     });
     await settings.load();
 
+    for (const value of ['nvenc', 'qsv', 'amf']) {
+      const opt = document.querySelector(`#setting-hw-accel option[value="${value}"]`);
+      expect(opt.disabled).toBe(true);
+      expect(opt.textContent).toContain('Not Detected');
+    }
+    expect(onEncodersDetected).toHaveBeenCalledWith(expect.objectContaining({ nvenc: expect.any(Object) }));
+  });
+
+  test('keeps vendor options enabled when detected and restores labels', async () => {
+    const settings = createSettingsController({ api, elements: els, timeline });
+    await settings.load();
+
     const nvencOption = document.querySelector('#setting-hw-accel option[value="nvenc"]');
-    expect(nvencOption.disabled).toBe(true);
-    expect(nvencOption.textContent).toBe('NVIDIA (NVENC) - Not Detected');
+    const qsvOption = document.querySelector('#setting-hw-accel option[value="qsv"]');
+    const amfOption = document.querySelector('#setting-hw-accel option[value="amf"]');
+    expect(nvencOption.disabled).toBe(false);
+    expect(nvencOption.textContent).toBe('NVIDIA (NVENC)');
+    expect(qsvOption.disabled).toBe(false);
+    expect(qsvOption.textContent).toBe('Intel (QSV)');
+    expect(amfOption.disabled).toBe(true); // amf.h264 + amf.av1 both false
+    expect(amfOption.textContent).toBe('AMD (AMF) - Not Detected');
   });
 });

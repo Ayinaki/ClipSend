@@ -6,14 +6,14 @@ class CropManager {
     
     this.enableCheckbox = document.getElementById('crop-enable');
     this.controlsDiv = document.getElementById('crop-controls');
-    this.presetSelect = document.getElementById('crop-preset');
     
     this.recenterBtn = document.getElementById('crop-recenter-btn');
     
-    this.presetSelect.value = 'none';
+    // Aspect-ratio preset pills (Free / 16:9 / 9:16 / 1:1 / 4:3).
+    this.pills = Array.from(document.querySelectorAll('.crop-preset-pill'));
+    this.activePreset = 'none';
     this.lockedAspectRatio = null;
     this.cropNative = { x: 0, y: 0, w: 0, h: 0 };
-    this.lockedAspectRatio = null;
     
     this.enableCheckbox.disabled = true; // Disabled until a clip is loaded
     
@@ -28,6 +28,59 @@ class CropManager {
     this.resizeObserver.observe(this.video);
   }
 
+  /** Highlight the active pill + remember the chosen preset. */
+  _setPreset(val) {
+    this.activePreset = val || 'none';
+    this.pills.forEach(p => {
+      const active = p.dataset.preset === this.activePreset;
+      p.classList.toggle('active', active);
+      p.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  /** Apply a preset: sets the locked ratio and (when enabled) the crop box. */
+  _applyPreset(val) {
+    this._setPreset(val);
+    if (!this.isEnabled || !this.video || !this.video.videoWidth) return;
+
+    const vw = this.video.videoWidth;
+    const vh = this.video.videoHeight;
+
+    if (val === 'none') {
+      this.lockedAspectRatio = null;
+      return;
+    }
+
+    let targetRatio;
+    if (val === '16:9') targetRatio = 16 / 9;
+    else if (val === '9:16') targetRatio = 9 / 16;
+    else if (val === '1:1') targetRatio = 1;
+    else if (val === '4:3') targetRatio = 4 / 3;
+
+    this.lockedAspectRatio = targetRatio;
+
+    let newW = vw;
+    let newH = Math.round(vw / targetRatio);
+    
+    if (newH > vh) {
+      newH = vh;
+      newW = Math.round(vh * targetRatio);
+    }
+    
+    // Ensure even dimensions
+    newW = Math.floor(newW / 2) * 2;
+    newH = Math.floor(newH / 2) * 2;
+
+    this.cropNative = {
+      x: Math.floor((vw - newW) / 2),
+      y: Math.floor((vh - newH) / 2),
+      w: newW,
+      h: newH
+    };
+    
+    this._updateOverlayFromNative();
+  }
+
   _bindEvents() {
     this.enableCheckbox.addEventListener('change', (e) => {
       this.isEnabled = e.target.checked;
@@ -37,50 +90,13 @@ class CropManager {
         this.controlsDiv.style.opacity = '0.5';
         this.controlsDiv.style.pointerEvents = 'none';
         this.container.style.display = 'none';
-        this.presetSelect.value = 'none';
+        this._setPreset('none');
         this.lockedAspectRatio = null;
       }
       this.emit('change');
     });
-    this.presetSelect.addEventListener('change', (e) => {
-      const val = e.target.value;
-      if (val === 'none') {
-        this.lockedAspectRatio = null;
-        return;
-      }
-      
-      const vw = this.video.videoWidth;
-      const vh = this.video.videoHeight;
-      if (!vw || !vh) return;
-
-      let targetRatio;
-      if (val === '16:9') targetRatio = 16 / 9;
-      else if (val === '9:16') targetRatio = 9 / 16;
-      else if (val === '1:1') targetRatio = 1;
-      else if (val === '4:3') targetRatio = 4 / 3;
-      
-      this.lockedAspectRatio = targetRatio;
-
-      let newW = vw;
-      let newH = Math.round(vw / targetRatio);
-      
-      if (newH > vh) {
-        newH = vh;
-        newW = Math.round(vh * targetRatio);
-      }
-      
-      // Ensure even dimensions
-      newW = Math.floor(newW / 2) * 2;
-      newH = Math.floor(newH / 2) * 2;
-
-      this.cropNative = {
-        x: Math.floor((vw - newW) / 2),
-        y: Math.floor((vh - newH) / 2),
-        w: newW,
-        h: newH
-      };
-      
-      this._updateOverlayFromNative();
+    this.pills.forEach(pill => {
+      pill.addEventListener('click', () => this._applyPreset(pill.dataset.preset));
     });
 
     this.recenterBtn.addEventListener('click', () => {
@@ -316,7 +332,7 @@ class CropManager {
     this.controlsDiv.style.opacity = '1';
     this.controlsDiv.style.pointerEvents = 'auto';
     this.container.style.display = 'block';
-    this.presetSelect.value = 'none';
+    this._setPreset('none');
     this.lockedAspectRatio = null;
     this._updateOverlayFromNative();
   }

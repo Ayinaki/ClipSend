@@ -11,6 +11,7 @@ jobs:
     name: Build & Publish Release (Windows)
     runs-on: windows-latest
     permissions:
+      actions: read
       contents: write
 
     steps:
@@ -30,10 +31,40 @@ jobs:
 
       - name: Fetch FFmpeg, FFprobe & Gifski Binaries
         shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
-          if (!(Test-Path "bin/ffmpeg.exe") -or !(Test-Path "bin/ffprobe.exe")) {
-            Write-Host "Downloading FFmpeg release binaries..."
+
+          # Preferred: the minimal ffmpeg/ffprobe built by the build-ffmpeg
+          # workflow (~30 MB total vs ~196 MB gyan builds). Fetch the latest
+          # successful run's artifact; fall back to gyan.dev builds below.
+          $slimOk = $false
+          try {
+            $run = (Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/build-ffmpeg.yml/runs?status=success&per_page=1" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }).workflow_runs | Select-Object -First 1
+            if ($run) {
+              $artifacts = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/artifacts" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }
+              $art = $artifacts.artifacts | Where-Object { $_.name -eq 'ffmpeg-minimal-win64' } | Select-Object -First 1
+              if ($art) {
+                Invoke-WebRequest -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$($art.id)/zip" -OutFile "slim-ffmpeg.zip" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }
+                Expand-Archive -Path "slim-ffmpeg.zip" -DestinationPath "slim-ffmpeg" -Force
+                $slimFfmpeg = Get-ChildItem -Path "slim-ffmpeg" -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
+                $slimFfprobe = Get-ChildItem -Path "slim-ffmpeg" -Filter "ffprobe.exe" -Recurse | Select-Object -First 1
+                if ($slimFfmpeg -and $slimFfprobe) {
+                  Copy-Item $slimFfmpeg.FullName -Destination "bin/ffmpeg.exe"
+                  Copy-Item $slimFfprobe.FullName -Destination "bin/ffprobe.exe"
+                  $slimOk = $true
+                  Write-Host "Installed minimal FFmpeg binaries from build-ffmpeg run $($run.id)."
+                }
+                Remove-Item -Recurse -Force "slim-ffmpeg.zip", "slim-ffmpeg" -ErrorAction SilentlyContinue
+              }
+            }
+          } catch {
+            Write-Host "Slim artifact unavailable, falling back to gyan builds: $_"
+          }
+
+          if (!$slimOk) {
+            Write-Host "Downloading FFmpeg release binaries (fallback)..."
             $urls = @(
               "https://github.com/GyanD/codexffmpeg/releases/download/7.0/ffmpeg-7.0-essentials_build.zip",
               "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
@@ -77,6 +108,20 @@ jobs:
               Write-Host "Warning: Failed to download Gifski binary from gif.ski."
             }
           }
+
+      - name: Verify FFmpeg can decode AV1 (libdav1d present)
+        shell: powershell
+        run: |
+          # The release fetches the *latest successful* slim-ffmpeg artifact, which
+          # may predate the dav1d fix. Without libdav1d (the only software AV1
+          # decode path - the native 'av1' decoder is HW-only), AV1 clips silently
+          # fail everywhere: merge thumbnails, trims, and re-encodes. Fail the
+          # release here instead of shipping a stale pre-dav1d binary.
+          $decoders = & .\bin\ffmpeg.exe -hide_banner -decoders 2>&1 | Out-String
+          if ($decoders -notmatch 'libdav1d') {
+            throw "Fetched bin\ffmpeg.exe has no libdav1d decoder - AV1 clips would silently fail (merge thumbnails, trims, re-encodes). Re-run the 'Build Minimal FFmpeg' workflow so the release picks up a dav1d-capable artifact."
+          }
+          Write-Host "OK: bin\ffmpeg.exe has libdav1d (software AV1 decode)"
 
       - name: Run Unit Tests
         run: npm test

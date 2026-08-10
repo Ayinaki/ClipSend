@@ -1,6 +1,15 @@
 /**
  * ExportPlanner — Computes a deterministic 2-pass FFmpeg encoding plan.
  *
+ * Encoder selection is delegated to encoder-profiles.js: given the user's
+ * hardware-acceleration preference, the chosen video codec (H.264 / AV1),
+ * and what the bundled FFmpeg reports as available, the planner resolves the
+ * concrete encoder and builds the right rate-control args for it. The
+ * container always follows the format picker (mp4 for video, including
+ * AV1-in-MP4 with AAC audio, which Discord plays natively).
+ */
+
+/**
  * Given MediaInfo, trim points, and export settings, this module:
  *   1. Computes a video bitrate budget from target size, audio bitrate,
  *      safety margin, and muxing overhead reserve.
@@ -62,6 +71,18 @@ const DEFAULT_AUDIO_BITRATE_KBPS = 128;
 const FAST_SEEK_RUNWAY_SECONDS = 30;
 
 // ---------------------------------------------------------------------------
+// Encoder selection
+// ---------------------------------------------------------------------------
+
+const {
+  pickEncoder,
+  buildVideoCodecArgs,
+  isHardwareEncoder,
+  audioCodecFor,
+  containerForFormat
+} = require('./encoder-profiles');
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -103,9 +124,19 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
   let crfValue = undefined;
   let warnings = [];
 
-  const encoder = (settings.hasNvenc && (settings.hwAccel === 'nvenc' || settings.hwAccel === 'auto')) ? 'h264_nvenc' : 'libx264';
-  
-  if (encoder === 'h264_nvenc') {
+  // Resolve the concrete encoder from the user's HW preference + codec choice
+  // + what this machine's FFmpeg actually ships.
+  const videoCodec = settings.videoCodec === 'av1' ? 'av1' : 'h264';
+  const encoder = pickEncoder({
+    hwAccel: settings.hwAccel,
+    videoCodec,
+    encoders: settings.encoders,
+    hasNvenc: settings.hasNvenc
+  });
+
+  // Hardware encoders are single-pass (no two-pass stats file support);
+  // GIF extraction and auto/CRF mode are single-pass too.
+  if (isHardwareEncoder(encoder)) {
     isSinglePass = true;
   }
 
@@ -251,6 +282,8 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       audioTracks: mediaInfo.audioTracks,
       selectedAudioOrdinal: selectedAudioTrackIndex,
       encoder: 'libmp3lame',
+      codec: 'mp3',
+      container: 'mp3',
       outputFormat: 'mp3',
       width: 0,
       height: 0,
@@ -288,7 +321,8 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       videoBitrateKbps,
       crop: settings.crop,
       maxQuality: settings.maxQuality,
-      outputFormat: settings.outputFormat
+      outputFormat: settings.outputFormat,
+      codec: videoCodec
     });
 
     return {
@@ -302,6 +336,9 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       audioTracks: mediaInfo.audioTracks,
       selectedAudioOrdinal: selectedAudioTrackIndex,
       encoder,
+      // GIF extraction has no real video codec/container; report it honestly.
+      codec: settings.outputFormat === 'gif' ? 'gif' : videoCodec,
+      container: containerForFormat(settings.outputFormat),
       targetSizeMB: settings.targetSizeMB,
       estimatedSizeMB: parseFloat((((videoBitrateKbps + audioBitrateKbps) * 1000 * clipDuration / 8) / (1024 * 1024)).toFixed(2)),
       videoBitrateKbps: Math.round(videoBitrateKbps),
@@ -325,7 +362,8 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     frameRate: mediaInfo.frameRate,
     encoder,
     crop: settings.crop,
-    maxQuality: settings.maxQuality
+    maxQuality: settings.maxQuality,
+    codec: videoCodec
   });
 
   const pass2Args = buildPassArgs({
@@ -342,7 +380,8 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     frameRate: mediaInfo.frameRate,
     encoder,
     crop: settings.crop,
-    maxQuality: settings.maxQuality
+    maxQuality: settings.maxQuality,
+    codec: videoCodec
   });
 
   // ------ Estimated output size ------
@@ -364,7 +403,9 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     pass2Args,
     audioTracks: mediaInfo.audioTracks,
     selectedAudioOrdinal: selectedAudioTrackIndex,
-    encoder
+    encoder,
+    codec: videoCodec,
+    container: containerForFormat(settings.outputFormat)
   };
 }
 
@@ -510,36 +551,16 @@ function buildPassArgs(opts) {
   if (outputFormat === 'gif') {
     // Raw output for GIF extraction, no compressed codec
     args.push('-f', 'yuv4mpegpipe', '-pix_fmt', 'yuv420p');
-  } else if (encoder === 'h264_nvenc') {
-    const nvencPreset = maxQuality ? 'p7' : 'p5';
-    if (crfValue !== undefined) {
-      // Auto (Best Quality) mode for NVENC
-      args.push('-c:v', 'h264_nvenc', '-preset', nvencPreset, '-rc', 'vbr', '-cq', crfValue.toString(), '-b:v', '0');
-    } else {
-      // Size-targeted for NVENC (Single pass VBR constrained)
-      const vbit = Math.round(videoBitrateKbps);
-      const maxrate = vbit;
-      const bufsize = Math.round(videoBitrateKbps * 1.5);
-      args.push('-c:v', 'h264_nvenc', '-preset', nvencPreset, '-rc', 'vbr', '-b:v', `${vbit}k`, '-maxrate', `${maxrate}k`, '-bufsize', `${bufsize}k`);
-    }
   } else {
-    // libx264
-    const x264Preset = maxQuality ? 'veryslow' : 'slow';
-    if (pass === 0) {
-      args.push('-c:v', 'libx264', '-preset', x264Preset, '-crf', crfValue.toString());
-    } else if (pass === 1 || pass === 2) {
-      const vbit = Math.round(videoBitrateKbps);
-      const bufsize = Math.round(videoBitrateKbps * 1.5);
-      // Enforce VBV maxrate and bufsize to prevent bitrate spikes on short clips
-      args.push(
-        '-c:v', 'libx264',
-        '-preset', x264Preset,
-        '-b:v', `${vbit}k`,
-        '-maxrate', `${vbit}k`,
-        '-bufsize', `${bufsize}k`,
-        '-pass', pass.toString()
-      );
-    }
+    // CPU encoders use CRF/quality args in single-pass mode and 2-pass
+    // bitrate args otherwise; hardware encoders stay single-pass VBR.
+    args.push(...buildVideoCodecArgs({
+      encoder,
+      crfValue,
+      videoBitrateKbps,
+      maxQuality,
+      pass
+    }));
   }
   
   args.push('-t', seekTimes.duration.toFixed(3));
@@ -588,12 +609,17 @@ function buildPassArgs(opts) {
     // NOTE: NUL output path is appended by the Encoder module at call time
   } else {
     // Pass 2 or Single Pass: audio + container flags
+    const container = containerForFormat(outputFormat);
     if (hasAudio) {
-      args.push('-c:a', 'aac');
+      args.push('-c:a', audioCodecFor(container));
       const audioBitrateArg = audioBitrateKbps + 'k';
       args.push('-b:a', audioBitrateArg);
     }
-    args.push('-movflags', '+faststart');
+    // MP4 (both H.264 and AV1) benefits from the faststart relocation so
+    // video starts playing before the whole file downloads.
+    if (container === 'mp4') {
+      args.push('-movflags', '+faststart');
+    }
     // NOTE: output path is appended by the Encoder module at call time
   }
 

@@ -3,6 +3,20 @@ const path = require('path');
 const { registerIpcHandlers } = require('./ipc-handlers');
 const { initUpdater } = require('./updater');
 const { createWindowStateManager } = require('./window-state');
+const { createTray } = require('./tray');
+
+// Tray handle + quit flag: closing the window hides to the tray instead of
+// quitting (unless the user chose Quit from the tray, which sets isQuitting).
+let tray = null;
+let isQuitting = false;
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+// Windows logoff/shutdown fires 'session-end' before windows close; without
+// this, the hide-to-tray close interception could block the shutdown.
+app.on('session-end', () => {
+  isQuitting = true;
+});
 
 // Disable OS hardware media key handling so multimedia keys don't trigger video playback
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
@@ -19,6 +33,11 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: (bounds && bounds.width) || 1500,
     height: (bounds && bounds.height) || 800,
+    // The window is user-resizable so it fits smaller screens; the custom
+    // frameless titlebar handles maximize/restore itself. Min bounds keep the
+    // workbench layout (sidebar + stage + timeline) from collapsing.
+    minWidth: 900,
+    minHeight: 560,
     ...(bounds && Number.isFinite(bounds.x) && Number.isFinite(bounds.y)
       ? { x: bounds.x, y: bounds.y }
       : {}),
@@ -28,7 +47,7 @@ function createWindow() {
       nodeIntegration: false
     },
     frame: false,
-    resizable: false,
+    resizable: true,
     backgroundColor: '#1e1e1e',
     icon: path.join(__dirname, '..', 'build', 'icon.png')
   });
@@ -56,9 +75,16 @@ function createWindow() {
   };
   mainWindow.on('resize', schedulePersist);
   mainWindow.on('move', schedulePersist);
-  mainWindow.on('close', () => {
+  mainWindow.on('close', (e) => {
     clearTimeout(persistTimer);
     persist();
+    // With the tray available, closing the window hides it so exports keep
+    // running and the app stays one click away. Quit from the tray (or
+    // Windows shutdown) bypasses this and closes for real.
+    if (!isQuitting && tray) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
   });
 
   // Open DevTools for M0 to easily inspect things
@@ -68,9 +94,18 @@ function createWindow() {
 app.whenReady().then(() => {
   registerIpcHandlers();
   createWindow();
+  tray = createTray(() => BrowserWindow.getAllWindows()[0] || null);
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    // With hide-to-tray, a hidden window must be restored on dock click
+    // (macOS) rather than recreated.
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (!win.isVisible()) win.show();
+      win.focus();
+    } else {
+      createWindow();
+    }
   });
 });
 

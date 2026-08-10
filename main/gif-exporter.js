@@ -165,6 +165,14 @@ class GifExporter {
         }
         resolve();
       });
+
+      // A failed spawn (missing binary, ENOENT, ...) never fires 'close', so
+      // without this the export promise would hang forever. Mirror the
+      // encoder/merger error handling.
+      this.currentProcess.on('error', (err) => {
+        this.currentProcess = null;
+        reject(err);
+      });
     });
   }
 
@@ -179,6 +187,13 @@ class GifExporter {
         if (this.cancelled) return reject(new Error('Cancelled'));
         if (code !== 0) return reject(new Error(`Gifski exited with code ${code}.\n\nLog: ${stderrLog.slice(-500)}`));
         resolve();
+      });
+
+      // Failed spawn (e.g. gifski.exe missing) never fires 'close'; reject
+      // instead of leaving the export stuck forever.
+      this.currentProcess.on('error', (err) => {
+        this.currentProcess = null;
+        reject(err);
       });
     });
   }

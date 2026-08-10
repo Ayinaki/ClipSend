@@ -130,6 +130,57 @@ describe('Encoder', () => {
       await runPromise;
     } catch (err) {
       expect(err.ffmpegStderr).toContain('Cannot load nvcuda.dll');
+      expect(err.details).toContain('Cannot load nvcuda.dll');
+    }
+  });
+
+  it('translates the zero-video-frames failure into a clear message', async () => {
+    const plan = {
+      clipDuration: 10,
+      isSinglePass: true,
+      singlePassArgs: ['-i', 'in.mp4']
+    };
+
+    const runPromise = encoder.runEncode(plan, 'out.mp4');
+
+    const stderrHandler = mockProcess.stderr.on.mock.calls.find(c => c[0] === 'data')[1];
+    // The exact signature the user hit: audio encoded, zero video frames.
+    stderrHandler(Buffer.from('[mp4 @ ...] video:0KiB audio:4KiB ... muxing overhead: 23%\nframe=    0 fps=0.0 ... Conversion failed!'));
+
+    const pass1CloseHandler = mockProcess.on.mock.calls.find(c => c[0] === 'close')[1];
+    pass1CloseHandler(69);
+
+    await expect(runPromise).rejects.toThrow();
+    try {
+      await runPromise;
+    } catch (err) {
+      expect(err.message).toContain('no video frames to encode');
+      expect(err.message).not.toContain('Conversion failed!');
+      expect(err.details).toContain('Conversion failed!');
+    }
+  });
+
+  it('translates the newer ffmpeg zero-video shape (Nothing was written)', async () => {
+    const plan = {
+      clipDuration: 10,
+      isSinglePass: true,
+      singlePassArgs: ['-i', 'in.mp4']
+    };
+
+    const runPromise = encoder.runEncode(plan, 'out.mp4');
+
+    const stderrHandler = mockProcess.stderr.on.mock.calls.find(c => c[0] === 'data')[1];
+    stderrHandler(Buffer.from('[out#0/mp4 @ ...] Nothing was written into output file, because at least one of its streams received no packets.\nframe=    0 fps=0.0 q=0.0 Lsize=       0KiB\nConversion failed!'));
+
+    const pass1CloseHandler = mockProcess.on.mock.calls.find(c => c[0] === 'close')[1];
+    pass1CloseHandler(1);
+
+    await expect(runPromise).rejects.toThrow();
+    try {
+      await runPromise;
+    } catch (err) {
+      expect(err.message).toContain('no video frames to encode');
+      expect(err.details).toContain('Nothing was written');
     }
   });
 

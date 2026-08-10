@@ -201,3 +201,203 @@ describe('Merger.runMerge with trims', () => {
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 });
+
+// --- postConvertMerged size targeting (the 10.33 MB vs 10 MB fix) ---
+
+describe('Merger.postConvertMerged size targeting', () => {
+  let merger;
+  let mockSpawn;
+  let processes;
+
+  function makeMockProcess() {
+    return { stderr: { on: jest.fn() }, on: jest.fn(), kill: jest.fn() };
+  }
+
+  function completeProcess(p) {
+    const closeHandler = p.on.mock.calls.find(c => c[0] === 'close')?.[1];
+    expect(closeHandler).toBeDefined();
+    closeHandler(0);
+  }
+
+  const flush = () => new Promise(r => setTimeout(r, 0));
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    merger = new Merger();
+    processes = [];
+
+    mockSpawn = jest.spyOn(child_process, 'spawn').mockImplementation(() => {
+      const p = makeMockProcess();
+      processes.push(p);
+      return p;
+    });
+
+    fs.promises = {
+      stat: jest.fn(async () => ({ mtimeMs: 123, size: 10 * 1024 * 1024 })),
+      writeFile: jest.fn(async () => {}),
+      unlink: jest.fn(async () => {}),
+      rename: jest.fn(async () => {}),
+      access: jest.fn(async () => { throw new Error('not found'); })
+    };
+    jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // 10 MB / 60 s / 192 kbps audio with the planner's margin + muxing overhead
+  // math gives ~1116 kbps video. The naive full-size calc (~1206 kbps) is what
+  // overshot to 10.33 MB before this fix.
+  const MARGIN_BITRATE = '1116k';
+
+  test('CPU encoders use a margin-buffered bitrate with a real 2-pass encode', async () => {
+    const runPromise = merger.postConvertMerged('C:\\merged.mp4', {
+      format: 'mp4',
+      targetSizeMB: 10,
+      totalDurationSec: 60,
+      codec: 'h264',
+      encoder: 'libx264'
+    });
+
+    await flush();
+    // Pass 1 spawns first; pass 2 only starts after pass 1 completes.
+    expect(processes.length).toBe(1);
+    const pass1Args = mockSpawn.mock.calls[0][1];
+    expect(pass1Args).toContain('-pass');
+    expect(pass1Args[pass1Args.indexOf('-pass') + 1]).toBe('1');
+    expect(pass1Args).toContain('-an');
+    expect(pass1Args[pass1Args.indexOf('-f') + 1]).toBe('null');
+
+    completeProcess(processes[0]);
+    await flush();
+    expect(processes.length).toBe(2);
+    const pass2Args = mockSpawn.mock.calls[1][1];
+    expect(pass2Args).toContain('-pass');
+    expect(pass2Args[pass2Args.indexOf('-pass') + 1]).toBe('2');
+    expect(pass2Args).toContain('-b:v');
+    expect(pass2Args[pass2Args.indexOf('-b:v') + 1]).toBe(MARGIN_BITRATE);
+    expect(pass2Args).toContain('-c:a');
+    expect(pass2Args[pass2Args.indexOf('-c:a') + 1]).toBe('aac');
+    expect(pass2Args[pass2Args.indexOf('-movflags') + 1]).toBe('+faststart');
+
+    completeProcess(processes[1]);
+    await flush();
+
+    const result = await runPromise;
+    expect(result.path).toBe('C:\\merged.mp4');
+    expect(typeof result.sizeMB).toBe('number');
+  });
+
+  test('AV1 CPU encode (the reported merge scenario) is also 2-pass into MP4 with AAC', async () => {
+    const runPromise = merger.postConvertMerged('C:\\merged.mp4', {
+      format: 'mp4',
+      targetSizeMB: 10,
+      totalDurationSec: 60,
+      codec: 'av1',
+      encoder: 'libaom-av1'
+    });
+
+    await flush();
+    expect(processes.length).toBe(1);
+    completeProcess(processes[0]);
+    await flush();
+    expect(processes.length).toBe(2);
+
+    const pass2Args = mockSpawn.mock.calls[1][1];
+    expect(pass2Args).toContain('-c:v');
+    expect(pass2Args[pass2Args.indexOf('-c:v') + 1]).toBe('libaom-av1');
+    expect(pass2Args).toContain('-pass');
+    expect(pass2Args[pass2Args.indexOf('-pass') + 1]).toBe('2');
+    expect(pass2Args[pass2Args.indexOf('-b:v') + 1]).toBe(MARGIN_BITRATE);
+    expect(pass2Args[pass2Args.indexOf('-c:a') + 1]).toBe('aac');
+
+    completeProcess(processes[1]);
+    await runPromise;
+  });
+
+  test('hardware encoders stay single-pass (no 2-pass support) but keep the margin bitrate', async () => {
+    const runPromise = merger.postConvertMerged('C:\\merged.mp4', {
+      format: 'mp4',
+      targetSizeMB: 10,
+      totalDurationSec: 60,
+      codec: 'h264',
+      encoder: 'h264_nvenc'
+    });
+
+    await flush();
+    expect(processes.length).toBe(1); // single pass only
+
+    const args = mockSpawn.mock.calls[0][1];
+    expect(args).not.toContain('-pass');
+    expect(args[args.indexOf('-b:v') + 1]).toBe(MARGIN_BITRATE);
+    expect(args).toContain('-c:v');
+    expect(args[args.indexOf('-c:v') + 1]).toBe('h264_nvenc');
+    expect(args[args.indexOf('-movflags') + 1]).toBe('+faststart');
+
+    completeProcess(processes[0]);
+    await runPromise;
+  });
+
+  // x264-on-Windows passlog regression: the 2-pass re-encode must pass a
+  // RELATIVE passlog name and run with cwd = output dir (like encoder.js), or
+  // pass 2 fails to find the stats file when the path has backslashes.
+  test('CPU 2-pass uses a relative passlog filename with cwd set to the output dir', async () => {
+    const runPromise = merger.postConvertMerged('C:\\out\\merged.mp4', {
+      format: 'mp4',
+      targetSizeMB: 10,
+      totalDurationSec: 60,
+      codec: 'h264',
+      encoder: 'libx264'
+    });
+
+    await flush();
+    const pass1Args = mockSpawn.mock.calls[0][1];
+    const plIdx = pass1Args.indexOf('-passlogfile');
+    expect(plIdx).not.toBe(-1);
+    const passlog = pass1Args[plIdx + 1];
+    // Relative (no drive letter / no directory), not an absolute Windows path.
+    expect(passlog).not.toMatch(/^[A-Za-z]:/);
+    expect(passlog).not.toContain('\\');
+    expect(passlog).toMatch(/^clipsend-pass-/);
+
+    // Pass 1 ran with cwd = the output directory.
+    expect(mockSpawn.mock.calls[0][2]).toEqual({ cwd: 'C:\\out' });
+
+    completeProcess(processes[0]);
+    await flush();
+    const pass2Args = mockSpawn.mock.calls[1][1];
+    const pl2 = pass2Args[pass2Args.indexOf('-passlogfile') + 1];
+    expect(pl2).toBe(passlog); // same relative name both passes
+    expect(mockSpawn.mock.calls[1][2]).toEqual({ cwd: 'C:\\out' });
+
+    completeProcess(processes[1]);
+    await runPromise;
+  });
+
+  // Merged-GIF regression: pass 2 previously dropped fps=15 when no scale
+  // filter was present, so the GIF ran at the source framerate.
+  test('GIF conversion applies fps=15 on the palette pass even without a scale filter', async () => {
+    const runPromise = merger.postConvertMerged('C:\\merged.mp4', {
+      format: 'gif',
+      codec: 'h264',
+      encoder: 'libx264'
+    });
+
+    await flush();
+    expect(processes.length).toBe(1); // palettegen
+    completeProcess(processes[0]);
+    await flush();
+
+    expect(processes.length).toBe(2); // paletteuse
+    const pass2Args = mockSpawn.mock.calls[1][1];
+    const lavfiIdx = pass2Args.indexOf('-lavfi');
+    expect(lavfiIdx).not.toBe(-1);
+    const lavfi = pass2Args[lavfiIdx + 1];
+    expect(lavfi).toContain('fps=15');
+    expect(lavfi).toContain('paletteuse');
+
+    completeProcess(processes[1]);
+    await runPromise;
+  });
+});

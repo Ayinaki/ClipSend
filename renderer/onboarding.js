@@ -115,6 +115,26 @@ const VISUAL_EXPORT = `
   <path d="M40 69v7l6-3.5z" fill="#fff"/>
 </svg>`;
 
+// GPU card with an AV1 chip and a "2x quality per MB" badge: the encoding
+// step's visual for hardware acceleration + the AV1 codec choice.
+const VISUAL_ENCODING = `
+<svg viewBox="0 0 380 96" fill="none" aria-hidden="true">
+  <rect x="94" y="18" width="190" height="60" rx="6" fill="#141414" stroke="#2a2a2a"/>
+  <rect x="94" y="18" width="190" height="60" rx="6" fill="#2ba87e" opacity="0.06"/>
+  <rect x="112" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="128" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="112" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="128" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="240" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="256" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="240" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="256" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
+  <rect x="150" y="32" width="78" height="32" rx="3" fill="#1d1d1d" stroke="#3ddc97"/>
+  <text x="189" y="54" text-anchor="middle" font-size="13" font-weight="700" fill="#3ddc97" font-family="Consolas, monospace">AV1</text>
+  <rect x="256" y="46" width="100" height="20" rx="10" fill="#2ba87e"/>
+  <text x="306" y="60" text-anchor="middle" font-size="9" font-weight="700" fill="#0d1f1a" font-family="Segoe UI, sans-serif">2x quality per MB</text>
+</svg>`;
+
 // A decorative keyboard mock (keycaps only - the labeled list lives in the
 // step body, so the same content is never shown twice). The teal-accented
 // keys are the ones that set / step trim points.
@@ -163,6 +183,11 @@ export const ONBOARDING_STEPS = [
     title: 'Export your way',
     body: 'Pick MP4, GIF, or MP3, cap the size for Discord, or choose a resolution. Loop playback replays your trimmed range before you export.',
     visual: VISUAL_EXPORT
+  },
+  {
+    title: 'Smaller files, better quality',
+    body: 'Exports default to H.264 MP4 for maximum compatibility. Switch to AV1 in Settings for roughly double the quality at the same file size - ideal for Discord clips - and pick your GPU encoder: NVIDIA NVENC, Intel QSV, or AMD AMF, all detected automatically. AV1 exports stay in the format you choose (MP4).',
+    visual: VISUAL_ENCODING
   },
   {
     title: 'Shortcuts to speed you up',

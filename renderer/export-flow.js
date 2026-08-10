@@ -43,6 +43,19 @@ export function formatPlanDisplay(plan, { isMp3, outputFormat, mode } = {}) {
 }
 
 /**
+ * True when a trim starting at trimIn would have zero video frames to
+ * encode: the video track is meaningfully shorter than the container
+ * (audio-outlasts-video shape: music videos, cover-art streams) AND the In
+ * point lands at/past the track's end. The 0.5s gate keeps normal files
+ * (where videoDuration ≈ container duration) from ever being flagged, even
+ * when trimmed to the very end. NaN/undefined values fail safe (no flag).
+ */
+export function isTrimPastVideoEnd(trimIn, videoDuration, duration) {
+  if (typeof trimIn !== 'number' || typeof videoDuration !== 'number' || typeof duration !== 'number') return false;
+  return videoDuration < duration - 0.5 && trimIn >= videoDuration - 0.05;
+}
+
+/**
  * Assemble the full warning list shown after plan calculation:
  * plan warnings + VFR notice + GIF feasibility notice.
  *
@@ -52,9 +65,13 @@ export function formatPlanDisplay(plan, { isMp3, outputFormat, mode } = {}) {
  * @param {string} [context.outputFormat] - 'mp4' | 'gif' | 'mp3'
  * @param {number} [context.trimDuration] - Trim duration in seconds
  * @param {number} [context.targetSizeMB] - Target size limit in MB
+ * @param {number} [context.trimIn] - Trim In point in seconds
+ * @param {number} [context.videoDuration] - Video track length in seconds
+ *   (can be shorter than the container duration for audio-outlasts-video files)
+ * @param {number} [context.duration] - Container duration in seconds
  * @returns {Array<{id: string, title: string, body: string}>}
  */
-export function buildPlanWarnings(plan, { isVFR, outputFormat, trimDuration, targetSizeMB } = {}) {
+export function buildPlanWarnings(plan, { isVFR, outputFormat, trimDuration, targetSizeMB, trimIn, videoDuration, duration } = {}) {
   const warnings = [...((plan && plan.warnings) || [])];
 
   if (isVFR) {
@@ -70,6 +87,16 @@ export function buildPlanWarnings(plan, { isVFR, outputFormat, trimDuration, tar
       id: 'gif_feasibility',
       title: 'GIF Feasibility Warning',
       body: `This clip may be too long (${Math.round(trimDuration)}s) to comfortably fit within ${targetSizeMB}MB as a GIF. Consider trimming the clip shorter.`
+    });
+  }
+
+  // A trim starting at/past the end of the video track encodes zero frames
+  // (music videos / cover-art streams where audio outlasts the video).
+  if (isTrimPastVideoEnd(trimIn, videoDuration, duration)) {
+    warnings.push({
+      id: 'no_video_frames',
+      title: 'Trim has no video frames',
+      body: 'The trim In point is past the end of the video track — this export would contain no video (audio only). Move the In point earlier or pick a shorter range.'
     });
   }
 

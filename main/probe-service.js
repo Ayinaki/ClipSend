@@ -76,9 +76,21 @@ async function probeFile(filePath) {
     }
   }
 
+  // Video track length, which can be shorter than the container/audio
+  // duration (music files with a short cover-art video). A trim that starts
+  // at or past this encodes zero frames — surfaced as an early warning.
+  // Normalize to undefined when absent/unparseable ('N/A') so downstream
+  // checks treat it as unknown rather than NaN.
+  let videoDuration;
+  if (videoStream.duration) {
+    const parsed = parseFloat(videoStream.duration);
+    if (!isNaN(parsed)) videoDuration = parsed;
+  }
+
   const mediaInfo = {
     filePath: filePath,
     duration: duration,
+    videoDuration: videoDuration,
     frameRate: frameRate,
     isVFR: isVFR,
     width: videoStream.width,
@@ -97,6 +109,11 @@ async function probeFile(filePath) {
 
   return mediaInfo;
 }
+
+// Thumbnail temp files created for merge-mode clips. Tracked here so the
+// main process can delete them on quit (and the renderer on clip removal)
+// instead of leaking a jpg in the OS temp dir for every clip ever added.
+const createdThumbnails = new Set();
 
 async function extractThumbnail(filePath, tempDir) {
   return new Promise((resolve, reject) => {
@@ -121,7 +138,8 @@ async function extractThumbnail(filePath, tempDir) {
     
     execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (fs.existsSync(outputPath)) {
-        resolve(`file:///${outputPath.replace(/\\/g, '/')}`);
+        createdThumbnails.add(outputPath);
+        resolve({ url: `file:///${outputPath.replace(/\\/g, '/')}`, tempPath: outputPath });
       } else {
         const argsFallback = [
           '-y',
@@ -134,7 +152,8 @@ async function extractThumbnail(filePath, tempDir) {
         ];
         execFile(ffmpegPath, argsFallback, { maxBuffer: 10 * 1024 * 1024 }, (error2) => {
           if (fs.existsSync(outputPath)) {
-            resolve(`file:///${outputPath.replace(/\\/g, '/')}`);
+            createdThumbnails.add(outputPath);
+            resolve({ url: `file:///${outputPath.replace(/\\/g, '/')}`, tempPath: outputPath });
           } else {
             resolve(null);
           }
@@ -144,4 +163,9 @@ async function extractThumbnail(filePath, tempDir) {
   });
 }
 
-module.exports = { probeFile, extractThumbnail };
+/** All thumbnail temp paths created this session (for quit-time cleanup). */
+function getCreatedThumbnails() {
+  return Array.from(createdThumbnails);
+}
+
+module.exports = { probeFile, extractThumbnail, getCreatedThumbnails };
