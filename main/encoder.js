@@ -12,6 +12,46 @@ const TIME_BUFFER_MAX = 2048;   // 2KB progress regex buffer
 const TIME_REGEX = /time=(\d+):(\d{2}):(\d{2}\.\d{2})/g;
 
 /**
+ * Translate a failed ffmpeg run into a human-readable message plus a raw
+ * technical tail. Raw stderr dumps are hard to act on (e.g. a bare
+ * "frame= 0 ... Conversion failed!"), so the common failure modes get a
+ * plain-language explanation while the tail is still attached for the
+ * technical-details view in the UI.
+ *
+ * @param {number} code - ffmpeg's non-zero exit code
+ * @param {string} stderr - the full accumulated stderr text
+ * @returns {{ message: string, details: string }}
+ */
+function translateFfmpegError(code, stderr) {
+  const tail = stderr.split('\n').slice(-10).join('\n');
+
+  // Zero video frames encoded while the run still proceeded. This is the
+  // classic music-file shape: the container/audio is longer than the video
+  // track (often a short cover-art video), so a trim that starts at or past
+  // the video's end encodes nothing and dies with a bare "Conversion failed!".
+  // The marker text varies by ffmpeg version (video:0KiB breakdown vs. the
+  // newer "Nothing was written" line), so match frame= 0 together with any
+  // no-packets/could-not-open-encoder marker.
+  const zeroFrames = /frame=\s*0/.test(stderr);
+  const noVideoWritten = /video:0KiB/.test(stderr)
+    || /Nothing was written into output file/.test(stderr)
+    || /Could not open encoder before EOF/.test(stderr);
+  if (zeroFrames && noVideoWritten) {
+    return {
+      message: 'The export range has no video frames to encode — the video track is shorter than the trim window (common for music files, where the audio outlasts the video). Move the trim In point earlier or pick a shorter range, then try again.',
+      details: stderr.split('\n').slice(-12).join('\n')
+    };
+  }
+
+  // Generic path: the message stays a clean summary (the modal shows the raw
+  // tail under "Technical details"), consistent with the translated branch.
+  return {
+    message: `FFmpeg exited with code ${code}.`,
+    details: tail
+  };
+}
+
+/**
  * Encoder service — orchestrates the 2-pass FFmpeg execution.
  */
 class Encoder {
@@ -184,9 +224,10 @@ class Encoder {
           reject(new Error('Cancelled'));
         } else if (code !== 0) {
           const fullErrText = stderrChunks.join('');
-          const tail = fullErrText.split('\n').slice(-10).join('\n');
-          const err = new Error(`FFmpeg exited with code ${code}. Error: ${tail}`);
+          const translated = translateFfmpegError(code, fullErrText);
+          const err = new Error(translated.message);
           err.ffmpegStderr = fullErrText;
+          err.details = translated.details;
           reject(err);
         } else {
           resolve();

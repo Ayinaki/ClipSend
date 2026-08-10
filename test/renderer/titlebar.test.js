@@ -12,8 +12,10 @@ const {
   createEstimateBar,
   createProgressUI,
   createWarningsUI,
+  buildWarningCard,
   initWindowControls,
-  initTitlebarActions
+  initTitlebarActions,
+  initTitlebarTooltips
 } = require('../../renderer/titlebar.js');
 
 function loadAppDom() {
@@ -36,6 +38,7 @@ function getElements() {
     progressFill: document.getElementById('progress-fill'),
     progressText: document.getElementById('progress-text'),
     warningBtn: document.getElementById('titlebar-warning-btn'),
+    warningCount: document.getElementById('titlebar-warning-count'),
     warningsModal: document.getElementById('warnings-modal'),
     closeWarningsBtn: document.getElementById('close-warnings-btn'),
     warningsModalContent: document.getElementById('warnings-modal-content'),
@@ -197,6 +200,90 @@ describe('progress UI', () => {
   });
 });
 
+describe('title bar tooltip bubbles', () => {
+  let els;
+
+  beforeEach(() => {
+    loadAppDom();
+    els = getElements();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('hovering a button reveals an animated bubble with its label', () => {
+    const bubble = document.getElementById('titlebar-tooltip');
+    const helpBtn = document.getElementById('help-btn');
+    initTitlebarTooltips(document, { showDelay: 150, hideDelay: 60 });
+
+    helpBtn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    // Not shown yet — the show delay must elapse first.
+    expect(bubble.classList.contains('visible')).toBe(false);
+    jest.advanceTimersByTime(150);
+    expect(bubble.classList.contains('visible')).toBe(true);
+    expect(bubble.textContent).toBe('Keyboard Shortcuts');
+    // The bubble is announced as the button's tooltip.
+    expect(helpBtn.getAttribute('aria-describedby')).toBe('titlebar-tooltip');
+
+    // Moving away hides it again after the hide delay.
+    helpBtn.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+    jest.advanceTimersByTime(60);
+    expect(bubble.classList.contains('visible')).toBe(false);
+    expect(helpBtn.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  test('clicking a button hides its tooltip immediately', () => {
+    const bubble = document.getElementById('titlebar-tooltip');
+    const settingsBtn = document.getElementById('settings-btn');
+    initTitlebarTooltips(document, { showDelay: 0, hideDelay: 60 });
+
+    settingsBtn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    jest.advanceTimersByTime(0);
+    expect(bubble.classList.contains('visible')).toBe(true);
+    expect(bubble.textContent).toBe('Settings');
+
+    settingsBtn.click();
+    expect(bubble.classList.contains('visible')).toBe(false);
+  });
+
+  test('sliding directly from one button to another swaps the label and stays visible', () => {
+    const bubble = document.getElementById('titlebar-tooltip');
+    const helpBtn = document.getElementById('help-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+    initTitlebarTooltips(document, { showDelay: 150, hideDelay: 60 });
+
+    // Hover Help and let its tooltip appear.
+    helpBtn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    jest.advanceTimersByTime(150);
+    expect(bubble.classList.contains('visible')).toBe(true);
+    expect(bubble.textContent).toBe('Keyboard Shortcuts');
+
+    // Move straight to Settings: leaving Help schedules a hide, but entering
+    // Settings cancels it — the bubble must swap labels and stay visible.
+    helpBtn.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+    settingsBtn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    jest.advanceTimersByTime(150);
+
+    expect(bubble.classList.contains('visible')).toBe(true);
+    expect(bubble.textContent).toBe('Settings');
+    // The stale aria reference on the previous button is stripped.
+    expect(helpBtn.hasAttribute('aria-describedby')).toBe(false);
+    expect(settingsBtn.getAttribute('aria-describedby')).toBe('titlebar-tooltip');
+  });
+
+  test('a hidden button (warning badge) never shows a tooltip', () => {
+    const bubble = document.getElementById('titlebar-tooltip');
+    const warningBtn = document.getElementById('titlebar-warning-btn');
+    initTitlebarTooltips(document, { showDelay: 0, hideDelay: 60 });
+
+    warningBtn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    jest.advanceTimersByTime(0);
+    expect(bubble.classList.contains('visible')).toBe(false);
+  });
+});
+
 describe('warnings UI', () => {
   let els;
 
@@ -209,7 +296,8 @@ describe('warnings UI', () => {
     button: els.warningBtn,
     modal: els.warningsModal,
     closeBtn: els.closeWarningsBtn,
-    content: els.warningsModalContent
+    content: els.warningsModalContent,
+    countEl: els.warningCount
   });
 
   test('shows the warning badge and renders cards when warnings exist', () => {
@@ -218,7 +306,9 @@ describe('warnings UI', () => {
       { id: 'vfr', title: 'VFR detected', body: 'Audio sync issues might occur.' }
     ]);
 
-    expect(els.warningBtn.style.display).toBe('inline-block');
+    expect(els.warningBtn.style.display).toBe('flex');
+    expect(els.warningCount.style.display).not.toBe('none');
+    expect(els.warningCount.textContent).toBe('1');
     expect(els.warningsModalContent.querySelectorAll('.warning-card')).toHaveLength(1);
     expect(els.warningsModalContent.textContent).toContain('VFR detected');
   });
@@ -228,6 +318,7 @@ describe('warnings UI', () => {
     warningsUI.show([]);
 
     expect(els.warningBtn.style.display).toBe('none');
+    expect(els.warningCount.style.display).toBe('none');
     expect(els.warningsModalContent.innerHTML).toBe('');
   });
 
@@ -237,5 +328,21 @@ describe('warnings UI', () => {
 
     expect(els.warningsModalContent.querySelectorAll('.warning-card')).toHaveLength(1);
     expect(els.warningsModalContent.textContent).toContain('Something to note');
+  });
+
+  test('error warnings render the red severity variant', () => {
+    const warningsUI = makeWarningsUI();
+    warningsUI.show([{ id: 'error', title: 'Plan failed', body: 'Something broke' }]);
+
+    expect(els.warningsModalContent.querySelectorAll('.warning-card--error')).toHaveLength(1);
+    expect(els.warningsModalContent.textContent).toContain('Plan failed');
+  });
+
+  test('buildWarningCard with showTitle:false renders body-only (merge sidebar)', () => {
+    const card = buildWarningCard('Clips have different formats', { showTitle: false });
+
+    expect(card.className).toBe('warning-card');
+    expect(card.querySelector('.warning-card-title')).toBeNull();
+    expect(card.querySelector('.warning-card-body').textContent).toBe('Clips have different formats');
   });
 });

@@ -1,11 +1,12 @@
 const { ipcMain, BrowserWindow, app, shell } = require('electron');
 const { spawn } = require('child_process');
 const { openFileDialog, openMultipleFilesDialog, showSaveDialog, pickDirectoryDialog } = require('./file-manager');
-const { probeFile, extractThumbnail } = require('./probe-service');
+const { probeFile, extractThumbnail, getCreatedThumbnails } = require('./probe-service');
 const { calculatePlan } = require('./export-planner');
 const { updateTaskbarProgress, clearTaskbarProgress, setTaskbarError, notifyExportComplete } = require('./taskbar');
 const { Encoder } = require('./encoder');
 const { Merger } = require('./merger');
+const { pickEncoder, isHardwareEncoder, resolveCpuEncoder, detectAvailableEncoders } = require('./encoder-profiles');
 const { extractWaveform } = require('./waveform-service');
 const gifExporter = require('./gif-exporter');
 const Store = require('electron-store');
@@ -23,8 +24,50 @@ if (ffmpegPath.includes('app.asar')) {
 }
 const activePreviews = new Set();
 
+// Stderr fragments that indicate a hardware encoder failed to initialize
+// (missing drivers, unsupported GPU, no VRAM, etc.). Any vendor's encoder
+// (NVENC / QSV / AMF) failing like this triggers the CPU retry path.
+const HW_ENCODER_FAILURE_PATTERNS = [
+  'Could not open encoder',
+  'Cannot load nvcuda.dll',
+  'No capable devices found',
+  'OpenEncodeSessionEx failed',
+  'Initialize failed',
+  'MFXVideoENCODE_Init',
+  'Failed to initialize MFX',
+  'MFX session',
+  'mfx implementation',
+  'libmfx',
+  'AMF Error',
+  'Unable to load AMF',
+  'amfrt64.dll',
+  'No hardware device',
+  'hardware device'
+];
+
+function isHardwareEncoderFailure(encoderName, ffmpegStderr) {
+  if (!isHardwareEncoder(encoderName) || !ffmpegStderr) return false;
+  return HW_ENCODER_FAILURE_PATTERNS.some(p => ffmpegStderr.includes(p));
+}
+
+// Detect encoder capabilities once per session (the bundled FFmpeg's encoder
+// list doesn't change at runtime) and share it between encoder:detect, the
+// export fallback, and merge re-encode resolution.
+let encoderCapsPromise = null;
+function getEncoderCapabilities() {
+  if (!encoderCapsPromise) {
+    encoderCapsPromise = detectAvailableEncoders(ffmpegPath).catch(() => null);
+  }
+  return encoderCapsPromise;
+}
+
 app.on('will-quit', () => {
   activePreviews.forEach(tempPath => {
+    fs.promises.unlink(tempPath).catch(() => {});
+  });
+  // Merge-clip thumbnails (thumb-*.jpg) are tracked by probe-service; remove
+  // any that the renderer didn't already clean up on clip removal.
+  getCreatedThumbnails().forEach(tempPath => {
     fs.promises.unlink(tempPath).catch(() => {});
   });
 });
@@ -135,12 +178,13 @@ function registerIpcHandlers() {
       const tempDir = app.getPath('temp');
       const settled = await limitConcurrentSettled(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
-        const thumbnailPath = await extractThumbnail(filePath, tempDir);
+        const thumb = await extractThumbnail(filePath, tempDir);
         
         return {
           filePath,
           mediaInfo,
-          thumbnailPath,
+          thumbnailPath: thumb ? thumb.url : null,
+          thumbnailTempPath: thumb ? thumb.tempPath : null,
           id: `clip-${Date.now()}-${Math.floor(Math.random() * 10000)}`
         };
       });
@@ -168,12 +212,13 @@ function registerIpcHandlers() {
       const tempDir = app.getPath('temp');
       const settled = await limitConcurrentSettled(filePaths, 3, async (filePath) => {
         const mediaInfo = await probeFile(filePath);
-        const thumbnailPath = await extractThumbnail(filePath, tempDir);
+        const thumb = await extractThumbnail(filePath, tempDir);
         
         return {
           filePath,
           mediaInfo,
-          thumbnailPath,
+          thumbnailPath: thumb ? thumb.url : null,
+          thumbnailTempPath: thumb ? thumb.tempPath : null,
           id: `clip-${Date.now()}-${Math.floor(Math.random() * 10000)}`
         };
       });
@@ -275,6 +320,8 @@ function registerIpcHandlers() {
       const parsedInput = path.parse(inputFilePath);
       const isGif = plan.outputFormat === 'gif';
       const isMp3 = plan.outputFormat === 'mp3';
+      // The container always follows the format picker: mp4 for video
+      // (H.264 or AV1), gif/mp3 for their own formats.
       const ext = isGif ? '.gif' : isMp3 ? '.mp3' : '.mp4';
       const standardizedName = `${parsedInput.name} - Trimmed${ext}`;
       const defaultExportDir = store.get('defaultExportDirectory');
@@ -311,17 +358,8 @@ function registerIpcHandlers() {
         return result;
       }
     } catch (error) {
-      if (plan.encoder === 'h264_nvenc' && error.ffmpegStderr) {
-        const errText = error.ffmpegStderr;
-        if (
-          errText.includes('Could not open encoder') ||
-          errText.includes('Cannot load nvcuda.dll') ||
-          errText.includes('No capable devices found') ||
-          errText.includes('OpenEncodeSessionEx failed') ||
-          errText.includes('Initialize failed')
-        ) {
-          return { success: false, fallbackToCpu: true };
-        }
+      if (isHardwareEncoderFailure(plan.encoder, error && error.ffmpegStderr)) {
+        return { success: false, fallbackToCpu: true };
       }
       const win = BrowserWindow.fromWebContents(event.sender);
       // The GIF exporter surfaces a user cancel by throwing 'Export cancelled
@@ -334,7 +372,7 @@ function registerIpcHandlers() {
         return { success: false, cancelled: true };
       }
       setTaskbarError(win);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, details: error.details };
     }
   });
 
@@ -378,30 +416,63 @@ function registerIpcHandlers() {
       updateTaskbarProgress(win, percent);
     };
 
-    // Shared export settings: format (mp4/gif/mp3), non-native resolution, and
-    // an explicit target size. The fast lossless merge path is preserved unless
-    // one of these asks for a post-conversion.
+    // Video codec: an explicit options.codec wins (the trim-mode multi-segment
+    // path pre-encodes each segment in the final codec and only needs a pure
+    // concat), otherwise the persisted setting applies.
+    const videoCodec = options.codec || store.get('videoCodec') || 'h264';
+    const wantsAv1 = videoCodec === 'av1' && !options.skipConvert;
+
+    // Shared export settings: format (mp4/gif/mp3), non-native resolution,
+    // and an explicit target size. The fast lossless merge path is preserved
+    // unless one of these asks for a post-conversion. AV1 still forces a
+    // post-conversion, but the container always follows the format picker —
+    // AV1 is muxed into MP4 (AAC audio), which Discord plays natively.
     const postFormat = options.format === 'gif' || options.format === 'mp3' ? options.format : 'mp4';
     const postResolution = options.resolution && options.resolution !== 'native' ? options.resolution : null;
     const postTargetSizeMB = options.targetSizeMB && options.targetSizeMB > 0 ? options.targetSizeMB : null;
 
+    // Resolve the concrete encoders for the merge re-encode paths. The
+    // intermediate merged MP4 always uses the H.264 family (fast, container-
+    // consistent); when AV1 is selected the final MP4 is produced by the
+    // post-convert step with the codec-aware encoder.
+    const hwAccel = store.get('hwAccel') || 'auto';
+    const caps = (await getEncoderCapabilities()) || {};
+    const encoder = pickEncoder({ hwAccel, videoCodec, encoders: caps });
+    const mergeEncoder = pickEncoder({ hwAccel, videoCodec: 'h264', encoders: caps });
+
+    const convertMerged = (enc) => merger.postConvertMerged(outputPath, {
+      format: postFormat,
+      resolution: postResolution,
+      targetSizeMB: postTargetSizeMB,
+      totalDurationSec: options.totalDurationSec || 0,
+      codec: videoCodec,
+      encoder: enc,
+      onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${wantsAv1 ? 'AV1 (MP4)' : postFormat.toUpperCase()}...`)
+    });
+
     const applyPostConvert = async (result) => {
-      if (result.success && (postFormat !== 'mp4' || postResolution || postTargetSizeMB)) {
+      if (result.success && (wantsAv1 || postFormat !== 'mp4' || postResolution || postTargetSizeMB)) {
         try {
-          const converted = await merger.postConvertMerged(outputPath, {
-            format: postFormat,
-            resolution: postResolution,
-            targetSizeMB: postTargetSizeMB,
-            totalDurationSec: options.totalDurationSec || 0,
-            onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${postFormat.toUpperCase()}...`)
-          });
+          const converted = await convertMerged(encoder);
           result.filePath = converted.path;
           result.finalSizeMB = converted.sizeMB;
-          result.strategy = `${result.strategy} + ${postFormat.toUpperCase()} convert`;
+          result.strategy = `${result.strategy} + ${wantsAv1 ? 'AV1 (MP4)' : postFormat.toUpperCase()} convert`;
         } catch (err) {
           // Cancelled mid-conversion: the merged file still exists, so surface
           // the merge as done rather than reporting a failure.
           if (/cancell/i.test(String(err.message))) return result;
+          // The codec-aware encoder (e.g. av1_nvenc) is listed by every build
+          // but can fail to initialize on GPUs that don't support it (pre-Ada
+          // cards, older iGPUs). Fall back to the CPU encoder for this codec
+          // — resolveCpuEncoder picks the one this FFmpeg actually ships
+          // (libaom-av1 in the bundled build, or libsvtav1 if present).
+          if (isHardwareEncoderFailure(encoder, err && err.ffmpegStderr)) {
+            const converted = await convertMerged(resolveCpuEncoder(videoCodec, caps));
+            result.filePath = converted.path;
+            result.finalSizeMB = converted.sizeMB;
+            result.strategy = `${result.strategy} + ${wantsAv1 ? 'AV1 (MP4)' : postFormat.toUpperCase()} convert (CPU)`;
+            return result;
+          }
           throw err;
         }
       }
@@ -420,54 +491,26 @@ function registerIpcHandlers() {
       }
     }
 
-    // Resolve encoder preference for merge re-encode path
-    const hwAccel = store.get('hwAccel') || 'auto';
-    let encoder = 'libx264';
-    if (hwAccel === 'nvenc' || hwAccel === 'auto') {
-      // Quick check if NVENC is available
-      try {
-        const { exec } = require('child_process');
-        const available = await new Promise((resolve) => {
-          exec(`"${ffmpegPath}" -encoders`, (error, stdout) => {
-            if (error) return resolve(false);
-            resolve(stdout.includes('h264_nvenc'));
-          });
-        });
-        if (available) encoder = 'h264_nvenc';
-      } catch (e) {
-        // Stay with libx264
-      }
-    }
-
     try {
-      const result = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder, trims });
+      const result = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder: mergeEncoder, trims, codec: 'h264' });
       const final = await applyPostConvert(result);
       finishExport(win, final, 'Merged video');
       return final;
     } catch (error) {
-      // If NVENC failed during merge re-encode, retry with CPU
-      if (encoder === 'h264_nvenc' && error.ffmpegStderr) {
-        const errText = error.ffmpegStderr;
-        if (
-          errText.includes('Could not open encoder') ||
-          errText.includes('Cannot load nvcuda.dll') ||
-          errText.includes('No capable devices found') ||
-          errText.includes('OpenEncodeSessionEx failed') ||
-          errText.includes('Initialize failed')
-        ) {
-          try {
-            const retryResult = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder: 'libx264', trims });
-            const retryFinal = await applyPostConvert(retryResult);
-            finishExport(win, retryFinal, 'Merged video');
-            return retryFinal;
-          } catch (retryError) {
-            setTaskbarError(win);
-            return { success: false, error: retryError.message };
-          }
+      // If a hardware encoder failed during merge re-encode, retry with CPU
+      if (isHardwareEncoderFailure(mergeEncoder, error && error.ffmpegStderr)) {
+        try {
+          const retryResult = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder: 'libx264', trims, codec: 'h264' });
+          const retryFinal = await applyPostConvert(retryResult);
+          finishExport(win, retryFinal, 'Merged video');
+          return retryFinal;
+        } catch (retryError) {
+          setTaskbarError(win);
+          return { success: false, error: retryError.message, details: retryError.details };
         }
       }
       setTaskbarError(win);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, details: error.details };
     }
   });
 
@@ -488,28 +531,17 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('encoder:detect', async () => {
-    return new Promise((resolve) => {
-      const { execFile } = require('child_process');
-      const path = require('path');
-      let localFfmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg.exe');
-      
-      // Explicitly point to unpacked asar if packaged to be absolutely safe
-      if (localFfmpegPath.includes('app.asar')) {
-        localFfmpegPath = localFfmpegPath.replace('app.asar', 'app.asar.unpacked');
-      }
-
-      console.log(`[NVENC Detect] Running: ${localFfmpegPath} -encoders`);
-      
-      execFile(localFfmpegPath, ['-encoders'], (error, stdout, stderr) => {
-        if (error) {
-          console.error(`[NVENC Detect] Error running ffmpeg:`, error);
-          console.error(`[NVENC Detect] stderr:`, stderr);
-          resolve(false);
-          return;
-        }
-        resolve(stdout.includes('h264_nvenc'));
-      });
-    });
+    console.log('[Encoder Detect] Probing bundled FFmpeg for hardware/AV1 encoders...');
+    const caps = await getEncoderCapabilities();
+    console.log('[Encoder Detect] Capabilities:', JSON.stringify(caps || {}));
+    return caps || {
+      nvenc: { h264: false, av1: false },
+      qsv: { h264: false, av1: false },
+      amf: { h264: false, av1: false },
+      svtav1: false,
+      libaom: false,
+      libx264: false
+    };
   });
 
   ipcMain.handle('export:cancel', (event) => {

@@ -1,457 +1,484 @@
 window.changelogData = [
   {
+    "version": "v2.1.1: AV1 In Your Chosen Format + Unified Progress",
+    "date": "August 2026",
+    "changes": [
+      "Fix: AV1 exports now use the output format you picked. AV1 files save as MP4 with audio instead of being forced into WebM, so they play anywhere MP4 does, including Discord.",
+      "Fix: The size estimate in Merge Mode now always matches the target size you selected, even when you keep the default preset.",
+      "Enhancement: Merge exports show their progress and cancel button in the title bar, like Trim exports, instead of in a side panel."
+    ]
+  },
+  {
+    "version": "v2.1.0: AV1 Encoding & Hardware Acceleration",
+    "date": "August 2026",
+    "changes": [
+      "Feature: New Video Codec setting. Export as AV1 for about double the quality at the same file size, and Discord plays it natively.",
+      "Feature: Hardware acceleration now supports Intel and AMD GPUs as well as NVIDIA, with automatic detection. If a GPU encoder fails to start, the export retries with the CPU encoder.",
+      "Feature: AV1 exports use the fastest available path, your GPU's AV1 encoder when the hardware supports it, or a high-quality CPU encoder otherwise.",
+      "Enhancement: Settings now shows which hardware encoders were detected on your PC and greys out the ones that are not available.",
+      "Enhancement: The first-run tour now introduces AV1 and hardware acceleration.",
+      "Fix: When a hardware encoder fails during a single-clip export, the retry now uses the CPU encoder properly instead of repeating the same failure."
+    ]
+  },
+  {
+    "version": "v2.0.1: AV1 Playback Fix & Lighter App",
+    "date": "August 2026",
+    "changes": [
+      "Fix: AV1 videos now load, preview, and export correctly everywhere in the app. Merge Mode thumbnails and trims on AV1 files previously failed silently.",
+      "Smaller: The installer dropped from about 145 MB to 110 MB, and the installed app takes up roughly 130 MB less disk space."
+    ]
+  },
+  {
     "version": "v2.0.0: Major UI & Workflow Overhaul",
     "date": "August 2026",
     "changes": [
-      "Feature: Added a first-run onboarding tour that walks new users through Trim, Merge, Export, and keyboard shortcuts with hand-drawn UI previews, skippable at any point and replayable from Settings.",
-      "Feature: Added timeline zoom - Ctrl+wheel (or the + / - buttons) zooms the waveform and ruler around the cursor, with a zoom % readout, click-to-reset, Ctrl+drag panning, and auto-follow so the playhead never runs off-screen during playback. Sub-second ruler ticks make frame-accurate trimming easy.",
-      "Feature: Export now drives the Windows taskbar progress bar in real time and fires a native completion notification with the output file and size - clicking it brings the app back to the foreground.",
-      "Feature: The app window now remembers its position, size, and maximized state across restarts, with a safety check that recenters the window if the saved position is off-screen (e.g. a monitor was unplugged).",
-      "Feature: Merge Mode now honors the shared export settings - output format (MP4/GIF/MP3), resolution override, and target size are applied to the merged result, and the Export Settings panel is visible without scrolling.",
-      "Feature: Added loop playback for the merged sequence, scroll-locked scrubber alignment, and sharper 640px-wide timeline thumbnails.",
-      "Enhancement: Every modal (Settings, Changelog, Feedback, Export, Warnings, Update, and the tour) now shares a consistent focused-layer treatment - a blurred backdrop and a subtle fade-and-settle entrance, both disabled under reduced motion.",
-      "Enhancement: Replaced the native number-input spinner on the Custom Target Size field with a clean plain input.",
-      "Enhancement: Added toast notifications for lightweight feedback (trims reset, clips added, clipboard copy).",
-      "Fix: The test suite now runs deterministically by excluding the scratch worktree copies that previously raced on a shared log file."
+      "Feature: New first-run tour walks you through Trim, Merge, Export, and shortcuts with UI previews. Skip it anytime or replay it from Settings.",
+      "Feature: Timeline zoom with Ctrl+wheel or the plus and minus buttons. The ruler zooms around your cursor with a zoom readout, and auto-follow keeps the playhead on screen during playback.",
+      "Feature: Exports now drive the Windows taskbar progress bar and fire a native notification with the output file and size when done. Clicking the notification brings the app back to the foreground.",
+      "Feature: The app window remembers its position, size, and maximized state across restarts, and recenters itself if the saved position is off-screen.",
+      "Feature: Merge Mode now uses the shared export settings. Output format (MP4, GIF, MP3), resolution override, and target size apply to the merged result, and the settings panel is visible without scrolling.",
+      "Feature: Added loop playback for merged sequences, aligned scrubbing, and sharper timeline thumbnails.",
+      "Enhancement: All dialogs now share the same focus treatment, a blurred backdrop with a subtle entrance animation, disabled under reduced motion.",
+      "Enhancement: The custom target size field uses a clean plain input instead of the native number spinner.",
+      "Enhancement: Added toast notifications for light feedback, like trims reset, clips added, and clipboard copy.",
+      "Fix: Automated tests now run reliably without interference from scratch worktree copies."
     ]
   },
   {
     "version": "v1.9.1: Merge Mode Per-Clip Trimming",
     "date": "August 2026",
     "changes": [
-      "Feature: Added per-clip trimming inside Merge Mode - drag the amber trim handles on each timeline block (or use the new Set In / Set Out / Jump buttons) to choose exactly which section of each clip makes it into the merged output.",
-      "Feature: Trimmed-away portions of each clip are dimmed on the merge timeline while the blocks themselves stay fixed in place - they're sized by each clip's source length, so adjusting a trim never shifts the rest of the timeline - and the total readout reflects the final merged length.",
-      "Feature: The merge preview player honors trims during playback and scrubbing, and the export pipeline trims each selected range to a temporary file before the lossless concatenation step, keeping the fast path when clips are otherwise compatible.",
-      "Feature: Added a Reset button to clear the active clip's trim, and per-clip trim ranges are shown in the clip list sidebar."
+      "Feature: Trim each clip inside Merge Mode. Drag the amber handles on a timeline block or use the Set In, Set Out, and Jump buttons to pick the section that goes into the merged output.",
+      "Feature: Trimmed-away parts are dimmed on the timeline while blocks stay fixed in place. Blocks are sized by each clip's full length, so adjusting a trim never shifts the rest of the timeline, and the total readout shows the final merged length.",
+      "Feature: The merge preview honors trims during playback and scrubbing, and exports use the fastest path when clips are compatible.",
+      "Feature: Added a Reset button to clear the active clip's trim, and each clip's trim range shows in the clip list."
     ]
   },
   {
     "version": "v1.9.0: Updater Fix & Dialog Overlap Fix",
     "date": "August 2026",
     "changes": [
-      "Fix: Auto-updates now actually work - the installer published to GitHub Releases is now named consistently with the update metadata (latest.yml), so the app can download and install updates in-app instead of failing with a 404.",
-      "Fix: Settings, Changelog, Feedback, Export, Warnings, and Update dialogs can no longer stack on top of each other - opening one closes any other."
+      "Fix: Auto-updates now work. The published installer is named consistently with the update metadata, so the app can download and install updates in-app instead of failing with a 404.",
+      "Fix: Dialogs can no longer stack on top of each other. Opening one closes any other."
     ]
   },
   {
     "version": "v1.8.20: Live Feedback Proxy",
     "date": "August 2026",
     "changes": [
-      "Live Feedback Proxy"
+      "Feature: Feedback is now relayed through a live proxy so submissions reach the team reliably."
     ]
   },
   {
     "version": "v1.8.19: Feedback Relayed Through Secure Proxy",
     "date": "August 2026",
     "changes": [
-      "Security: Feedback no longer ships the Discord webhook URL inside the installer. Submissions are relayed through a Cloudflare Worker proxy that holds the webhook secret, so the endpoint can be rotated without releasing a new build and can no longer be extracted from the app files."
+      "Security: Feedback no longer ships the Discord webhook URL inside the app. Submissions go through a secure proxy that holds the endpoint, so it can be rotated without a new build and can't be extracted from the app files."
     ]
   },
   {
-    "version": "v1.8.18: Auto-Updater Rebuilt on electron-updater",
+    "version": "v1.8.18: Auto-Updater Overhaul",
     "date": "August 2026",
     "changes": [
-      "Fix: Replaced the custom PowerShell-based updater with the maintained electron-updater engine. Updates now install reliably - the installer runs directly (no script orchestration), downloads are verified against the published checksum, per-machine installs trigger the proper elevation prompt, and the app relaunches after install.",
-      "Fix: The update dialog now reports whether a previous update actually applied when the app next starts, so silent failures are no longer invisible.",
-      "Note: The installer now opens on screen after the download so the update can be completed manually. If Windows SmartScreen warns that the publisher is unrecognized, click \"More info\" then \"Run anyway\" to continue - signing the installer with a trusted certificate would remove this prompt entirely."
+      "Fix: Rebuilt the updater on a maintained update engine. Updates now install reliably, downloads are verified against the published checksum, per-machine installs prompt for permission properly, and the app relaunches after install.",
+      "Fix: The update dialog now reports whether a previous update actually applied at the next start, so silent failures are visible.",
+      "Note: The installer opens on screen after download so you can finish the update manually. If Windows SmartScreen flags the publisher as unrecognized, click More info then Run anyway. Signing with a trusted certificate would remove this prompt."
     ]
   },
   {
     "version": "v1.8.17: Title Bar Window Dragging Fix",
     "date": "August 2026",
     "changes": [
-      "Fix: The window can now be dragged from anywhere on the title bar again - the center and right sections (previously blocked by the relocated export estimate and window controls) are draggable regions again, while buttons and controls stay fully clickable."
+      "Fix: You can drag the window from anywhere on the title bar again. The center and right sections are draggable while buttons and controls stay fully clickable."
     ]
   },
   {
-    "version": "v1.8.16: Auto-Updater Fix, Title Bar Estimates & MP3 Export",
+    "version": "v1.8.16: Updater Fix, Title Bar Estimates & MP3 Export",
     "date": "August 2026",
     "changes": [
-      "Fix: Auto-updates now actually apply - the installer runs in in-place update mode (--updated), the app relaunches visibly after install, and the update waits until the new executable is fully in place instead of racing the installer stub.",
-      "Fix: Update install results are now surfaced in the update dialog instead of failing silently.",
-      "Feature: The export estimate (bitrate, resolution, size) and Start Export button now live in the center of the title bar instead of the sidebar.",
-      "Feature: New MP3 (Audio) output format - export audio-only from any selected track at 192 kbps."
+      "Fix: Auto-updates now apply. The installer runs in update mode, the app relaunches visibly, and the update waits until the new executable is fully in place.",
+      "Fix: Update results are now shown in the update dialog instead of failing silently.",
+      "Feature: The export estimate (bitrate, resolution, size) and Start Export button now sit in the center of the title bar instead of the sidebar.",
+      "Feature: New MP3 output format. Export audio only from any selected track at 192 kbps."
     ]
   },
   {
-    "version": "v1.8.15: NVENC Fallback & Export Modal Fixes",
+    "version": "v1.8.15: Export Fixes",
     "date": "August 2026",
     "changes": [
-      "Fix: Resolved an infinite retry loop when NVENC hardware encoding failed - CPU fallback retries now force libx264 instead of reusing the NVENC plan, so exports complete successfully on systems without working GPU encoding.",
-      "Fix: Merge strategy (lossless concat vs re-encode) now displays correctly in the export complete modal instead of being silently dropped."
+      "Fix: Exports no longer loop forever when NVIDIA hardware encoding fails. Retries now use the CPU encoder, so exports finish on systems without working GPU encoding.",
+      "Fix: The export complete dialog now shows the merge strategy (lossless vs re-encode) instead of dropping it."
     ]
   },
   {
-    "version": "v1.8.13: Relauncher Variable Scope & Exception Handling Fix",
+    "version": "v1.8.13: Update Relaunch Fixes",
     "date": "July 2026",
     "changes": [
-      "Fix: Defined currentPid and currentExecPath prior to logUpdater invocation, resolving ReferenceError in delayed relauncher callback.",
-      "Fix: Wrapped delayed relauncher execution in try/catch block to prevent uncaught exceptions from killing the main process."
+      "Fix: The app now relaunches correctly after an update, fixing a rare failure in the relaunch step.",
+      "Fix: A failed relaunch no longer crashes the app."
     ]
   },
   {
-    "version": "v1.8.11: Machine-Readable Installer Result Telemetry",
+    "version": "v1.8.11: Update Status Tracking",
     "date": "July 2026",
     "changes": [
-      "Feature: Added machine-readable installer result tracking (userData/installer-result.json) written by .ps1 relauncher script.",
-      "Feature: Added app startup handler (updater:installedResult) to surface post-update status and automatically clean up result files."
+      "Feature: The app now records the installer's result so it can report whether an update applied.",
+      "Feature: On startup, the app reports whether the last update succeeded and cleans up leftover result files."
     ]
   },
   {
-    "version": "v1.8.10: Installer Exit Logging & Status Tracking",
+    "version": "v1.8.10: Update Logging Improvements",
     "date": "July 2026",
     "changes": [
-      "Feature: Enhanced .ps1 relauncher script to capture NSIS installer process exit codes (-PassThru) and append completion telemetry directly to updater.log."
+      "Feature: The updater now records the installer's exit code and logs update results for easier troubleshooting."
     ]
   },
   {
-    "version": "v1.8.9: Platform Guard & Download Integrity Verification",
+    "version": "v1.8.9: Safer Update Downloads",
     "date": "July 2026",
     "changes": [
-      "Feature: Added process.platform === 'win32' guard around Windows .ps1 / cmd.exe relauncher routines.",
-      "Feature: Added download byte-size verification against Content-Length headers with warning logging.",
-      "Feature: Refined cmd.exe fallback parameter tokenization and added logPath metadata to IPC error/download payloads."
+      "Feature: The updater now verifies that downloaded files match their expected size before installing.",
+      "Feature: Added safeguards so update commands only run on Windows, where they belong.",
+      "Feature: Improved command handling and error details for update failures."
     ]
   },
   {
-    "version": "v1.8.8: Enterprise Auto-Updater Hardening & Logging",
+    "version": "v1.8.8: Updater Compatibility & Logging",
     "date": "July 2026",
     "changes": [
-      "Feature: Replaced inline updater command with a temporary self-cleaning .ps1 script (-ExecutionPolicy Bypass) for enterprise compatibility.",
-      "Feature: Added cmd.exe fallback execution path for environments restricting PowerShell scripts.",
-      "Feature: Implemented persistent timestamped logging in userData/updater.log to capture download metrics and execution traces."
+      "Feature: Updates now work on machines that restrict PowerShell, with a fallback command path for environments that block scripts.",
+      "Feature: The updater keeps a timestamped log of downloads and runs for troubleshooting."
     ]
   },
   {
-    "version": "v1.8.7: Auto-Updater NSIS Process Wait Fix",
+    "version": "v1.8.7: Update Install Fix",
     "date": "July 2026",
     "changes": [
-      "Fix: Hardened auto-updater relaunch script to wait for NSIS installer process termination before relaunching the updated executable.",
-      "Fix: Resolved issue where silent installer stub exited early causing application relaunch before file replacement completed."
+      "Fix: The app now waits for the installer to fully finish before relaunching, so updates apply completely.",
+      "Fix: Fixed a case where the app relaunched before the new files were in place."
     ]
   },
   {
-    "version": "v1.8.6: In-App Changelog & Release Synchronization",
+    "version": "v1.8.6: In-App Changelog",
     "date": "July 2026",
     "changes": [
-      "Feature: Synchronized in-app changelog dataset with all recent performance, auto-updater, and binary bundling release notes."
+      "Feature: Added the in-app changelog, kept in sync with recent release notes."
     ]
   },
   {
-    "version": "v1.8.5: Release Notes Dataset Alignment",
+    "version": "v1.8.5: Changelog Updates",
     "date": "July 2026",
     "changes": [
-      "Feature: Aligned release notes dataset for in-app changelog view."
+      "Feature: Updated the in-app changelog with the latest release notes."
     ]
   },
   {
-    "version": "v1.8.4: Auto-Updater Process Lock & Binary Bundling Fix",
+    "version": "v1.8.4: Update & GIF Export Fixes",
     "date": "July 2026",
     "changes": [
-      "Fix: Hardened auto-updater relaunch script to wait until process ID terminates before running NSIS installer, eliminating file lock conflicts during silent updates.",
-      "Fix: Updated CI and Release workflows to automatically bundle gifski.exe in packaged Windows builds for high-quality GIF exports."
+      "Fix: The updater now waits for the running app to fully close before installing, avoiding file lock conflicts during updates.",
+      "Fix: GIF export now works in installed builds, since the GIF encoder is bundled with the app."
     ]
   },
   {
-    "version": "v1.8.3: Diagnostic Error Output & Progress IPC Hardening",
+    "version": "v1.8.3: Better Error Reporting",
     "date": "July 2026",
     "changes": [
-      "Feature: Implemented structured worker error propagation (exit codes + rolling stderr tails) for instant diagnostic reporting.",
-      "Performance: Added defensive rate-limiting layer for progress IPC messages to ensure fluid title bar updates without IPC congestion."
+      "Feature: Export failures now include detailed error details for clearer diagnosis.",
+      "Performance: Title bar progress updates are smoother during exports."
     ]
   },
   {
-    "version": "v1.8.2: Hardware Media Key Suppression & Geometry Caching",
+    "version": "v1.8.2: Media Key Fix & Faster Timeline",
     "date": "July 2026",
     "changes": [
-      "Feature: Disabled Chromium HardwareMediaKeyHandling to prevent OS play/pause keys from hijacking active video playback.",
-      "Performance: Cached timeline track dimensions to eliminate layout thrashing and getBoundingClientRect calls during canvas draw loops.",
-      "Performance: Converted internal file paths and cleanup routines to non-blocking async operations."
+      "Fix: OS media keys no longer hijack video playback while a video is playing in the app.",
+      "Performance: The timeline redraws faster by caching track dimensions.",
+      "Performance: File and cleanup operations no longer block the interface."
     ]
   },
   {
-    "version": "v1.8.1: Worker Thread Waveforms & Concurrency Refinements",
+    "version": "v1.8.1: Smoother Waveforms",
     "date": "July 2026",
     "changes": [
-      "Performance: Offloaded waveform audio peak extraction to a dedicated background Worker Thread (waveform-worker.js) so main process stays responsive.",
-      "Performance: Throttled encoder progress IPC notifications (200ms window / >=1% step) and switched stderr logging to a ring buffer.",
-      "Fix: Restored trash icon color rendering and cleaned up timeline track geometry getters.",
-      "Enhancement: Improved multi-file concurrency with limitConcurrent and allSettled fault tolerance."
+      "Performance: Waveform generation now runs in the background so the app stays responsive.",
+      "Performance: Export progress updates are throttled for smoother title bar updates.",
+      "Fix: Restored the trash icon color and cleaned up timeline internals.",
+      "Enhancement: Importing multiple files at once is more reliable."
     ]
   },
   {
-    "version": "v1.8.0: Core Performance & Rendering Optimization",
+    "version": "v1.8.0: Performance & Rendering Improvements",
     "date": "July 2026",
     "changes": [
-      "Performance: Coalesced timeline canvas redraws with requestAnimationFrame to eliminate layout thrashing during drag interactions.",
-      "Performance: Corrected High-DPI canvas scaling to avoid resetting canvas bitmap transforms.",
-      "Performance: Pre-compiled FFmpeg progress regex and throttled progress IPC messages for smoother exports.",
-      "Performance: Parallelized multi-file probing & thumbnail extractions (3x concurrency).",
-      "Fix: Added cross-platform null output targets ('NUL' vs '/dev/null')."
+      "Performance: Timeline dragging is smoother thanks to smarter canvas redraws.",
+      "Performance: Fixed high-DPI canvas scaling for sharper rendering on scaled displays.",
+      "Performance: Export progress parsing and updates are faster and smoother.",
+      "Performance: Multi-file import and thumbnail generation are parallelized.",
+      "Fix: Fixed output handling across platforms."
     ]
   },
   {
-    "version": "v1.7.2: Hardware Media Key Suppression",
+    "version": "v1.7.2: Media Key Fix",
     "date": "July 2026",
     "changes": [
-      "Fix: Disabled Chromium HardwareMediaKeyHandling and MediaSession action handlers to prevent keyboard/headset media keys from hijacking video playback."
+      "Fix: Keyboard and headset media keys no longer interrupt video playback in the app."
     ]
   },
   {
-    "version": "v1.7.1: Automatic Post-Update App Relaunch",
+    "version": "v1.7.1: Automatic Post-Update Relaunch",
     "date": "July 2026",
     "changes": [
-      "Fix: Implemented background process monitoring to automatically relaunch the updated ClipSend executable immediately after silent installation completes."
+      "Fix: The app now relaunches itself automatically after a silent update completes."
     ]
   },
   {
     "version": "v1.7.0: Custom Target File Size Limit",
     "date": "July 2026",
     "changes": [
-      "Feature: Added 'Custom Target Size' option in the target size dropdown, allowing users to enter custom file size limits in MB (e.g. 25 MB, 100 MB, 250 MB).",
-      "Enhancement: Integrated custom size calculation with two-pass rate control and automatic resolution scaling."
+      "Feature: New Custom Target Size option in the size dropdown. Enter any size limit in MB, like 25 MB or 250 MB.",
+      "Enhancement: Custom sizes work with two-pass encoding and automatic resolution scaling."
     ]
   },
   {
-    "version": "v1.6.3: Duplicate Draft Release Elimination",
+    "version": "v1.6.3: Release Publishing Fix",
     "date": "July 2026",
     "changes": [
-      "Fix: Added --publish never to build script to prevent electron-builder from creating duplicate draft releases on GitHub."
+      "Fix: Builds no longer create duplicate draft releases on GitHub."
     ]
   },
   {
-    "version": "v1.6.2: Auto-Updater Modal & Public Release Publishing Fix",
+    "version": "v1.6.2: Update Dialog & Publishing Fixes",
     "date": "July 2026",
     "changes": [
-      "Fix: Resolved HTML modal nesting issue preventing the update modal dialog from displaying when clicking the titlebar update badge.",
-      "Fix: Configured GitHub release workflow to publish non-draft releases automatically for instant API visibility."
+      "Fix: The update dialog now opens correctly when clicking the update badge in the title bar.",
+      "Fix: Released builds publish automatically as public releases."
     ]
   },
   {
-    "version": "v1.6.1: Direct GitHub Issues & Template Integration",
+    "version": "v1.6.1: Report Bugs on GitHub",
     "date": "July 2026",
     "changes": [
-      "Feature: Added direct 'Create GitHub Issue' option in the feedback modal for bug reports and feature requests.",
-      "Feature: Added structured GitHub Issue templates (.github/ISSUE_TEMPLATE) for Bug Reports and Feature Requests."
+      "Feature: The feedback dialog can create a GitHub issue directly for bug reports and feature requests.",
+      "Feature: Added structured templates for bug reports and feature requests."
     ]
   },
   {
-    "version": "v1.6.0: Automated GitHub Auto-Updater",
+    "version": "v1.6.0: Automatic Updates",
     "date": "July 2026",
     "changes": [
-      "Feature: Introduced automated GitHub Release auto-updates with background version checking.",
-      "Feature: Added titlebar update badge and modal displaying release notes, live download progress, and silent installation."
+      "Feature: The app now checks for updates automatically and installs them from GitHub Releases.",
+      "Feature: Added an update badge in the title bar with a dialog showing release notes, live download progress, and silent installation."
     ]
   },
   {
-    "version": "v1.5.6: Automated Native PNG-to-ICO Packaging Fix",
+    "version": "v1.5.6: App Icon Fix",
     "date": "July 2026",
     "changes": [
-      "Fix: Configured electron-builder to automatically convert high-resolution icon.png into native 32-bit ARGB Windows executable icons during build."
+      "Fix: The app icon is now converted to a native Windows icon automatically during build, so it displays correctly in the taskbar and file explorer."
     ]
   },
   {
-    "version": "v1.5.5: Medium Clip Safety Margin Refinement",
+    "version": "v1.5.5: Size Accuracy for 5-10s Clips",
     "date": "July 2026",
     "changes": [
-      "Fix: Expanded short-to-medium clip safety margin curve (up to 10s duration) to ensure clips between 5s-10s stay strictly under target file size caps."
+      "Fix: Clips between 5 and 10 seconds now stay strictly under the target file size."
     ]
   },
   {
-    "version": "v1.5.4: Short Clip Target Size & VBV Fix",
+    "version": "v1.5.4: Size Accuracy for Short Clips",
     "date": "July 2026",
     "changes": [
-      "Fix: Implemented dynamic safety margins for ultra-short video clips (< 5s) to compensate for keyframe/IDR overhead.",
-      "Fix: Enforced VBV rate-control constraints (-maxrate & -bufsize) on 2-pass libx264 exports to eliminate file size overshoots on short clips.",
-      "Fix: Capped maximum video bitrate ceiling to 25 Mbps to prevent rate controller saturation."
+      "Fix: Very short clips (under 5 seconds) now hit their target file size accurately.",
+      "Fix: Tightened bitrate limits so exports stay under the size cap.",
+      "Fix: Capped the maximum video bitrate at 25 Mbps to prevent overshoot on short clips."
     ]
   },
   {
-    "version": "v1.5.3: True 32-bit ARGB Windows Icon Fix",
+    "version": "v1.5.3: Sharper App Icon",
     "date": "July 2026",
     "changes": [
-      "Fix: Replaced low-color palettized ICO format with a crisp, multi-resolution 32-bit ARGB icon containing 256x256, 128x128, 64x64, 48x48, 32x32, and 16x16 alpha-transparent icon layers."
+      "Fix: The Windows app icon is now crisp at every size, from small taskbar icons to large previews."
     ]
   },
   {
-    "version": "v1.5.2: CI Test Execution & Stdin Fix",
+    "version": "v1.5.2: Export Stability Fix",
     "date": "July 2026",
     "changes": [
-      "Fix: Added -nostdin and -y to FFmpeg arguments in waveform-service to prevent child processes from hanging on unclosed stdio streams during CI automated testing."
+      "Fix: Exports no longer hang on unclosed input streams during automated testing."
     ]
   },
   {
     "version": "v1.5.1: Windows App Icon Fix",
     "date": "July 2026",
     "changes": [
-      "Fix: Added high-resolution Windows app icon (icon.ico) and un-ignored build assets directory so installer and executable display custom ClipSend branding."
+      "Fix: Added a high-resolution Windows app icon so the installer and executable show custom branding."
     ]
   },
   {
-    "version": "v1.5.0: Performance & Stability Refactor",
+    "version": "v1.5.0: Performance & Stability Improvements",
     "date": "July 2026",
     "changes": [
-      "Feature: Implemented streaming bucket waveform extraction, reducing RAM usage during waveform generation by 98%+.",
-      "Feature: Added zero-copy TypedArray IPC transmission for instant waveform rendering.",
-      "Feature: Added a 5MB / 50-entry bounded LRU cache for waveforms with automatic eviction.",
-      "Feature: Added bounded parallel clip probing (concurrency limit = 3) and probe caching in Merge Mode.",
-      "Feature: Implemented rolling 16KB stderr window and cross-chunk timecode parsing in FFmpeg processes.",
-      "Feature: Converted file system operations to non-blocking fs.promises to eliminate main thread UI freezes.",
-      "Feature: Added automated GitHub Actions CI build and release pipelines."
+      "Feature: Waveform generation uses over 98 percent less memory.",
+      "Feature: Waveforms render instantly with efficient data transfer.",
+      "Feature: Waveforms are cached (up to 50 entries) so repeat views are instant.",
+      "Feature: Faster media probing when importing multiple files in Merge Mode.",
+      "Feature: Export progress parsing is more accurate and stable.",
+      "Feature: File operations no longer freeze the interface.",
+      "Feature: Added automated build and release pipelines."
     ]
   },
   {
     "version": "Phase 10: GIF Export & App Branding",
     "date": "Mid-July 2026",
     "changes": [
-      "Feature: Introduced GIF export as a new Output Format option, powered by gifski for high-quality palette-based encoding.",
-      "Feature: Implemented an FFmpeg-to-gifski pipeline using an intermediate YUV4MPEG2 (y4m) raw video handoff, reusing the existing crop, resolution override, and multi-segment concat logic ahead of the GIF encode step.",
-      "Feature: Added an iterative \"descension loop\" to hit target file size constraints for GIF exports, automatically stepping down frame rate, then resolution, then quality across up to 8 attempts, with a graceful best-effort fallback and warning if the target size can't be reached.",
-      "Feature: Added a pre-flight feasibility warning that flags GIF exports likely to fail a target size (e.g. long clips targeting small Discord size presets) before the export begins.",
-      "Feature: Added a disk space guardrail that blocks or warns against y4m extraction when estimated uncompressed temp file size would be excessive.",
-      "Feature: Added indeterminate \"Encoding GIF (Attempt X)...\" progress reporting in the title bar for the GIF export phase, replacing the standard percentage bar during the descension loop.",
-      "Feature: Disabled/hid Audio Track and Mute controls when GIF output is selected, since GIF files cannot contain audio.",
-      "Feature: Relocated the \"Max Quality\" toggle from the Export Settings sidebar into the Settings modal, and made its state persistent across app restarts via electron-store, defaulting to ON.",
-      "Feature: Added the current app version number next to the app title in the title bar, styled small and muted.",
-      "Fix: Resolved a \"w.startsWith is not a function\"-style regression in the Duration/In/Out readout, caused by app.js still listening for deprecated single-segment trim callbacks instead of the unified multi-segment onSegmentChange event, which meant dragging trim handles no longer updated the displayed values.",
-      "Fix: Resolved a GIF export failure (\"FFmpeg exited with code 3199971767\" / AVERROR_INVALIDDATA) caused by the y4m extraction pass forcing an incompatible pixel format on certain 10-bit/HDR source files.",
-      "Fix: Resolved odd-dimension crop values being passed into the y4m extraction step, which violated YUV4MPEG2's strict even-dimension requirement.",
-      "Fix: Resolved a codec/container mismatch where an incorrectly nested conditional caused the h264_nvenc video codec to be applied to y4m extraction output when Hardware Acceleration was enabled, despite y4m being a raw, codec-less container \u2014 GIF exports now explicitly bypass all video codec selection during extraction regardless of the Hardware Acceleration setting.",
-      "Fix: Hardened FFmpeg/gifski child process error reporting to capture and surface full stderr output in export failure messages, instead of only displaying an opaque numeric exit code.",
-      "Fix: Raised the GIF descension loop's frame rate floor from 10fps to 24fps and reordered priority so resolution and quality are reduced before frame rate, preventing choppy playback on fast-motion gaming clips.",
-      "Fix: Set the app's author/publisher metadata to \"Ayinaki\" so it correctly appears in the Windows installer and Apps & Features listing."
+      "Feature: New GIF output format, powered by gifski for high-quality GIFs.",
+      "Feature: GIFs hit your target file size automatically by stepping down frame rate, then resolution, then quality across several attempts.",
+      "Feature: You get a warning before starting a GIF export that is unlikely to fit the target size.",
+      "Feature: Exports check for enough free disk space before extracting frames.",
+      "Feature: GIF encoding shows its progress in the title bar.",
+      "Feature: Audio controls are hidden for GIF output, since GIFs cannot contain audio.",
+      "Feature: The Max Quality toggle moved into Settings and now remembers its state across restarts.",
+      "Feature: The app version now appears next to the title in the title bar.",
+      "Fix: Dragging trim handles now updates the duration and in/out readouts correctly.",
+      "Fix: GIF export no longer fails on certain high-color-depth videos.",
+      "Fix: GIF export no longer fails on odd-sized crops.",
+      "Fix: GIF export works correctly with hardware acceleration enabled.",
+      "Fix: Export failures now show the full error instead of an opaque numeric code.",
+      "Fix: GIFs keep a smooth frame rate (at least 24 fps) and reduce quality and resolution before dropping frames.",
+      "Fix: The app now shows the correct publisher name in the Windows installer and Apps and Features."
     ]
   },
   {
     "version": "Phase 9: Multi-Segment Trim Mode",
     "date": "Mid-July 2026",
     "changes": [
-      "Feature: Introduced Multi-Segment Trim, allowing multiple independent trim ranges to be created from a single source clip, gated behind a \"Multi-Trim\" toggle in Trim Settings.",
-      "Feature: Added color-coded trim brackets on the timeline, with each segment rendered in a distinct high-contrast color and a per-segment delete icon.",
-      "Feature: Implemented segment-aware \"Set In\"/\"Set Out\" logic that creates a new segment when the playhead is outside existing ranges, and adjusts the active segment when inside one, with overlap clamping against neighboring segments.",
-      "Feature: Added an \"Output Mode\" selector allowing multi-segment exports as either separate individually-numbered clips or a single merged clip.",
-      "Feature: Integrated the multi-segment merged export path with the existing smart concat backend from Merge Mode, trimming each segment to temporary files before lossless concatenation.",
-      "Feature: Added proportional multi-segment progress reporting, scaling the title bar progress bar by each segment's duration relative to the total.",
-      "Feature: Added automatic temporary file cleanup on export success, failure, and cancellation for multi-segment merged exports.",
-      "Feature: Added a \"Max Quality\" toggle to Export Settings that forces the libx264 \"veryslow\" encoding preset for maximum quality-per-bitrate at the cost of longer export times.",
-      "Fix: Resolved a bug where merged multi-segment exports incorrectly repeated the same portion of the source video across all segments instead of using each segment's distinct in/out points.",
-      "Fix: Resolved a bug where target file size accuracy was broken on merged multi-segment exports as a downstream effect of the segment content bug.",
-      "Fix: Resolved manual resolution overrides being silently ignored on merged multi-segment exports, caused by resolution scaling being skipped during the per-segment temp-file trim pass and lost during the subsequent lossless stream-copy concat.",
-      "Fix: Replaced the original multi-segment color palette's visually similar brown/green tones with a distinct, high-contrast color set for clearer segment differentiation."
+      "Feature: New Multi-Trim mode. Create several independent trim ranges from one clip with a toggle in Trim Settings.",
+      "Feature: Each segment gets its own color and delete button on the timeline.",
+      "Feature: Set In and Set Out create a new segment when the playhead is outside existing ranges and adjust the active segment when inside one.",
+      "Feature: Output Mode lets you export segments as separate clips or one merged clip.",
+      "Feature: Merged multi-segment exports use fast lossless joining when the clips are compatible.",
+      "Feature: Export progress scales with each segment's length.",
+      "Feature: Temporary files are cleaned up after merged exports, whether they succeed, fail, or are cancelled.",
+      "Feature: New Max Quality toggle that uses a slower, higher-quality encoder preset.",
+      "Fix: Merged exports now use each segment's own start and end points instead of repeating the same section.",
+      "Fix: Target file size is now accurate on merged multi-segment exports.",
+      "Fix: Custom resolution overrides now apply to merged multi-segment exports.",
+      "Fix: Segment colors are now clearly distinct from each other."
     ]
   },
   {
     "version": "Phase 8: Video Cropping & UI Refinements",
     "date": "Mid-July 2026",
     "changes": [
-      "Feature: Introduced a full video cropping tool in Trim Mode with an interactive, draggable, 8-handle resize overlay directly on the video preview.",
-      "Feature: Added aspect ratio lock support (16:9, 9:16, 1:1, 4:3 presets) that constrains resize handles and proportionally scales the crop box during drag.",
-      "Feature: Integrated the crop filter into the FFmpeg export pipeline, correctly chaining `crop` before `scale`/`pad` for both CPU (libx264) and NVENC hardware-accelerated encoding paths.",
-      "Feature: Updated the Export Planner's 2-pass VBR bitrate math to calculate targets using the cropped resolution rather than the original source resolution.",
-      "Feature: Added a \"Re-center\" button to instantly re-center the crop box within the video frame while preserving its current size, and removed manual position/size numeric inputs in favor of drag-only interaction.",
-      "Feature: Relocated the export progress bar and percentage display from the sidebar into the title bar for persistent visibility without affecting sidebar scroll behavior.",
-      "Feature: Converted the Audio Settings panel into a collapsible section, matching the Cropping panel's expand/collapse pattern.",
-      "Feature: Replaced inline sidebar warning banners with a title bar warning status indicator that opens a dedicated modal listing all active export warnings.",
-      "Feature: Redesigned warning messages into structured cards with plain-language titles and explanations, replacing raw concatenated debug-style strings.",
-      "Feature: Added a custom-themed scrollbar to the sidebar and warnings modal, replacing the default OS scrollbar.",
-      "Fix: Corrected the checkbox checked-state accent color from an unintended blue to the app's established green accent color.",
-      "Fix: Resolved a regression where all UI buttons and file-loading became unresponsive due to an uncaught error during crop overlay initialization blocking subsequent event listener setup.",
-      "Fix: Fixed the Cropping panel's collapsed-state padding/alignment inconsistency versus other sidebar panels.",
-      "Fix: Disabled the Cropping \"Enable\" checkbox until a video clip is loaded, preventing an unrecoverable state where cropping was activated with no video metadata available.",
-      "Fix: Changed the default crop box size from matching full video resolution to 50% of native dimensions, centered, for clearer visual affordance that cropping is active.",
-      "Fix: Cleared the aspect ratio lock state when cropping is disabled and re-enabled, preventing a stale ratio constraint from persisting after the Pre-settings dropdown visually reset to \"None.\"",
-      "Fix: Resolved a layout regression where the sidebar, mode toggle, and video preview stacked incorrectly after the title bar progress bar relocation.",
-      "Fix: Eliminated sidebar content shift when the scrollbar appears/disappears using `scrollbar-gutter: stable`.",
-      "Fix: Resolved a \"w.startsWith is not a function\" runtime error caused by leftover string-based logic after warnings were refactored into structured objects.",
-      "Fix: Replaced the small-scale warning icon (previously a Unicode glyph, prone to distortion at small sizes) with a crisp, properly scaling inline SVG icon."
+      "Feature: New cropping tool in Trim Mode. Drag the eight handles on the video preview to crop.",
+      "Feature: Aspect ratio presets (16:9, 9:16, 1:1, 4:3) constrain the crop box while dragging.",
+      "Feature: Cropping applies correctly in exports, on both CPU and GPU encoding paths.",
+      "Feature: Size estimates use the cropped resolution instead of the original.",
+      "Feature: Re-center button returns the crop box to the center without changing its size.",
+      "Feature: Export progress moved from the sidebar into the title bar, so it is always visible.",
+      "Feature: Audio settings are now a collapsible section, matching the cropping panel.",
+      "Feature: Warnings moved from the sidebar to a title bar indicator that opens a dedicated dialog.",
+      "Feature: Warnings are now plain-language cards instead of technical strings.",
+      "Feature: Custom scrollbar styling for the sidebar and warnings dialog.",
+      "Fix: Checkboxes now use the app's green accent color.",
+      "Fix: Fixed a bug where the app could become unresponsive after loading files.",
+      "Fix: Cropping panel spacing is consistent with other panels.",
+      "Fix: Cropping cannot be enabled before a video is loaded.",
+      "Fix: The default crop box is now half the video size, centered, so cropping is clearly visible.",
+      "Fix: The aspect ratio lock resets correctly when cropping is toggled off and on.",
+      "Fix: Fixed a layout issue where the sidebar, mode toggle, and preview stacked incorrectly.",
+      "Fix: The sidebar no longer shifts when the scrollbar appears or disappears.",
+      "Fix: Resolved a runtime error in the warning display.",
+      "Fix: The warning icon now scales cleanly at small sizes."
     ]
   },
   {
     "version": "Phase 7: Feedback System & Packaging",
     "date": "Early-Mid July 2026",
     "changes": [
-      "Feature: Added a \"Send Feedback\" button and modal (Bug Report / Feature Request / General Feedback types) that submits directly to a Discord webhook as a formatted embed.",
-      "Feature: Added minimum and maximum character length validation on feedback submissions, enforced both client-side and server-side.",
-      "Feature: Added a toggle to disable automatic resolution downscaling on low-bitrate exports, with an inline warning shown when enabled.",
-      "Fix: Resolved the Discord webhook URL failing to load in packaged/built versions due to incorrect .env path resolution.",
-      "Fix: Resolved NVENC hardware acceleration failing to be detected in packaged builds due to binary path resolution issues.",
-      "Fix: Corrected inconsistent spacing/margins on the low-bitrate warning message when it wrapped to multiple lines.",
-      "Fix: Significantly reduced the packaged application's installer size by removing the unused ffplay.exe binary, excluding stray test/log artifacts from the build, and stripping unused Electron locale files."
+      "Feature: New Send Feedback button and dialog (bug report, feature request, or general) that submits directly to the team.",
+      "Feature: Feedback length is validated on both the app and server side.",
+      "Feature: New toggle to disable automatic resolution downscaling on low-bitrate exports, with an inline warning.",
+      "Fix: Feedback now works in installed builds.",
+      "Fix: NVIDIA hardware acceleration is detected correctly in installed builds.",
+      "Fix: Cleaned up spacing on the low-bitrate warning message.",
+      "Fix: The installer is significantly smaller after removing unused components and files."
     ]
   },
   {
     "version": "Phase 6: Merge Mode & Hardware Acceleration",
     "date": "",
     "changes": [
-      "Feature: Added a toggle to switch the app workspace into \"Merge Mode\" for stitching multiple clips together.",
-      "Feature: Enabled multi-file import alongside a vertically scrolling Clip List sidebar with extracted thumbnail previews.",
-      "Feature: Built a proportional, fixed-width timeline strip supporting drag-to-reorder block functionality.",
-      "Feature: Created a seamless sequential preview playback engine (MergePlayer) that handles mismatched aspect ratios and preserves volume state across clips.",
-      "Feature: Implemented a smart concat backend that defaults to fast lossless stream copying, but automatically falls back to re-encoding filter graphs if clip formats mismatch.",
-      "Feature: Added real hardware acceleration encoding via NVIDIA NVENC (h264_nvenc) with an automated fallback to CPU (libx264) if hardware initialization fails.",
-      "Fix: Eliminated a canvas rendering bug where the Trim timeline disappeared after switching modes by explicitly forcing a redraw on visibility change.",
-      "Fix: Corrected drop target zones in Merge Mode so dragging files directly into the Clip List accurately triggers the import event."
+      "Feature: New Merge Mode for stitching multiple clips into one video.",
+      "Feature: Import several files at once into a scrollable clip list with thumbnail previews.",
+      "Feature: Drag timeline blocks to reorder clips.",
+      "Feature: Preview plays clips back to back, handling different aspect ratios and keeping your volume setting.",
+      "Feature: Merges use fast lossless joining when clips match, and re-encode automatically when they don't.",
+      "Feature: Hardware-accelerated encoding via NVIDIA GPUs, with automatic CPU fallback.",
+      "Fix: The trim timeline no longer disappears after switching modes.",
+      "Fix: Dragging files onto the clip list in Merge Mode now imports them correctly."
     ]
   },
   {
     "version": "Phase 5: Advanced UX & File Handling",
     "date": "Mid-July 2026",
     "changes": [
-      "Feature: Replaced the intrusive native OS dialog with a custom in-app \"Export Complete\" modal.",
-      "Feature: Added a \"Copy to Clipboard\" button on export completion that utilizes Windows CF_HDROP to copy the actual video file for instant pasting into chat apps.",
-      "Feature: Implemented robust drag-and-drop file support using Electron's webUtils.getPathForFile() to bypass security path restrictions.",
-      "Feature: Added visually distinct dashed drop-zone borders to clearly indicate drag-and-drop capability in empty states.",
-      "Feature: Auto-generated .ico and .icns app icons from a single master PNG via electron-builder.",
-      "Fix: Resolved post-export UI unresponsiveness by ensuring disabled state flags properly reset after the modal closes.",
-      "Fix: Corrected a layout overflow bug caused by missing box-sizing on the dashed drop-zone element."
+      "Feature: Replaced the system dialog with a custom Export Complete dialog.",
+      "Feature: Copy to Clipboard button on export completion, so you can paste the video straight into chat apps.",
+      "Feature: Drag-and-drop file support with proper file path handling.",
+      "Feature: Clear dashed borders show where to drop files when the app is empty.",
+      "Feature: App icons are generated automatically from one master image.",
+      "Fix: The interface stays responsive after exports finish.",
+      "Fix: Fixed a layout overflow bug in the empty drop zone."
     ]
   },
   {
     "version": "Phase 4: Settings, Overrides & Quality of Life",
     "date": "",
     "changes": [
-      "Feature: Added a persistent volume slider and mute toggle powered by electron-store.",
-      "Feature: Implemented a persistent \"Default Export Directory\" setting.",
-      "Feature: Standardized the export filename convention to append \"- Trimmed.mp4\" with automatic collision handling.",
-      "Feature: Added a manual resolution override dropdown with standard scaling options.",
-      "Feature: Created an \"Auto (Best Quality)\" preset utilizing a single-pass CRF 19 encode for size-agnostic exports.",
-      "Fix: Reined in target file size overshoots by tightening the safety margin to 5% and capping -maxrate and -bufsize bursts.",
-      "Fix: Cleaned up the UI by hiding the resolution warning banner for standard \"Native\" resolution exports."
+      "Feature: Persistent volume slider and mute toggle.",
+      "Feature: Persistent default export directory setting.",
+      "Feature: Export filenames follow a standard format with automatic collision handling.",
+      "Feature: Manual resolution override dropdown with standard scaling options.",
+      "Feature: Auto (Best Quality) preset for exports without a size limit.",
+      "Fix: Export sizes stay under the target by a tighter margin.",
+      "Fix: Resolution warnings are hidden for native resolution exports."
     ]
   },
   {
     "version": "Phase 3: Visual Redesign & App Polish",
     "date": "",
     "changes": [
-      "Feature: Transitioned to a custom frameless window with draggable title bar regions and native window controls.",
-      "Feature: Overhauled the UI into a dark, compact, desktop-tool aesthetic inspired by Shutter Encoder and LosslessCut.",
-      "Feature: Reorganized the transport control row into a balanced three-zone layout (timecode left, buttons center, duration right).",
-      "Feature: Added eight dedicated transport buttons for precise playhead and trim marker manipulation.",
-      "Fix: Updated \"Step Back/Forward\" icons to < and > to avoid visual collision with the trim bracket icons.",
-      "Fix: Unified the Play button styling so it sits flush and consistent with the rest of the transport bar."
+      "Feature: Custom frameless window with a draggable title bar and native window controls.",
+      "Feature: New dark, compact, desktop-tool look.",
+      "Feature: Transport controls reorganized into a balanced three-zone layout (timecode left, buttons center, duration right).",
+      "Feature: Eight dedicated transport buttons for precise playhead and trim control.",
+      "Fix: Step Back and Step Forward icons no longer clash with the trim bracket icons.",
+      "Fix: Play button styling is consistent with the rest of the transport bar."
     ]
   },
   {
     "version": "Phase 2: Trim UI & Audio Handling",
     "date": "",
     "changes": [
-      "Feature: Built a center video preview player with accurate timecode parsing.",
-      "Feature: Added an interactive timeline canvas with draggable in/out trim handles.",
-      "Feature: Enabled audio track detection, allowing users to select a specific audio stream from multi-track videos.",
-      "Fix: Eliminated \"Could not open encoder\" errors by standardizing trim command math and avoiding mixed absolute/relative seeks.",
-      "Fix: Resolved silent output failures by mapping correct FFmpeg audio stream ordinals instead of generic UI list indices.",
-      "Fix: Bypassed Chromium's track-switching limitations by generating a near-instant FFmpeg stream-copy remux for accurate audio previewing."
+      "Feature: Center video preview with accurate timecode parsing.",
+      "Feature: Interactive timeline with draggable in and out trim handles.",
+      "Feature: Audio track detection, so you can pick a specific audio stream from multi-track videos.",
+      "Fix: No more 'could not open encoder' errors when trimming.",
+      "Fix: Audio now exports from the correct track.",
+      "Fix: Audio previews are fast and accurate."
     ]
   },
   {
     "version": "Phase 1: Core Architecture & FFmpeg Integration",
     "date": "Early July 2026",
     "changes": [
-      "Feature: Established initial Electron project scaffold tailored for a Windows desktop environment.",
-      "Feature: Bundled FFmpeg and FFprobe binaries natively to ensure out-of-the-box functionality.",
-      "Feature: Created ProbeService for accurate media metadata extraction.",
-      "Feature: Implemented ExportPlanner to calculate deterministic 2-pass VBR bitrate budgets for strict file size limits (like Discord's 10MB cap).",
-      "Fix: Resolved FFprobe execution failures on file paths with spaces by switching to process spawn argument arrays instead of shell strings."
+      "Feature: Initial Windows desktop app built with Electron.",
+      "Feature: FFmpeg and FFprobe bundled, so the app works out of the box.",
+      "Feature: Accurate media metadata extraction.",
+      "Feature: Smart export planning that hits strict file size limits like Discord's 10 MB cap.",
+      "Fix: Files with spaces in their paths now load correctly."
     ]
   }
 ];

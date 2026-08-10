@@ -32,23 +32,27 @@
           <div class="titlebar-progress-bar">
             <div id="progress-fill" class="titlebar-progress-fill"></div>
           </div>
-          <button id="cancel-btn" class="titlebar-cancel-btn win-btn" title="Cancel">&#xE711;</button>
+          <button id="cancel-btn" class="titlebar-cancel-btn win-btn" data-tooltip="Cancel" aria-label="Cancel">&#xE711;</button>
         </div>
       </div>
       <div class="titlebar-controls">
-        <button id="titlebar-warning-btn" class="win-btn" title="View Warnings" style="font-size: 13px; color: #ffeb3b; display: none; align-items: center; justify-content: center;">
+        <button id="titlebar-warning-btn" class="win-btn" data-tooltip="View Warnings" aria-label="View Warnings" style="font-size: 13px; color: #d9a441; display: none; align-items: center; justify-content: center; position: relative;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
             <line x1="12" y1="9" x2="12" y2="13"></line>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
+          <span id="titlebar-warning-count" class="titlebar-warning-count" style="display: none;">0</span>
         </button>
-        <button id="changelog-btn" class="win-btn" title="Changelog" style="font-size: 13px;">&#xE81C;</button>
-        <button id="feedback-btn" class="win-btn" title="Send Feedback" style="font-size: 13px;">&#xE939;</button>
-        <button id="settings-btn" class="win-btn" title="Settings" style="font-size: 12px;">&#xE713;</button>
-        <button id="win-min" class="win-btn" title="Minimize">&#xE921;</button>
-        <button id="win-close" class="win-btn win-close-btn" title="Close">&#xE8BB;</button>
+        <button id="changelog-btn" class="win-btn" data-tooltip="Changelog" aria-label="Changelog" style="font-size: 13px;">&#xE81C;</button>
+        <button id="feedback-btn" class="win-btn" data-tooltip="Send Feedback" aria-label="Send Feedback" style="font-size: 13px;">&#xE939;</button>
+        <button id="help-btn" class="win-btn" data-tooltip="Keyboard Shortcuts" aria-label="Keyboard Shortcuts" style="font-size: 14px;">&#xE946;</button>
+        <button id="settings-btn" class="win-btn" data-tooltip="Settings" aria-label="Settings" style="font-size: 12px;">&#xE713;</button>
+        <button id="win-min" class="win-btn" data-tooltip="Minimize" aria-label="Minimize">&#xE921;</button>
+        <button id="win-close" class="win-btn win-close-btn" data-tooltip="Close" aria-label="Close">&#xE8BB;</button>
       </div>
+      <!-- Shared animated tooltip bubble for the icon-only title bar buttons. -->
+      <div id="titlebar-tooltip" class="tooltip-bubble" role="tooltip"></div>
     </div>
 
     <main class="workbench">
@@ -64,8 +68,8 @@
           </div>
         </div>
 
-        <div class="panel" id="audio-settings-panel">
-          <div class="panel-header collapsible-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="const p = this.parentElement; p.classList.toggle('collapsed'); const c = this.nextElementSibling; const isCollapsed = p.classList.contains('collapsed'); c.style.display = isCollapsed ? 'none' : 'block'; this.querySelector('.chevron').innerHTML = isCollapsed ? '&#xE70E;' : '&#xE70D;';">
+        <div class="panel collapsible" id="audio-settings-panel">
+          <div class="panel-header collapsible-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
             Audio Settings
             <span class="chevron" style="font-family: 'Segoe MDL2 Assets'; font-size: 10px;">&#xE70D;</span>
           </div>
@@ -89,8 +93,8 @@
           </div>
         </div>
 
-        <div class="panel collapsed" id="cropping-settings-panel">
-          <div class="panel-header collapsible-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="const p = this.parentElement; p.classList.toggle('collapsed'); const c = this.nextElementSibling; const isCollapsed = p.classList.contains('collapsed'); c.style.display = isCollapsed ? 'none' : 'block'; this.querySelector('.chevron').innerHTML = isCollapsed ? '&#xE70E;' : '&#xE70D;';">
+        <div class="panel collapsed collapsible" id="cropping-settings-panel">
+          <div class="panel-header collapsible-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
             Cropping
             <span class="chevron" style="font-family: 'Segoe MDL2 Assets'; font-size: 10px;">&#xE70E;</span>
           </div>
@@ -103,18 +107,18 @@
               </label>
             </div>
             
-            <div id="crop-controls" style="opacity: 0.5; pointer-events: none; margin-top: 15px;">
+            <div id="crop-controls" style="opacity: 0.5; pointer-events: none; margin-top: 10px;">
               <div class="input-group">
-                <label>Pre-settings:</label>
-                <select id="crop-preset" class="track-select full-width">
-                  <option value="none">None</option>
-                  <option value="16:9">16:9 (Landscape)</option>
-                  <option value="9:16">9:16 (Vertical)</option>
-                  <option value="1:1">1:1 (Square)</option>
-                  <option value="4:3">4:3</option>
-                </select>
+                <label>Presets:</label>
+                <div class="crop-preset-pills" id="crop-preset-pills" role="group" aria-label="Crop aspect ratio presets">
+                  <button type="button" class="crop-preset-pill active" data-preset="none" aria-pressed="true">Free</button>
+                  <button type="button" class="crop-preset-pill" data-preset="16:9" aria-pressed="false">16:9</button>
+                  <button type="button" class="crop-preset-pill" data-preset="9:16" aria-pressed="false">9:16</button>
+                  <button type="button" class="crop-preset-pill" data-preset="1:1" aria-pressed="false">1:1</button>
+                  <button type="button" class="crop-preset-pill" data-preset="4:3" aria-pressed="false">4:3</button>
+                </div>
               </div>
-              <button id="crop-recenter-btn" class="secondary-btn full-width" style="margin-top: 10px;">Re-center</button>
+              <button id="crop-recenter-btn" class="secondary-btn full-width" style="margin-top: 8px;">Re-center (center crop)</button>
             </div>
           </div>
         </div>
@@ -149,15 +153,9 @@
             </div>
 
             <button id="export-merged-btn" class="primary-btn full-width" disabled>Export Merged Video</button>
-            <div id="merge-warnings" class="warnings-container" style="display: none; margin-top: 10px;"></div>
-            <div class="progress-container" id="merge-progress-container" style="display: none; margin-top: 10px;">
-              <div class="progress-bar">
-                <div class="progress-fill" id="merge-progress-fill"></div>
-              </div>
-              <div class="progress-footer">
-                <span class="progress-text" id="merge-progress-text">0%</span>
-                <button id="merge-cancel-btn" class="cancel-btn">Cancel</button>
-              </div>
+            <div id="merge-estimate" class="merge-estimate" style="display: none;">
+              <span>Estimated size:</span>
+              <span id="merge-estimate-value" class="merge-estimate-value">&mdash;</span>
             </div>
           </div>
 
@@ -491,11 +489,7 @@
               <span class="merge-clip-indicator" id="merge-clip-indicator"></span>
             </div>
           </div>
-          <div class="merge-timeline-container" style="height: 140px; display: flex; flex-direction: column; background: var(--bg-primary); border-top: 1px solid var(--panel-border);">
-            <div style="padding: 8px 12px; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between;">
-              <span>Merge Timeline</span>
-              <span id="merge-total-duration">Total: 00:00</span>
-            </div>
+          <div class="merge-timeline-container" style="height: 105px; display: flex; flex-direction: column; background: var(--bg-primary); border-top: 1px solid var(--panel-border);">
             <div id="merge-timeline-strip" style="flex: 1; display: flex; align-items: center; padding: 12px 12px 10px 12px; gap: 6px; overflow-x: auto; overflow-y: hidden;">
               <div id="merge-empty-timeline" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; border: 2px dashed var(--panel-border); border-radius: 6px;">
                 <span style="color: var(--text-secondary);">Timeline will appear here</span>
@@ -506,6 +500,37 @@
 
       </section>
     </main>
+
+    <!-- Shortcuts Modal Overlay -->
+    <div id="shortcuts-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content panel" style="width: 460px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 12px; flex-shrink: 0;">
+          <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE946;</span> Keyboard Shortcuts</span>
+          <button id="close-shortcuts-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content shortcuts-content" style="overflow-y: auto; padding-right: 8px;">
+          <div class="shortcut-group active" id="shortcuts-trim-section">
+            <div class="shortcut-group-title">Trim Mode</div>
+            <div class="shortcut-row"><span>Play / Pause</span><span class="shortcut-keys"><kbd>Space</kbd></span></div>
+            <div class="shortcut-row"><span>Step one frame</span><span class="shortcut-keys"><kbd>&larr;</kbd><kbd>&rarr;</kbd></span></div>
+            <div class="shortcut-row"><span>Set trim in / out</span><span class="shortcut-keys"><kbd>I</kbd><kbd>O</kbd></span></div>
+            <div class="shortcut-row"><span>Jump to in / out</span><span class="shortcut-keys"><kbd>Home</kbd><kbd>End</kbd></span></div>
+            <div class="shortcut-row"><span>Zoom timeline</span><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>Scroll</kbd></span></div>
+          </div>
+          <div class="shortcut-group" id="shortcuts-merge-section">
+            <div class="shortcut-group-title">Merge Mode</div>
+            <div class="shortcut-row"><span>Play / Pause</span><span class="shortcut-keys"><kbd>Space</kbd></span></div>
+            <div class="shortcut-row"><span>Set clip trim in / out</span><span class="shortcut-keys"><kbd>I</kbd><kbd>O</kbd></span></div>
+            <div class="shortcut-row"><span>Jump to clip in / out</span><span class="shortcut-keys"><kbd>Home</kbd><kbd>End</kbd></span></div>
+          </div>
+          <div class="shortcut-group" id="shortcuts-global-section">
+            <div class="shortcut-group-title">Global</div>
+            <div class="shortcut-row"><span>Show this help</span><span class="shortcut-keys"><kbd>?</kbd></span></div>
+            <div class="shortcut-row"><span>Close dialogs</span><span class="shortcut-keys"><kbd>Esc</kbd></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Settings Modal Overlay -->
     <div id="settings-modal" class="modal-overlay" style="display: none;">
@@ -525,12 +550,28 @@
           </div>
           
           <div class="input-group" style="margin-top: 10px;">
+            <label>Video Codec:</label>
+            <select id="setting-video-codec" class="track-select">
+              <option value="h264">H.264 (MP4) - Best compatibility</option>
+              <option value="av1">AV1 (MP4) - Best quality per MB</option>
+            </select>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              AV1 looks dramatically better at the same file size (Discord plays it). Files export in your chosen format (MP4) with AAC audio, but encode slower and may not play in older apps.
+            </div>
+          </div>
+          
+          <div class="input-group" style="margin-top: 15px;">
             <label>Hardware Acceleration:</label>
             <select id="setting-hw-accel" class="track-select">
               <option value="auto">Auto</option>
               <option value="nvenc">NVIDIA (NVENC)</option>
-              <option value="cpu">CPU (libx264)</option>
+              <option value="qsv">Intel (QSV)</option>
+              <option value="amf">AMD (AMF)</option>
+              <option value="cpu">CPU</option>
             </select>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              Hardware encoders are detected on this PC - options that aren't available are greyed out. Auto picks the fastest one.
+            </div>
           </div>
           
           <div class="input-group" style="margin-top: 15px;">
@@ -685,7 +726,7 @@
       <div class="modal-content panel" style="width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
           <span style="display: flex; align-items: center; gap: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffeb3b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d9a441" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
               <line x1="12" y1="9" x2="12" y2="13"></line>
               <line x1="12" y1="17" x2="12.01" y2="17"></line>
@@ -701,6 +742,34 @@
     </div>
 
     <!-- Update Modal Overlay -->
+    <!-- Error Dialog Overlay (non-blocking replacement for window.alert, which
+         can leave the frameless window unresponsive after dismissal) -->
+    <div id="error-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content panel" style="width: 480px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+          <span style="display: flex; align-items: center; gap: 8px; color: var(--error-color);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span id="error-modal-title">Error</span>
+          </span>
+          <button id="close-error-modal-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px; overflow-y: auto;">
+          <div id="error-modal-message" style="font-size: 13px; color: #eee; line-height: 1.5;"></div>
+          <details id="error-modal-details" style="display: none;">
+            <summary style="font-size: 11px; color: var(--text-muted); cursor: pointer; user-select: none;">Technical details</summary>
+            <pre id="error-modal-details-text" style="margin-top: 8px; background: #111; border: 1px solid #333; border-radius: 6px; padding: 10px; max-height: 200px; overflow-y: auto; font-size: 11px; color: #bbb; white-space: pre-wrap; line-height: 1.4;"></pre>
+          </details>
+          <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+            <button id="error-modal-ok-btn" class="primary-btn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="update-modal" class="modal-overlay" style="display: none;">
       <div class="modal-content panel" style="width: 460px; display: flex; flex-direction: column;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">

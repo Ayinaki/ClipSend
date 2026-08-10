@@ -1,4 +1,4 @@
-const { formatPlanDisplay, buildPlanWarnings } = require('../../renderer/export-flow.js');
+const { formatPlanDisplay, buildPlanWarnings, isTrimPastVideoEnd } = require('../../renderer/export-flow.js');
 
 const PLAN = {
   width: 854,
@@ -53,6 +53,27 @@ describe('formatPlanDisplay', () => {
   });
 });
 
+describe('isTrimPastVideoEnd', () => {
+  test('flags a trim past the end of a meaningfully shorter video track', () => {
+    expect(isTrimPastVideoEnd(62, 60, 120)).toBe(true);
+  });
+
+  test('never flags normal files (video ≈ container duration)', () => {
+    expect(isTrimPastVideoEnd(59.99, 60, 60.02)).toBe(false);
+    expect(isTrimPastVideoEnd(60, 60, 60)).toBe(false);
+  });
+
+  test('does not flag a trim inside the video track', () => {
+    expect(isTrimPastVideoEnd(10, 60, 120)).toBe(false);
+  });
+
+  test('fails safe on missing/NaN durations', () => {
+    expect(isTrimPastVideoEnd(62, undefined, 120)).toBe(false);
+    expect(isTrimPastVideoEnd(62, NaN, 120)).toBe(false);
+    expect(isTrimPastVideoEnd(62, 60, NaN)).toBe(false);
+  });
+});
+
 describe('buildPlanWarnings', () => {
   test('includes plan warnings and VFR notice', () => {
     const warnings = buildPlanWarnings(
@@ -84,6 +105,41 @@ describe('buildPlanWarnings', () => {
     const warnings = buildPlanWarnings(
       { warnings: [] },
       { isVFR: false, outputFormat: 'gif', trimDuration: 45, targetSizeMB: 50 }
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('warns when the trim In point is past the end of the video track', () => {
+    const warnings = buildPlanWarnings(
+      { warnings: [] },
+      { isVFR: false, outputFormat: 'mp4', trimDuration: 30, targetSizeMB: 10, trimIn: 62, videoDuration: 60, duration: 120 }
+    );
+    expect(warnings.map(w => w.id)).toEqual(['no_video_frames']);
+    expect(warnings[0].title).toContain('no video frames');
+  });
+
+  test('does not warn when the trim In is inside the video track', () => {
+    const warnings = buildPlanWarnings(
+      { warnings: [] },
+      { isVFR: false, outputFormat: 'mp4', trimDuration: 30, targetSizeMB: 10, trimIn: 10, videoDuration: 60, duration: 120 }
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('does not warn when the video track is not meaningfully shorter than the container', () => {
+    // Normal file: videoDuration ≈ container duration — a trim to the very
+    // end must not be flagged even though trimIn ≈ videoDuration.
+    const warnings = buildPlanWarnings(
+      { warnings: [] },
+      { isVFR: false, outputFormat: 'mp4', trimDuration: 0.1, targetSizeMB: 10, trimIn: 59.99, videoDuration: 60, duration: 60.02 }
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('does not warn when the video track duration is unknown', () => {
+    const warnings = buildPlanWarnings(
+      { warnings: [] },
+      { isVFR: false, outputFormat: 'mp4', trimDuration: 30, targetSizeMB: 10, trimIn: 62, videoDuration: undefined }
     );
     expect(warnings).toHaveLength(0);
   });

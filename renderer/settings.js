@@ -1,12 +1,22 @@
-// Settings & playback state: the settings modal (directory, hw accel,
-// max quality, waveform toggle), volume slider/mute state, and NVENC
-// detection. All app-level side effects (players, timeline, plan
-// invalidation, IPC) are injected via the `context` object so this module
-// is testable in jsdom with a fake api and no Electron bridge.
+// Settings & playback state: the settings modal (directory, video codec, hw
+// accel, max quality, waveform toggle), volume slider/mute state, and encoder
+// capability detection (NVENC / QSV / AMF / AV1 availability from the bundled
+// FFmpeg). All app-level side effects (players, timeline, plan invalidation,
+// IPC) are injected via the `context` object so this module is testable in
+// jsdom with a fake api and no Electron bridge.
 
 import { openModal, closeModal } from './utils/modals.js';
 
 const DEFAULT_VOLUME = 0.6;
+
+// Vendor option metadata for the Hardware Acceleration select. A vendor is
+// usable when the detected FFmpeg ships its H.264 encoder (every hardware
+// vendor also implies the AV1 sibling when supported by the GPU).
+const HW_VENDORS = [
+  { value: 'nvenc', label: 'NVIDIA (NVENC)' },
+  { value: 'qsv', label: 'Intel (QSV)' },
+  { value: 'amf', label: 'AMD (AMF)' }
+];
 
 /**
  * Create the settings controller.
@@ -15,13 +25,13 @@ const DEFAULT_VOLUME = 0.6;
  * @param {object} context.api - window.clipSend IPC bridge
  * @param {object} context.elements - DOM element references
  * @param {object} [context.timeline] - Timeline instance (waveform toggle)
- * @param {(hasNvenc: boolean) => void} [context.onNvencDetected]
+ * @param {(caps: object) => void} [context.onEncodersDetected] - resolved capability map
  * @param {() => void} [context.onPlanInvalidated] - clear the export plan
  * @param {(checked: boolean) => void} [context.onShowWaveformChange] - app applies to timeline + reloads waveform
  * @param {(volume: number, muted: boolean) => void} [context.onApplyVolumeToPlayers]
  */
 export function createSettingsController(context) {
-  const { api, elements, timeline, onNvencDetected, onPlanInvalidated, onShowWaveformChange, onApplyVolumeToPlayers } = context;
+  const { api, elements, timeline, onEncodersDetected, onNvencDetected, onPlanInvalidated, onShowWaveformChange, onApplyVolumeToPlayers } = context;
 
   const {
     modal,
@@ -31,6 +41,7 @@ export function createSettingsController(context) {
     browseBtn,
     clearBtn,
     hwAccel,
+    videoCodec,
     disableDownscale,
     showWaveform,
     maxQuality,
@@ -42,10 +53,14 @@ export function createSettingsController(context) {
 
   let storedVolume = DEFAULT_VOLUME;
   let isMutedState = false;
-  let hasNvenc = false;
+  let encoderCaps = null;
 
   function getPlaybackState() {
-    return { volume: storedVolume, muted: isMutedState, hasNvenc };
+    return {
+      volume: storedVolume,
+      muted: isMutedState,
+      hasNvenc: !!(encoderCaps && encoderCaps.nvenc && encoderCaps.nvenc.h264)
+    };
   }
 
   function syncVolumeUI() {
@@ -80,11 +95,39 @@ export function createSettingsController(context) {
     syncVolumeUI();
   }
 
+  /** Mark each vendor option disabled + relabeled when its encoder is absent. */
+  function applyDetection(caps) {
+    encoderCaps = caps && typeof caps === 'object' ? caps : null;
+    if (onEncodersDetected) onEncodersDetected(encoderCaps || {});
+    // Legacy callback compatibility (boolean NVENC availability).
+    if (onNvencDetected) onNvencDetected(!!(encoderCaps && encoderCaps.nvenc && encoderCaps.nvenc.h264));
+
+    if (!hwAccel) return;
+    for (const vendor of HW_VENDORS) {
+      const opt = hwAccel.querySelector(`option[value="${vendor.value}"]`);
+      if (!opt) continue;
+      const vendorCaps = encoderCaps ? encoderCaps[vendor.value] : null;
+      const available = !!(vendorCaps && (vendorCaps.h264 || vendorCaps.av1));
+      opt.disabled = !available;
+      opt.textContent = available ? vendor.label : `${vendor.label} - Not Detected`;
+    }
+
+    // A persisted vendor choice that is no longer available resets to Auto.
+    if (hwAccel.value !== 'auto' && hwAccel.value !== 'cpu') {
+      const opt = hwAccel.querySelector(`option[value="${hwAccel.value}"]`);
+      if (opt && opt.disabled) {
+        hwAccel.value = 'auto';
+        api.setSetting('hwAccel', 'auto');
+      }
+    }
+  }
+
   async function load() {
     const allSettings = await api.getAllSettings();
     if (allSettings) {
       if (exportDir) exportDir.value = allSettings.defaultExportDirectory || '';
       if (hwAccel) hwAccel.value = allSettings.hwAccel || 'auto';
+      if (videoCodec) videoCodec.value = allSettings.videoCodec === 'av1' ? 'av1' : 'h264';
       if (disableDownscale) disableDownscale.checked = allSettings.disableAutoDownscale === true;
       if (allSettings.showWaveform !== undefined) {
         if (showWaveform) showWaveform.checked = allSettings.showWaveform;
@@ -102,18 +145,14 @@ export function createSettingsController(context) {
     }
     syncVolumeUI();
 
-    // Detect NVENC
-    hasNvenc = await api.detectEncoders();
-    if (onNvencDetected) onNvencDetected(hasNvenc);
-    const nvencOption = document.querySelector('#setting-hw-accel option[value="nvenc"]');
-    if (nvencOption && !hasNvenc) {
-      nvencOption.disabled = true;
-      nvencOption.textContent = 'NVIDIA (NVENC) - Not Detected';
-      if (hwAccel && hwAccel.value === 'nvenc') {
-        hwAccel.value = 'auto';
-        api.setSetting('hwAccel', 'auto');
-      }
+    // Detect encoder capabilities (NVENC / QSV / AMF / software AV1).
+    let caps = null;
+    try {
+      caps = await api.detectEncoders();
+    } catch (e) {
+      caps = null;
     }
+    applyDetection(caps);
   }
 
   function wire() {
@@ -140,6 +179,13 @@ export function createSettingsController(context) {
     if (hwAccel) {
       hwAccel.addEventListener('change', (e) => {
         api.setSetting('hwAccel', e.target.value);
+        if (onPlanInvalidated) onPlanInvalidated();
+      });
+    }
+
+    if (videoCodec) {
+      videoCodec.addEventListener('change', (e) => {
+        api.setSetting('videoCodec', e.target.value);
         if (onPlanInvalidated) onPlanInvalidated();
       });
     }
@@ -174,5 +220,5 @@ export function createSettingsController(context) {
   }
 
   wire();
-  return { load, getPlaybackState, syncVolumeUI };
+  return { load, getPlaybackState, syncVolumeUI, applyDetection };
 }

@@ -56,8 +56,8 @@ describe('onboarding tour', () => {
     onboarding = createOnboardingController({ api, elements: els });
   });
 
-  test('defines a 5-step tour with copy and visuals for each step', () => {
-    expect(ONBOARDING_STEPS.length).toBe(5);
+  test('defines a 6-step tour with copy and visuals for each step', () => {
+    expect(ONBOARDING_STEPS.length).toBe(6);
     ONBOARDING_STEPS.forEach(step => {
       expect(step.title.length).toBeGreaterThan(0);
       expect(step.body.length).toBeGreaterThan(0);
@@ -109,7 +109,7 @@ describe('onboarding tour', () => {
     expect(els.modal.style.display).toBe('flex');
     expect(els.stepTitle.textContent).toBe(ONBOARDING_STEPS[0].title);
     expect(els.stepVisual.querySelector('svg')).toBeTruthy();
-    expect(els.dots.querySelectorAll('.onboarding-dot').length).toBe(5);
+    expect(els.dots.querySelectorAll('.onboarding-dot').length).toBe(6);
     expect(els.dots.querySelectorAll('.onboarding-dot')[0].classList.contains('active')).toBe(true);
     expect(els.prevBtn.disabled).toBe(true);
     expect(els.nextBtn.textContent).toBe('Next');
@@ -201,8 +201,8 @@ describe('onboarding tour', () => {
 
   test('shortcuts step renders kbd chips in the body and a keyboard mock as visual', () => {
     onboarding.show();
-    for (let i = 0; i < 4; i++) els.nextBtn.click();
-    expect(els.stepTitle.textContent).toBe(ONBOARDING_STEPS[4].title);
+    for (let i = 0; i < 5; i++) els.nextBtn.click();
+    expect(els.stepTitle.textContent).toBe(ONBOARDING_STEPS[5].title);
     expect(els.stepBody.querySelectorAll('kbd').length).toBeGreaterThan(0);
     expect(els.stepBody.querySelector('.onboarding-shortcuts')).toBeTruthy();
     expect(els.nextBtn.textContent).toBe('Get Started');

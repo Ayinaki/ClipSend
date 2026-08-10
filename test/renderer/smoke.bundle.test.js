@@ -18,7 +18,13 @@ function makeClipSendStub() {
   return {
     getVersion: jest.fn(async () => '1.8.18'),
     getAllSettings: jest.fn(async () => ({})),
-    detectEncoders: jest.fn(async () => false),
+    detectEncoders: jest.fn(async () => ({
+      nvenc: { h264: false, av1: false },
+      qsv: { h264: false, av1: false },
+      amf: { h264: false, av1: false },
+      svtav1: true,
+      libx264: true
+    })),
     setSetting: jest.fn(async () => {}),
     // hasSeenOnboarding -> true so the first-run tour never auto-opens mid-suite;
     // every other key behaves as before (false).
@@ -28,12 +34,11 @@ function makeClipSendStub() {
     cleanupPreviewRemux: fn,
     openFile: fn,
     openSpecificFile: fn,
-    openMultipleFiles: fn,
+    openMultipleFiles: jest.fn(async () => ({})),
     openSpecificMultipleFiles: fn,
     calculatePlan: fn,
     startExport: fn,
     cancelExport: fn,
-    startMerge: fn,
     onExportProgress: jest.fn(),
     onMergeProgress: jest.fn(),
     onUpdateAvailable: jest.fn(),
@@ -44,7 +49,8 @@ function makeClipSendStub() {
     minimizeWindow: jest.fn(),
     closeWindow: jest.fn(),
     pickDirectory: fn,
-    checkMergeCompat: fn,
+    checkMergeCompat: jest.fn(async () => ({})),
+    startMerge: jest.fn(async () => ({})),
     resolveMergeDestination: fn,
     cleanupFiles: fn,
     getTempPath: fn,
@@ -124,7 +130,7 @@ describe('built renderer bundle (smoke)', () => {
   });
 
   test('only one modal is visible at a time (no stacking)', () => {
-    const modalIds = ['settings-modal', 'changelog-modal', 'feedback-modal', 'export-modal', 'warnings-modal', 'update-modal'];
+    const modalIds = ['settings-modal', 'changelog-modal', 'feedback-modal', 'export-modal', 'warnings-modal', 'update-modal', 'shortcuts-modal', 'error-modal'];
 
     function visibleModals() {
       return modalIds.filter(id => document.getElementById(id).style.display === 'flex');
@@ -245,15 +251,150 @@ describe('built renderer bundle (smoke)', () => {
     replay.click();
     expect(modal.style.display).toBe('flex');
     expect(document.getElementById('onboarding-title').textContent.length).toBeGreaterThan(0);
-    // First step is rendered: a visual + one dot per step (5 steps).
+    // First step is rendered: a visual + one dot per step (6 steps).
     expect(document.querySelector('#onboarding-visual svg')).toBeTruthy();
-    expect(document.querySelectorAll('#onboarding-dots .onboarding-dot').length).toBe(5);
+    expect(document.querySelectorAll('#onboarding-dots .onboarding-dot').length).toBe(6);
 
-    // Paging forward through all 5 steps closes the tour and marks it seen.
+    // Paging forward through all 6 steps closes the tour and marks it seen.
     const next = document.getElementById('onboarding-next-btn');
-    for (let i = 0; i < 5; i++) next.click();
+    for (let i = 0; i < 6; i++) next.click();
     expect(modal.style.display).toBe('none');
     expect(window.clipSend.setSetting).toHaveBeenCalledWith('hasSeenOnboarding', true);
+  });
+
+  test('shortcuts modal opens via the ? key and help button, highlights the active mode, and closes', () => {
+    const modal = document.getElementById('shortcuts-modal');
+    const helpBtn = document.getElementById('help-btn');
+    expect(modal).toBeTruthy();
+    expect(helpBtn).toBeTruthy();
+
+    // ? opens it (Trim is the default mode -> Trim section highlighted)
+    document.body.dispatchEvent(new window.KeyboardEvent('keydown', { shiftKey: true, code: 'Slash', bubbles: true }));
+    expect(modal.style.display).toBe('flex');
+    expect(document.getElementById('shortcuts-trim-section').classList.contains('active')).toBe(true);
+    expect(document.getElementById('shortcuts-merge-section').classList.contains('active')).toBe(false);
+
+    // Close via the close button (idempotent across accumulated listeners)
+    document.getElementById('close-shortcuts-btn').click();
+    expect(modal.style.display).toBe('none');
+
+    // The title-bar help button reopens it
+    helpBtn.click();
+    expect(modal.style.display).toBe('flex');
+
+    // In Merge mode, the Merge section gets highlighted
+    document.getElementById('mode-merge-btn').click();
+    document.getElementById('close-shortcuts-btn').click();
+    document.body.dispatchEvent(new window.KeyboardEvent('keydown', { shiftKey: true, code: 'Slash', bubbles: true }));
+    expect(modal.style.display).toBe('flex');
+    expect(document.getElementById('shortcuts-merge-section').classList.contains('active')).toBe(true);
+    expect(document.getElementById('shortcuts-trim-section').classList.contains('active')).toBe(false);
+  });
+
+  test('crop preset pills exist and track the active preset', () => {
+    const pills = document.querySelectorAll('.crop-preset-pill');
+    expect(pills.length).toBe(5);
+    expect(document.getElementById('crop-recenter-btn')).toBeTruthy();
+    // Free is active by default
+    expect(document.querySelector('.crop-preset-pill[data-preset="none"]').getAttribute('aria-pressed')).toBe('true');
+    // Clicking a preset marks it active without throwing (no video loaded)
+    document.querySelector('.crop-preset-pill[data-preset="9:16"]').click();
+    expect(document.querySelector('.crop-preset-pill[data-preset="9:16"]').getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.crop-preset-pill[data-preset="none"]').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  test('sidebar collapsible panels act as an accordion (Cropping closes Audio Settings)', () => {
+    const audioPanel = document.getElementById('audio-settings-panel');
+    const cropPanel = document.getElementById('cropping-settings-panel');
+    const audioHeader = audioPanel.querySelector('.collapsible-header');
+    const cropHeader = cropPanel.querySelector('.collapsible-header');
+
+    // Initial state: Audio expanded, Cropping collapsed.
+    expect(audioPanel.classList.contains('collapsed')).toBe(false);
+    expect(cropPanel.classList.contains('collapsed')).toBe(true);
+
+    // Opening Cropping must collapse Audio so Export Settings stays visible.
+    cropHeader.click();
+    expect(cropPanel.classList.contains('collapsed')).toBe(false);
+    expect(audioPanel.classList.contains('collapsed')).toBe(true);
+    // Expanded content falls back to the stylesheet (inline display cleared);
+    // collapsed content is hidden inline.
+    expect(cropPanel.querySelector(':scope > .panel-content').style.display).toBe('');
+    expect(audioPanel.querySelector(':scope > .panel-content').style.display).toBe('none');
+
+    // Opening Audio again collapses Cropping.
+    audioHeader.click();
+    expect(audioPanel.classList.contains('collapsed')).toBe(false);
+    expect(cropPanel.classList.contains('collapsed')).toBe(true);
+  });
+
+  test('merge compatibility warnings surface in the title-bar warnings badge', async () => {
+    await loadMergeClips();
+    window.clipSend.checkMergeCompat.mockResolvedValue({
+      success: true,
+      compatible: false,
+      reason: 'Frame rate mismatch: clip 1 is 60fps, clip 2 is 120fps'
+    });
+    window.clipSend.startMerge.mockResolvedValue({
+      success: true,
+      filePath: 'C:\\merged.mp4',
+      finalSizeMB: 4.2,
+      strategy: 'concat_filter'
+    });
+
+    const warningBtn = document.getElementById('titlebar-warning-btn');
+    const countEl = document.getElementById('titlebar-warning-count');
+    expect(warningBtn.style.display).toBe('none');
+
+    document.getElementById('export-merged-btn').click();
+    await flushAsync();
+
+    // Merge warnings go to the same title-bar warnings section as trim plan
+    // warnings: badge + modal content (the sidebar box was removed).
+    expect(warningBtn.style.display).not.toBe('none');
+    expect(countEl.textContent).toBe('1');
+    expect(document.getElementById('warnings-modal-content').textContent).toContain('merge will re-encode');
+    expect(document.getElementById('warnings-modal-content').textContent).toContain('Frame rate mismatch');
+
+    // Switching to Trim hides merge warnings (no stale badge across modes).
+    document.getElementById('mode-trim-btn').click();
+    expect(warningBtn.style.display).toBe('none');
+  });
+
+  test('failed merge surfaces through the in-app error modal (no blocking alert)', async () => {
+    const modal = document.getElementById('error-modal');
+    expect(modal).toBeTruthy();
+
+    await loadMergeClips();
+    window.clipSend.checkMergeCompat.mockResolvedValue({ success: true, compatible: true });
+    window.clipSend.startMerge.mockResolvedValue({
+      success: false,
+      error: 'boom',
+      details: 'ffmpeg tail'
+    });
+
+    document.getElementById('export-merged-btn').click();
+    await flushAsync();
+
+    // The failure must render in the app's own modal, with the raw ffmpeg
+    // tail available under "Technical details" — never a native alert.
+    expect(modal.style.display).toBe('flex');
+    expect(document.getElementById('error-modal-title').textContent).toBe('Merge failed');
+    expect(document.getElementById('error-modal-message').textContent).toBe('boom');
+    expect(document.getElementById('error-modal-details').style.display).toBe('block');
+    expect(document.getElementById('error-modal-details-text').textContent).toBe('ffmpeg tail');
+
+    // OK dismisses it and the export button re-enables.
+    document.getElementById('error-modal-ok-btn').click();
+    expect(modal.style.display).toBe('none');
+    expect(document.getElementById('export-merged-btn').disabled).toBe(false);
+  });
+
+  test('merge estimate row exists and hides with no clips', async () => {
+    document.getElementById('mode-merge-btn').click();
+    const estimate = document.getElementById('merge-estimate');
+    expect(estimate).toBeTruthy();
+    expect(estimate.style.display).toBe('none');
   });
 
   test('merge sidebar no longer forces full height so export settings stay visible', () => {
@@ -267,5 +408,94 @@ describe('built renderer bundle (smoke)', () => {
     const sidebarContent = document.querySelector('.sidebar-content');
     const children = [...sidebarContent.children];
     expect(children.indexOf(formatPanel)).toBeGreaterThan(children.indexOf(mergeSidebar));
+  });
+
+  // Merge timeline block gestures: a plain click must seek to the exact
+  // position clicked (not drag the clip around), and a drag past a small
+  // threshold reorders. This replaced the old native HTML5 drag on the whole
+  // block, which hijacked simple clicks and only jumped to the clip start.
+  function flushAsync() {
+    return new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  function pointerEvent(type, clientX, pointerId = 1) {
+    const ev = new window.Event(type, { bubbles: true, cancelable: true });
+    ev.clientX = clientX;
+    ev.clientY = 30;
+    ev.button = 0;
+    ev.pointerId = pointerId;
+    return ev;
+  }
+
+  /** Load two clips through the mocked bridge so merge blocks render. */
+  async function loadMergeClips() {
+    window.clipSend.openMultipleFiles.mockResolvedValue({
+      success: true,
+      clips: [
+        { filePath: 'C:\\replay-a.mp4', thumbnailPath: '', mediaInfo: { duration: 60, width: 1920, height: 1080 } },
+        { filePath: 'C:\\replay-b.mp4', thumbnailPath: '', mediaInfo: { duration: 30, width: 1920, height: 1080 } }
+      ]
+    });
+    document.getElementById('mode-merge-btn').click();
+    document.getElementById('add-clips-btn').click();
+    await flushAsync();
+
+    // Simulate layout geometry (jsdom computes none): strip at origin, 12px
+    // padding-left, 200px blocks with a 6px gap.
+    const strip = document.getElementById('merge-timeline-strip');
+    Object.defineProperty(strip, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, right: 430, bottom: 60, width: 430, height: 60 }),
+      configurable: true
+    });
+    Object.defineProperty(strip, 'scrollLeft', { value: 0, configurable: true });
+    Object.defineProperty(strip, 'scrollWidth', { value: 430, configurable: true });
+    strip.querySelectorAll('.merge-timeline-block').forEach((b, i) => {
+      Object.defineProperty(b, 'offsetLeft', { value: 12 + i * 206, configurable: true });
+      Object.defineProperty(b, 'offsetWidth', { value: 200, configurable: true });
+    });
+    return strip;
+  }
+
+  test('merge blocks: a plain click seeks to the exact position clicked', async () => {
+    await loadMergeClips();
+    const strip = document.getElementById('merge-timeline-strip');
+    const blocks = strip.querySelectorAll('.merge-timeline-block');
+    expect(blocks.length).toBe(2);
+
+    // Click block 2 (starts at global 60s) halfway in -> seek to 75s
+    // (60s + half of the 30s clip).
+    const clickX = 218 + 100;
+    blocks[1].dispatchEvent(pointerEvent('pointerdown', clickX));
+    window.dispatchEvent(pointerEvent('pointerup', clickX));
+
+    expect(document.getElementById('merge-timecode').textContent).toBe('01:15 / 01:30');
+    expect(document.getElementById('merge-clip-indicator').textContent).toBe('Clip 2 / 2');
+    expect(blocks[1].classList.contains('active-clip')).toBe(true);
+    expect(blocks[0].classList.contains('active-clip')).toBe(false);
+  });
+
+  test('merge blocks: dragging past the threshold reorders instead of seeking', async () => {
+    await loadMergeClips();
+    const strip = document.getElementById('merge-timeline-strip');
+    let blocks = strip.querySelectorAll('.merge-timeline-block');
+
+    // Press block 1, move well past the 6px threshold, release after block 2.
+    blocks[0].dispatchEvent(pointerEvent('pointerdown', 12 + 100));
+    window.dispatchEvent(pointerEvent('pointermove', 12 + 100 + 40));
+    expect(blocks[0].classList.contains('dragging')).toBe(true);
+    window.dispatchEvent(pointerEvent('pointerup', 430));
+    await flushAsync();
+
+    blocks = strip.querySelectorAll('.merge-timeline-block');
+    const labels = [...blocks].map(b => b.querySelector('.merge-timeline-duration').textContent);
+    // 30s clip first, 60s clip second: the reorder happened, not a seek.
+    expect(labels[0]).toBe('0:30');
+    expect(labels[1]).toBe('1:00');
+    // Ghost/caret state fully cleaned up after the gesture.
+    blocks.forEach(b => {
+      expect(b.classList.contains('dragging')).toBe(false);
+      expect(b.classList.contains('drag-over-left')).toBe(false);
+      expect(b.classList.contains('drag-over-right')).toBe(false);
+    });
   });
 });
