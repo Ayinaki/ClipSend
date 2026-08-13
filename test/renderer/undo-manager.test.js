@@ -50,6 +50,24 @@ describe('createUndoManager', () => {
     expect(mgr.undo(2)).toBeUndefined();
   });
 
+  test('peekUndo/peekRedo inspect the next entry without popping', () => {
+    const mgr = createUndoManager();
+    expect(mgr.peekUndo()).toBeUndefined();
+    expect(mgr.peekRedo()).toBeUndefined();
+
+    mgr.push('S0');
+    mgr.push('S1');
+    expect(mgr.peekUndo()).toBe('S1');
+    expect(mgr.peekRedo()).toBeUndefined();
+
+    mgr.undo('S2');
+    expect(mgr.peekUndo()).toBe('S0');
+    expect(mgr.peekRedo()).toBe('S2');
+    // Stacks unchanged by peeking.
+    expect(mgr.canUndo()).toBe(true);
+    expect(mgr.canRedo()).toBe(true);
+  });
+
   test('clear empties both stacks', () => {
     const mgr = createUndoManager();
     mgr.push('a');

@@ -55,10 +55,19 @@ export function createUndoManager(limit = 50) {
     return redoStack.length > 0;
   }
 
+  /** Peek the next entry without popping (callers gate on mode/context). */
+  function peekUndo() {
+    return undoStack.length > 0 ? undoStack[undoStack.length - 1] : undefined;
+  }
+
+  function peekRedo() {
+    return redoStack.length > 0 ? redoStack[redoStack.length - 1] : undefined;
+  }
+
   function clear() {
     undoStack.length = 0;
     redoStack.length = 0;
   }
 
-  return { push, undo, redo, canUndo, canRedo, clear };
+  return { push, undo, redo, canUndo, canRedo, peekUndo, peekRedo, clear };
 }

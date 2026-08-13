@@ -131,26 +131,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Undo history is shared across Trim and Merge, so a snapshot is only
+  // valid in the mode it was captured in — undoing a trim edit while Merge is
+  // open would mutate the hidden trim project (and park merge state on redo).
+  function modeMatches(snap) {
+    return !!snap && (snap.mode === 'merge') === currentMergeMode;
+  }
+
   function undo() {
+    // Peek first so a cross-mode entry is refused without touching the stacks.
+    const peek = undoManager.peekUndo();
+    if (!peek) {
+      toast('Nothing to undo');
+      return;
+    }
+    if (!modeMatches(peek)) {
+      toast('Nothing to undo in this mode');
+      return;
+    }
     // Pass the current state so undo can store it for redo — redo must
     // restore the edited state, not re-apply the pre-edit one.
     const current = currentMergeMode ? captureMergeState() : captureTrimState();
     const snap = undoManager.undo(current);
-    if (!snap) {
-      toast('Nothing to undo');
-      return;
-    }
     applySnapshot(snap);
     toast(`Undid: ${snap.label || 'edit'}`);
   }
 
   function redo() {
-    const current = currentMergeMode ? captureMergeState() : captureTrimState();
-    const snap = undoManager.redo(current);
-    if (!snap) {
+    const peek = undoManager.peekRedo();
+    if (!peek) {
       toast('Nothing to redo');
       return;
     }
+    if (!modeMatches(peek)) {
+      toast('Nothing to redo in this mode');
+      return;
+    }
+    const current = currentMergeMode ? captureMergeState() : captureTrimState();
+    const snap = undoManager.redo(current);
     applySnapshot(snap);
     toast(`Redid: ${snap.label || 'edit'}`);
   }
