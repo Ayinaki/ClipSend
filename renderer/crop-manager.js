@@ -15,6 +15,11 @@ class CropManager {
     this.lockedAspectRatio = null;
     this.cropNative = { x: 0, y: 0, w: 0, h: 0 };
     
+    // Tiny event emitter (no dependency): the app subscribes for plan
+    // invalidation and undo snapshots. 'change-start' fires BEFORE a mutation
+    // (undo capture), 'change' after it (plan invalidation).
+    this._listeners = {};
+    
     this.enableCheckbox.disabled = true; // Disabled until a clip is loaded
     
     this._bindEvents();
@@ -26,6 +31,52 @@ class CropManager {
       }
     });
     this.resizeObserver.observe(this.video);
+  }
+
+  on(event, callback) {
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(callback);
+    return this;
+  }
+
+  emit(event, ...args) {
+    const cbs = this._listeners[event];
+    if (cbs) {
+      for (const cb of cbs.slice()) {
+        try { cb(...args); } catch (e) { console.error('CropManager listener error:', e); }
+      }
+    }
+    return this;
+  }
+
+  /** Restore crop state from an undo/redo snapshot (see captureTrimState). */
+  applyCropState(state) {
+    if (!state) return;
+    const enabled = !!state.enable;
+    this.isEnabled = enabled;
+    if (this.enableCheckbox) this.enableCheckbox.checked = enabled;
+    // Restore the preset pill + aspect-ratio lock too, so undo brings back
+    // the full crop configuration (older snapshots lack these — default safe).
+    if (state.preset !== undefined) {
+      this.lockedAspectRatio = state.ratio || null;
+      if (this.pills && this.pills.length) this._setPreset(state.preset || 'none');
+    }
+    this.cropNative = {
+      x: Math.round(state.x) || 0,
+      y: Math.round(state.y) || 0,
+      w: Math.round(state.w) || 0,
+      h: Math.round(state.h) || 0
+    };
+    if (enabled && this.video && this.video.videoWidth > 0) {
+      this.controlsDiv.style.opacity = '1';
+      this.controlsDiv.style.pointerEvents = 'auto';
+      this.container.style.display = 'block';
+      this._updateOverlayFromNative();
+    } else {
+      this.controlsDiv.style.opacity = '0.5';
+      this.controlsDiv.style.pointerEvents = 'none';
+      this.container.style.display = 'none';
+    }
   }
 
   /** Highlight the active pill + remember the chosen preset. */
@@ -40,14 +91,19 @@ class CropManager {
 
   /** Apply a preset: sets the locked ratio and (when enabled) the crop box. */
   _applyPreset(val) {
+    this.emit('change-start');
     this._setPreset(val);
-    if (!this.isEnabled || !this.video || !this.video.videoWidth) return;
+    if (!this.isEnabled || !this.video || !this.video.videoWidth) {
+      this.emit('change');
+      return;
+    }
 
     const vw = this.video.videoWidth;
     const vh = this.video.videoHeight;
 
     if (val === 'none') {
       this.lockedAspectRatio = null;
+      this.emit('change');
       return;
     }
 
@@ -79,10 +135,12 @@ class CropManager {
     };
     
     this._updateOverlayFromNative();
+    this.emit('change');
   }
 
   _bindEvents() {
     this.enableCheckbox.addEventListener('change', (e) => {
+      this.emit('change-start');
       this.isEnabled = e.target.checked;
       if (this.isEnabled) {
         this._initializeDefaultCrop();
@@ -101,6 +159,7 @@ class CropManager {
 
     this.recenterBtn.addEventListener('click', () => {
       if (!this.isEnabled || !this.video || !this.video.videoWidth) return;
+      this.emit('change-start');
       
       const vw = this.video.videoWidth;
       const vh = this.video.videoHeight;
@@ -109,6 +168,7 @@ class CropManager {
       this.cropNative.y = Math.round((vh - this.cropNative.h) / 2);
       
       this._updateOverlayFromNative();
+      this.emit('change');
     });
 
     // Draggable / Resizable Logic
@@ -124,6 +184,9 @@ class CropManager {
     const onMouseDown = (e) => {
       if (!this.isEnabled) return;
       e.preventDefault();
+      
+      // Snapshot before the drag mutates cropNative (undo/redo support).
+      this.emit('change-start');
       
       isDragging = true;
       startMouseX = e.clientX;
@@ -257,6 +320,8 @@ class CropManager {
       dragMode = null;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      // Plan invalidation at gesture end: one event per drag, not per pixel.
+      this.emit('change');
     };
 
     this.box.addEventListener('mousedown', onMouseDown);
@@ -369,6 +434,10 @@ class CropManager {
   getCropSettings() {
     return {
       enable: this.isEnabled,
+      // Preset + ratio are UI state undo must restore (the crop box alone
+      // leaves the pill highlight and aspect lock stale after an undo).
+      preset: this.activePreset || 'none',
+      ratio: this.lockedAspectRatio,
       ...this.cropNative
     };
   }

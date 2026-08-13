@@ -9,9 +9,16 @@ const { Merger } = require('./merger');
 const { pickEncoder, isHardwareEncoder, resolveCpuEncoder, detectAvailableEncoders } = require('./encoder-profiles');
 const { extractWaveform } = require('./waveform-service');
 const gifExporter = require('./gif-exporter');
+const { renderFilenameTemplate, buildTemplateVars } = require('./filename-template');
 const Store = require('electron-store');
 const fs = require('fs');
 const path = require('path');
+
+// Default filename templates, kept in sync with the placeholders shown in the
+// Settings modal (setting-filename-template-trim / -merge). `{name}` is the
+// source base name for trims and "Merged Video" for merges.
+const DEFAULT_TEMPLATE_TRIM = '{name} - Trimmed';
+const DEFAULT_TEMPLATE_MERGE = 'Merged Video - {date}';
 
 const store = new Store({
   defaults: {
@@ -71,6 +78,30 @@ app.on('will-quit', () => {
     fs.promises.unlink(tempPath).catch(() => {});
   });
 });
+
+// Orphaned temp files (clipsend-*, thumb-*) only get cleaned on will-quit,
+// which a hard crash or Task-Manager kill skips entirely — so leftovers can
+// pile up in %TEMP% forever. Sweep anything older than a day at startup;
+// the age gate keeps a second running instance's live files untouched.
+const TEMP_SWEEP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function sweepOrphanedTempFiles() {
+  const tempDir = app.getPath('temp');
+  fs.readdir(tempDir, (err, entries) => {
+    if (err) return;
+    const now = Date.now();
+    for (const entry of entries) {
+      if (!/^(clipsend-|thumb-)/.test(entry)) continue;
+      const fullPath = path.join(tempDir, entry);
+      fs.stat(fullPath, (statErr, stats) => {
+        if (statErr || !stats.isFile()) return;
+        if (now - stats.mtimeMs > TEMP_SWEEP_MAX_AGE_MS) {
+          fs.unlink(fullPath, () => {});
+        }
+      });
+    }
+  });
+}
 
 async function getUniqueFilePath(basePath) {
   try {
@@ -149,6 +180,8 @@ async function limitConcurrentSettled(items, concurrencyLimit, fn) {
 }
 
 function registerIpcHandlers() {
+  sweepOrphanedTempFiles();
+
   ipcMain.handle('dialog:openFile', async () => {
     const filePath = await openFileDialog();
     if (!filePath) return null;
@@ -323,7 +356,18 @@ function registerIpcHandlers() {
       // The container always follows the format picker: mp4 for video
       // (H.264 or AV1), gif/mp3 for their own formats.
       const ext = isGif ? '.gif' : isMp3 ? '.mp3' : '.mp4';
-      const standardizedName = `${parsedInput.name} - Trimmed${ext}`;
+      // User-configurable filename template (Settings -> Filename Templates).
+      // The plan carries codec/resolution/size, so all tokens are available
+      // at naming time — even when the save dialog is bypassed by a default
+      // export directory.
+      const template = store.get('filenameTemplateTrim') || DEFAULT_TEMPLATE_TRIM;
+      const vars = buildTemplateVars({
+        name: parsedInput.name,
+        codec: plan.codec,
+        res: plan.width && plan.height ? `${plan.width}x${plan.height}` : null,
+        sizeMB: plan.targetSizeMB != null ? plan.targetSizeMB : plan.estimatedSizeMB
+      });
+      const standardizedName = `${renderFilenameTemplate(template, vars)}${ext}`;
       const defaultExportDir = store.get('defaultExportDirectory');
 
       if (defaultExportDir && fs.existsSync(defaultExportDir)) {
@@ -395,8 +439,13 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('merge:resolveDestination', async () => {
-    const defaultName = `Merged Video - ${new Date().toISOString().slice(0,10)}.mp4`;
+  // The renderer passes the trim-mode source name so the trim filename
+  // template applies to the merged multi-segment output too ({name} is the
+  // source clip, not "Merged Video").
+  ipcMain.handle('merge:resolveDestination', async (event, vars = {}) => {
+    const template = store.get('filenameTemplateTrim') || DEFAULT_TEMPLATE_TRIM;
+    const base = renderFilenameTemplate(template, buildTemplateVars(vars));
+    const defaultName = `${base}.mp4`;
     const defaultExportDir = store.get('defaultExportDirectory');
 
     if (defaultExportDir && fs.existsSync(defaultExportDir)) {
@@ -480,7 +529,14 @@ function registerIpcHandlers() {
     };
 
     if (!outputPath) {
-      const defaultName = `Merged Video - ${new Date().toISOString().slice(0,10)}.${postFormat}`;
+      const mergeTemplate = store.get('filenameTemplateMerge') || DEFAULT_TEMPLATE_MERGE;
+      const mergeVars = buildTemplateVars({
+        name: options.name || 'Merged Video',
+        codec: videoCodec,
+        res: options.resolution && options.resolution !== 'native' ? options.resolution : null,
+        sizeMB: options.targetSizeMB || null
+      });
+      const defaultName = `${renderFilenameTemplate(mergeTemplate, mergeVars)}.${postFormat}`;
       const defaultExportDir = store.get('defaultExportDirectory');
       if (defaultExportDir && fs.existsSync(defaultExportDir)) {
         const targetPath = path.join(defaultExportDir, defaultName);
@@ -540,7 +596,8 @@ function registerIpcHandlers() {
       amf: { h264: false, av1: false },
       svtav1: false,
       libaom: false,
-      libx264: false
+      libx264: false,
+      atempo: false
     };
   });
 

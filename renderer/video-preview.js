@@ -64,6 +64,14 @@ export class VideoPreview {
   setMuted(isMuted) {
     this.video.muted = isMuted;
   }
+
+  /** Preview playback speed (0.25x–4x; 1 = normal). */
+  setPlaybackRate(rate) {
+    const r = Number(rate);
+    if (isFinite(r) && r > 0) {
+      this.video.playbackRate = r;
+    }
+  }
   
   getCurrentTime() {
     return this.video.currentTime;

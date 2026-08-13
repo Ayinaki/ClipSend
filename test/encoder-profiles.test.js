@@ -5,7 +5,8 @@ const {
   cpuEncoderFor,
   audioCodecFor,
   containerForFormat,
-  parseEncoderCapabilities
+  parseEncoderCapabilities,
+  parseFilterCapabilities
 } = require('../main/encoder-profiles');
 
 describe('pickEncoder', () => {
@@ -177,5 +178,28 @@ describe('helpers', () => {
     const caps = parseEncoderCapabilities('');
     expect(caps.nvenc.h264).toBe(false);
     expect(caps.svtav1).toBe(false);
+  });
+
+  test('parseFilterCapabilities detects atempo from -filters output', () => {
+    // Real -filters lines: two flag chars (timeline / slice-threading), then
+    // the name; audio/video direction lives in the middle column, not the flags.
+    const stdout = [
+      'Filters:',
+      ' T.. = Timeline support',
+      ' .. setpts            V->V       Set PTS for the output video frame.',
+      ' .. atempo            A->A       Adjust audio tempo.',
+      ' .. crop              V->V       Crop the input video.'
+    ].join('\n');
+    expect(parseFilterCapabilities(stdout).atempo).toBe(true);
+  });
+
+  test('parseFilterCapabilities reports false when atempo is absent', () => {
+    const stdout = [
+      'Filters:',
+      ' .. setpts            V->V       Set PTS for the output video frame.',
+      ' .. crop              V->V       Crop the input video.'
+    ].join('\n');
+    expect(parseFilterCapabilities(stdout).atempo).toBe(false);
+    expect(parseFilterCapabilities('').atempo).toBe(false);
   });
 });

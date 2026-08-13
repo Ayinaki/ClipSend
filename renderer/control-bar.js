@@ -1,4 +1,5 @@
 import { formatTimecode, parseTimecode } from './utils/timecode.js';
+import { ICON_PLAY, ICON_PAUSE } from './utils/icons.js';
 
 /**
  * Control Bar Module
@@ -14,7 +15,6 @@ export class ControlBar {
     this.onFrameStep = callbacks.onFrameStep;
     this.onJumpIn = callbacks.onJumpIn;
     this.onSetIn = callbacks.onSetIn;
-    this.onStop = callbacks.onStop;
     this.onSetOut = callbacks.onSetOut;
     this.onJumpOut = callbacks.onJumpOut;
 
@@ -26,7 +26,6 @@ export class ControlBar {
     
     this.jumpInBtn = this.container.querySelector('.jump-in-btn');
     this.setInBtn = this.container.querySelector('.set-in-btn');
-    this.stopBtn = this.container.querySelector('.stop-btn');
     this.setOutBtn = this.container.querySelector('.set-out-btn');
     this.jumpOutBtn = this.container.querySelector('.jump-out-btn');
 
@@ -61,12 +60,6 @@ export class ControlBar {
     if (this.setInBtn) {
       this.setInBtn.addEventListener('click', () => {
         if (this.onSetIn) this.onSetIn();
-      });
-    }
-
-    if (this.stopBtn) {
-      this.stopBtn.addEventListener('click', () => {
-        if (this.onStop) this.onStop();
       });
     }
 
@@ -116,8 +109,8 @@ export class ControlBar {
 
   setPlayState(isPlaying) {
     if (this.playBtn) {
-      this.playBtn.innerHTML = isPlaying ? '&#xE769;' : '&#xE768;';
-      this.playBtn.title = isPlaying ? 'Pause' : 'Play';
+      this.playBtn.innerHTML = isPlaying ? ICON_PAUSE : ICON_PLAY;
+      this.playBtn.title = isPlaying ? 'Pause (Space)' : 'Play (Space)';
     }
   }
 }

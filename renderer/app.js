@@ -10,8 +10,19 @@ import { buildPlanWarnings, isTrimPastVideoEnd } from './export-flow.js';
 import { openModal, closeModal, closeAllModals } from './utils/modals.js';
 import { toast, clearToasts } from './utils/toast.js';
 import { createOnboardingController } from './onboarding.js';
+import { createUndoManager } from './utils/undo-manager.js';
+import { enhanceAllSelects } from './utils/dropdown.js';
+import { ICON_PLAY, ICON_PAUSE } from './utils/icons.js';
+import { DEFAULT_BINDINGS, matchAction, bindingLabel, valueToBinding } from './utils/keymap.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Replace native <select> controls with custom dropdowns before anything
+  // reads them: the native Windows popup can't be themed, so every dropdown
+  // would otherwise open as a stock OS menu. The native selects stay in the
+  // DOM as the value/options source — all existing getElementById reads,
+  // option population, and change listeners keep working untouched.
+  enhanceAllSelects();
+
   // Disable browser media session action handlers so hardware media keys do not trigger video playback
   if ('mediaSession' in navigator) {
     ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward'].forEach(action => {
@@ -49,12 +60,112 @@ document.addEventListener('DOMContentLoaded', () => {
   let controlBar = null;
   let timeline = null;
   let cropManager = new CropManager();
+  // Crop edits: snapshot for undo before each mutation, invalidate the plan
+  // after it (the plan embeds crop coordinates, so it must be recalculated).
+  cropManager.on('change-start', () => recordUndo('Edit crop')).on('change', clearExportPlan);
   let fps = 30;
   
   // App state to pass to export planner later
   const exportState = {
-    selectedAudioTrackIndex: 0
+    selectedAudioTrackIndex: 0,
+    playbackSpeed: 1 // 0.5x-3x playback/export speed (1 = normal)
   };
+
+  // --- Undo/redo history (trim trims, multi-trim segments, crop, merge ops) ---
+  // One undo history per editor mode: Trim and Merge are separate projects,
+  // and a shared stack would let one mode's entries block (or mutate) the
+  // other's history. Each manager only ever holds its own mode's snapshots.
+  const undoHistory = {
+    trim: createUndoManager(50),
+    merge: createUndoManager(50)
+  };
+  const activeUndo = () => undoHistory[currentMergeMode ? 'merge' : 'trim'];
+  const captureCurrentState = () => (currentMergeMode ? captureMergeState() : captureTrimState());
+
+  function cloneMergeClips(clips) {
+    return (clips || []).map(c => {
+      const copy = { ...c };
+      if (c.mediaInfo) {
+        copy.mediaInfo = {
+          ...c.mediaInfo,
+          audioTracks: (c.mediaInfo.audioTracks || []).map(t => ({ ...t }))
+        };
+      }
+      return copy;
+    });
+  }
+
+  /** Snapshot the current edit state so undo/redo can restore it later. */
+  function captureTrimState() {
+    return {
+      mode: 'trim',
+      label: 'Edit trim',
+      segments: timeline ? timeline.getSegments() : [],
+      activeSegmentId: timeline ? timeline.activeSegmentId : null,
+      multiTrim: timeline ? timeline.isMultiTrim : false,
+      crop: cropManager ? cropManager.getCropSettings() : { enable: false }
+    };
+  }
+
+  function captureMergeState() {
+    return {
+      mode: 'merge',
+      label: 'Edit clips',
+      clips: cloneMergeClips(mergeClips),
+      currentClipIndex: mergePlayer ? mergePlayer.currentClipIndex : 0
+    };
+  }
+
+  /** Push the pre-edit state onto the undo stack (call BEFORE mutating). */
+  function recordUndo(label) {
+    if (exportProgressState && exportProgressState.isActive) return;
+    activeUndo().push(captureCurrentState());
+  }
+
+  /** Restore a snapshot captured by captureTrimState/captureMergeState. */
+  function applySnapshot(snap) {
+    if (!snap) return;
+    if (snap.mode === 'trim') {
+      if (timeline) timeline.restoreState(snap);
+      if (cropManager) cropManager.applyCropState(snap.crop);
+      updateTrimDisplay(); // re-reads trims + clears the stale plan
+    } else if (snap.mode === 'merge') {
+      mergeClips = cloneMergeClips(snap.clips);
+      if (mergePlayer) {
+        mergePlayer.currentClipIndex = Math.max(0, Math.min(snap.currentClipIndex || 0, Math.max(0, mergeClips.length - 1)));
+      }
+      updateMergeUI();
+      showMergeWarnings([]); // the warning names clip indices; they may be stale now
+    }
+  }
+
+  // Each mode has its own history (see undoHistory above), so no mode guard
+  // is needed — undo/redo only ever touch the active mode's snapshots.
+  function undo() {
+    const mgr = activeUndo();
+    const peek = mgr.peekUndo();
+    if (!peek) {
+      toast('Nothing to undo');
+      return;
+    }
+    // Pass the current state so undo can store it for redo — redo must
+    // restore the edited state, not re-apply the pre-edit one.
+    const snap = mgr.undo(captureCurrentState());
+    applySnapshot(snap);
+    toast(`Undid: ${snap.label || 'edit'}`);
+  }
+
+  function redo() {
+    const mgr = activeUndo();
+    const peek = mgr.peekRedo();
+    if (!peek) {
+      toast('Nothing to redo');
+      return;
+    }
+    const snap = mgr.redo(captureCurrentState());
+    applySnapshot(snap);
+    toast(`Redid: ${snap.label || 'edit'}`);
+  }
 
   function showState(stateElement) {
     [initialState, errorState, readyState].forEach(el => el.classList.remove('active'));
@@ -427,7 +538,8 @@ document.addEventListener('DOMContentLoaded', () => {
       disableAutoDownscale: document.getElementById('setting-disable-downscale').checked,
       crop: cropManager ? cropManager.getCropSettings() : { enable: false },
       outputFormat: document.getElementById('format-select') ? document.getElementById('format-select').value : 'mp4',
-      maxQuality: await window.clipSend.getSetting('maxQuality')
+      maxQuality: await window.clipSend.getSetting('maxQuality'),
+      playbackSpeed: exportState.playbackSpeed
     };
 
     try {
@@ -493,7 +605,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let mergedFinalDest = null;
       if (isMulti && exportMode === 'merged' && !isMp3) {
-        mergedFinalDest = await window.clipSend.resolveMergeDestination();
+        // Pass the source clip's context so the trim filename template can
+        // render ({name}, {res}, {size}, {codec}) for the merged file name.
+        mergedFinalDest = await window.clipSend.resolveMergeDestination({
+          name: currentMediaInfo
+            ? currentMediaInfo.filePath.split('\\').pop().split('/').pop().replace(/\.[^.]+$/, '')
+            : 'Merged Video',
+          codec: basePlan && basePlan.codec,
+          res: basePlan && basePlan.width && basePlan.height ? `${basePlan.width}x${basePlan.height}` : null,
+          sizeMB: basePlan && (basePlan.targetSizeMB != null ? basePlan.targetSizeMB : basePlan.estimatedSizeMB)
+        });
         if (!mergedFinalDest) {
           progressUI.hide();
           return;
@@ -553,7 +674,8 @@ document.addEventListener('DOMContentLoaded', () => {
             crop: cropManager ? cropManager.getCropSettings() : { enable: false },
             manualResolution: manualResolution,
             outputFormat: document.getElementById('format-select') ? document.getElementById('format-select').value : 'mp4',
-            maxQuality: await window.clipSend.getSetting('maxQuality')
+            maxQuality: await window.clipSend.getSetting('maxQuality'),
+            playbackSpeed: exportState.playbackSpeed
           };
           
           if (fallback) {
@@ -768,7 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function showExportModal(filePath, sizeMB, mergeStrategy = null, isTrimMode = false) {
+  function showExportModal(filePath, sizeMB, mergeStrategy = null, withCopyButton = false) {
     currentExportFilePath = filePath;
     if (exportSavedTo) exportSavedTo.textContent = `Saved to: ${filePath}`;
     if (exportFinalSize) exportFinalSize.textContent = `Final size: ${sizeMB} MB`;
@@ -783,8 +905,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     
+    // The Copy-to-Clipboard button is shown for trim exports AND merge
+    // exports (clipboard:copyFile works on any exported file).
     if (exportCopyClipboardBtn) {
-      exportCopyClipboardBtn.style.display = isTrimMode ? 'block' : 'none';
+      exportCopyClipboardBtn.style.display = withCopyButton ? 'block' : 'none';
     }
 
     if (exportModal) openModal(exportModal);
@@ -897,6 +1021,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (multiTrimEnable) {
     multiTrimEnable.addEventListener('change', (e) => {
       if (timeline) {
+        recordUndo('Toggle multi-trim');
         timeline.setMultiTrim(e.target.checked);
         updateTrimDisplay();
       }
@@ -906,6 +1031,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const trimResetBtn = document.getElementById('trim-reset-btn');
   trimResetBtn?.addEventListener('click', () => {
     if (!timeline) return;
+    recordUndo('Reset trim');
     timeline.resetAll();
     // Reset also exits multi-trim so the checkbox and timeline agree
     if (multiTrimEnable) {
@@ -921,6 +1047,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (result.success) {
       currentMediaInfo = result.mediaInfo;
       fps = result.mediaInfo.frameRate || 30;
+
+      // A new source file starts a fresh edit session — no history to undo
+      // into. Both modes reset so neither carries stale snapshots across.
+      undoHistory.trim.clear();
+      undoHistory.merge.clear();
       
       populateAudioTracks(result.mediaInfo.audioTracks);
       populateResolutions(result.mediaInfo);
@@ -989,7 +1120,7 @@ document.addEventListener('DOMContentLoaded', () => {
             onFrameStep: (frames) => videoPreview.frameStep(frames, fps),
             onJumpIn: () => trimJumpIn(),
             onSetIn: () => trimSetIn(),
-            onStop: () => videoPreview.pause(),
+
             onSetOut: () => trimSetOut(),
             onJumpOut: () => trimJumpOut()
           }
@@ -1013,7 +1144,8 @@ document.addEventListener('DOMContentLoaded', () => {
           onZoomChange: (percent) => {
             const readout = document.getElementById('timeline-zoom-readout');
             if (readout) readout.textContent = `${percent}%`;
-          }
+          },
+          onBeforeEdit: () => recordUndo('Edit trim')
         });
       }
 
@@ -1234,6 +1366,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const result = await window.clipSend.openSpecificMultipleFiles(validPaths);
       if (result && result.success) {
+        recordUndo('Add clips');
         mergeClips.push(...result.clips);
         // New clips can change compatibility (and the warning names indices).
         showMergeWarnings([]);
@@ -1319,12 +1452,23 @@ document.addEventListener('DOMContentLoaded', () => {
       disableDownscale: document.getElementById('setting-disable-downscale'),
       showWaveform: document.getElementById('setting-show-waveform'),
       maxQuality: document.getElementById('setting-max-quality'),
+      theme: document.getElementById('setting-theme'),
+      font: document.getElementById('setting-font'),
+      filenameTemplateTrim: document.getElementById('setting-filename-template-trim'),
+      filenameTemplateMerge: document.getElementById('setting-filename-template-merge'),
       volumeSlider: document.getElementById('volume-slider'),
       muteBtn: document.getElementById('mute-btn'),
       mergeVolumeSlider: document.getElementById('merge-volume-slider'),
-      mergeMuteBtn: document.getElementById('merge-mute-btn')
+      mergeMuteBtn: document.getElementById('merge-mute-btn'),
+      shortcutsBtn: document.getElementById('setting-shortcuts-btn'),
+      shortcutsModal: document.getElementById('shortcut-editor-modal'),
+      shortcutsCloseBtn: document.getElementById('shortcut-editor-close-btn'),
+      shortcutsDoneBtn: document.getElementById('shortcut-editor-done-btn'),
+      shortcutsResetBtn: document.getElementById('shortcut-reset-btn'),
+      shortcutsList: document.getElementById('shortcut-editor-list')
     },
     timeline,
+    onShortcutsApplied: applyShortcutOverrides,
     onEncodersDetected: (caps) => { encoderCaps = caps || {}; },
     onPlanInvalidated: clearExportPlan,
     onShowWaveformChange: (checked) => {
@@ -1346,6 +1490,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
+
+  // --- Keyboard shortcut remapping ---
+  // The active binding map starts as the defaults and is updated whenever
+  // Settings persists an override (startup load + live editor changes). The
+  // help modal's kbd labels are re-rendered from it so users see their real
+  // keys, not the defaults.
+  const activeBindings = Object.fromEntries(
+    Object.entries(DEFAULT_BINDINGS).map(([key, binding]) => [key, { ...binding }])
+  );
+  function renderShortcutsModal() {
+    document.querySelectorAll('[data-shortcut-action]').forEach((kbd) => {
+      const binding = activeBindings[kbd.dataset.shortcutAction];
+      kbd.textContent = binding ? bindingLabel(binding) : '';
+    });
+  }
+  function applyShortcutOverrides(overrides) {
+    for (const [action, value] of Object.entries(overrides || {})) {
+      if (activeBindings[action] === undefined) continue; // unknown action
+      const binding = valueToBinding(value);
+      if (binding) activeBindings[action] = binding;
+      else delete activeBindings[action]; // 'None' unbinds the action
+    }
+    renderShortcutsModal();
+  }
+
   settings.load();
 
   // --- Feedback ---
@@ -1696,6 +1865,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let idx = targetIdx;
     if (drag.index < idx) idx--;
     if (idx !== drag.index) {
+      recordUndo('Reorder clips');
       const [movedItem] = mergeClips.splice(drag.index, 1);
       mergeClips.splice(idx, 0, movedItem);
       // Reordering can change compatibility (the warning names clip indices),
@@ -1786,8 +1956,8 @@ document.addEventListener('DOMContentLoaded', () => {
     timecodeDisplay: document.getElementById('merge-timecode'),
     onPlayStateChange: (isPlaying) => {
       if (mergePlayBtn) {
-        mergePlayBtn.innerHTML = isPlaying ? '&#xE769;' : '&#xE768;';
-        mergePlayBtn.title = isPlaying ? 'Pause' : 'Play';
+        mergePlayBtn.innerHTML = isPlaying ? ICON_PAUSE : ICON_PLAY;
+        mergePlayBtn.title = isPlaying ? 'Pause (Space)' : 'Play (Space)';
       }
       // Update clip indicator
       if (mergeClipIndicator && mergeClips.length > 0) {
@@ -1935,13 +2105,13 @@ document.addEventListener('DOMContentLoaded', () => {
         removeBtn.title = 'Remove';
         removeBtn.onclick = () => {
           const removed = mergeClips[index];
+          recordUndo('Remove clip');
           mergePlayer.removeClipAtIndex(index);
           mergeClips.splice(index, 1);
-          // Drop the thumbnail temp file so removed clips don't leak in %TEMP%
-          // (the main process also sweeps leftovers on quit).
-          if (removed && removed.thumbnailTempPath) {
-            window.clipSend.cleanupFiles([removed.thumbnailTempPath]);
-          }
+          // Note: the thumbnail temp file is intentionally left in place —
+          // undo may restore this clip, and its thumbnail must still exist.
+          // The main process cleans thumbnails on quit and sweeps stale ones
+          // at startup, so removed clips don't linger forever.
           // The compatibility warning described a different clip set — clear it.
           showMergeWarnings([]);
           updateMergeUI();
@@ -2158,6 +2328,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function beginTrimDrag(e, blockEl, clip, edge) {
     e.preventDefault();
     e.stopPropagation();
+    recordUndo('Edit clip trim');
     const full = (clip.mediaInfo && clip.mediaInfo.duration) || 0;
     const rect = blockEl.getBoundingClientRect();
 
@@ -2189,6 +2360,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Trim set-in/out & jump helpers (shared with the I/O keyboard shortcuts) ---
   function trimSetIn() {
     if (!timeline || !videoPreview) return;
+    recordUndo('Edit trim');
     timeline.setTrimIn(videoPreview.getCurrentTime());
     updateTrimDisplay();
     toast(`In set to ${formatTimecode(timeline.getTrimIn(), fps)}`);
@@ -2196,6 +2368,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function trimSetOut() {
     if (!timeline || !videoPreview) return;
+    recordUndo('Edit trim');
     timeline.setTrimOut(videoPreview.getCurrentTime());
     updateTrimDisplay();
     toast(`Out set to ${formatTimecode(timeline.getTrimOut(), fps)}`);
@@ -2227,6 +2400,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   trimLoopBtn?.addEventListener('click', () => setTrimLoop(!loopEnabled));
 
+  // --- Playback speed (applies to preview AND the export plan) ---
+  const speedSelect = document.getElementById('speed-select');
+  function setPlaybackSpeed(speed) {
+    exportState.playbackSpeed = Number(speed) || 1;
+    if (videoPreview) videoPreview.setPlaybackRate(exportState.playbackSpeed);
+    // Share the knob with the merge preview so speeds match across modes
+    // (merge EXPORTS stay at normal speed — the knob lives in the trim bar).
+    const mvEl = document.getElementById('merge-video');
+    const mpEl = document.getElementById('merge-preload-video');
+    if (mvEl) mvEl.playbackRate = exportState.playbackSpeed;
+    if (mpEl) mpEl.playbackRate = exportState.playbackSpeed;
+  }
+  speedSelect?.addEventListener('change', (e) => {
+    setPlaybackSpeed(e.target.value);
+    clearExportPlan(); // plan bitrates/durations change with speed
+  });
+
   // --- Timeline zoom controls (Ctrl+wheel on the canvas, +/- buttons, click readout to reset) ---
   const zoomInBtn = document.getElementById('timeline-zoom-in');
   const zoomOutBtn = document.getElementById('timeline-zoom-out');
@@ -2251,6 +2441,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tout = typeof clip.trimOut === 'number' ? clip.trimOut : full;
     const cur = mergeVideoEl.currentTime || 0;
     const tin = Math.max(0, Math.min(cur, tout - 0.5));
+    recordUndo('Set clip trim');
     mergePlayer.setTrimForClip(idx, tin, tout);
     updateMergeUI();
     toast(`In set to ${formatTrimDur(mergeClips[idx].trimIn)}`, 'success');
@@ -2264,6 +2455,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tin = typeof clip.trimIn === 'number' ? clip.trimIn : 0;
     const cur = mergeVideoEl.currentTime || 0;
     const tout = Math.min(full, Math.max(cur, tin + 0.5));
+    recordUndo('Set clip trim');
     mergePlayer.setTrimForClip(idx, tin, tout);
     updateMergeUI();
     toast(`Out set to ${formatTrimDur(mergeClips[idx].trimOut)}`, 'success');
@@ -2301,6 +2493,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const idx = mergePlayer.currentClipIndex;
     const clip = mergeClips[idx];
     if (!clip) return;
+    recordUndo('Reset clip trim');
     mergePlayer.setTrimForClip(idx, 0, clip.mediaInfo.duration);
     updateMergeUI();
     toast('Trim reset for this clip', 'success');
@@ -2313,6 +2506,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const result = await window.clipSend.openMultipleFiles();
       if (result && result.success) {
+        recordUndo('Add clips');
         mergeClips.push(...result.clips);
         // New clips can change compatibility (and the warning names indices).
         showMergeWarnings([]);
@@ -2499,7 +2693,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (result.success) {
-        showExportModal(result.filePath, result.finalSizeMB, result.strategy, false);
+        // The shared export modal hides its Copy button unless asked — merged
+        // files paste into Discord/Slack/Explorer just like trim exports, so
+        // offer the same copy affordance here.
+        showExportModal(result.filePath, result.finalSizeMB, result.strategy, true);
       } else if (result.cancelled) {
         // Suppress
       } else {
@@ -2676,6 +2873,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --- Keyboard shortcuts ---
+  // No hardcoded switch here: keydown maps to an action via the remappable
+  // keymap (renderer/utils/keymap.js), so Settings → Keyboard Shortcuts can
+  // move any action to a new key. The help modal (? ) reflects the live map.
   document.addEventListener('keydown', (e) => {
     // Ignore when typing in the timecode field or a form control
     const target = e.target;
@@ -2683,70 +2883,91 @@ document.addEventListener('DOMContentLoaded', () => {
     const tag = target.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
-    // ? toggles the shortcut cheat sheet (works in both modes).
-    if (e.shiftKey && e.code === 'Slash') {
-      e.preventDefault();
-      toggleShortcutsModal();
-      return;
+    // While the shortcut editor is open, its dropdowns own the keyboard —
+    // remapping I to something else must not set a trim point underneath.
+    const editorModal = document.getElementById('shortcut-editor-modal');
+    if (editorModal && editorModal.style.display === 'flex') return;
+
+    const action = matchAction(e, activeBindings);
+    if (!action) return;
+
+    // Global actions work in both modes, before any mode guard.
+    switch (action) {
+      case 'showShortcuts':
+        e.preventDefault();
+        toggleShortcutsModal();
+        return;
+      case 'undo':
+        e.preventDefault();
+        undo();
+        return;
+      case 'redo':
+        e.preventDefault();
+        redo();
+        return;
     }
+
+    // Holding the play key fires repeated keydown; don't flip play/pause
+    // on every repeat.
+    if (action === 'playPause' && e.repeat) return;
 
     if (currentMergeMode) {
       // Merge mode shortcuts
       if (mergeClips.length === 0) return;
-      switch (e.code) {
-        case 'Space':
+      switch (action) {
+        case 'playPause':
           e.preventDefault();
           mergePlayer.togglePlay();
-          break;
-        case 'KeyI':
+          return;
+        case 'setIn':
           e.preventDefault();
           mergeSetTrimIn();
-          break;
-        case 'KeyO':
+          return;
+        case 'setOut':
           e.preventDefault();
           mergeSetTrimOut();
-          break;
-        case 'Home':
+          return;
+        case 'jumpIn':
           e.preventDefault();
           mergeJumpTrimIn();
-          break;
-        case 'End':
+          return;
+        case 'jumpOut':
           e.preventDefault();
           mergeJumpTrimOut();
-          break;
+          return;
       }
     } else {
       // Trim mode shortcuts
       if (!videoPreview || !timeline) return;
-      switch (e.code) {
-        case 'Space':
+      switch (action) {
+        case 'playPause':
           e.preventDefault();
           videoPreview.togglePlay();
-          break;
-        case 'ArrowLeft':
+          return;
+        case 'frameBack':
           e.preventDefault();
           videoPreview.frameStep(-1, fps);
-          break;
-        case 'ArrowRight':
+          return;
+        case 'frameForward':
           e.preventDefault();
           videoPreview.frameStep(1, fps);
-          break;
-        case 'KeyI':
+          return;
+        case 'setIn':
           e.preventDefault();
           trimSetIn();
-          break;
-        case 'KeyO':
+          return;
+        case 'setOut':
           e.preventDefault();
           trimSetOut();
-          break;
-        case 'Home':
+          return;
+        case 'jumpIn':
           e.preventDefault();
           trimJumpIn();
-          break;
-        case 'End':
+          return;
+        case 'jumpOut':
           e.preventDefault();
           trimJumpOut();
-          break;
+          return;
       }
     }
   });

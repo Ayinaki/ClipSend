@@ -613,6 +613,133 @@ describe('calculatePlan — codec & hardware encoder selection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// calculatePlan — playback speed (setpts/atempo)
+// ---------------------------------------------------------------------------
+
+describe('calculatePlan — playback speed', () => {
+  const CAPS_WITH_ATEMPO = { libx264: true, atempo: true };
+  const CAPS_NO_ATEMPO = { libx264: true, atempo: false };
+
+  /** The -vf value (filters are joined into one string) or null. */
+  function vfArg(args) {
+    const idx = args.indexOf('-vf');
+    return idx === -1 ? null : args[idx + 1];
+  }
+
+  /** The -af value or null. */
+  function afArg(args) {
+    const idx = args.indexOf('-af');
+    return idx === -1 ? null : args[idx + 1];
+  }
+
+  test('2x speed halves the plan duration and adds setpts + atempo', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      playbackSpeed: 2, encoders: CAPS_WITH_ATEMPO, hwAccel: 'cpu'
+    }));
+    expect(plan.playbackSpeed).toBe(2);
+    expect(plan.clipDuration).toBe(30); // output duration = 60 / 2
+    // Video timeline compressed on both passes (setpts joins the -vf chain)
+    expect(vfArg(plan.pass1Args)).toContain('setpts=PTS/2');
+    expect(vfArg(plan.pass2Args)).toContain('setpts=PTS/2');
+    // Audio tempo on pass 2 only (pass 1 is -an)
+    expect(plan.pass1Args).not.toContain('-af');
+    expect(afArg(plan.pass2Args)).toBe('atempo=2.000');
+    // -t is the OUTPUT duration
+    const tIdx = plan.pass2Args.indexOf('-t');
+    expect(plan.pass2Args[tIdx + 1]).toBe('30.000');
+  });
+
+  test('0.5x speed doubles the output duration', () => {
+    const plan = calculatePlan(media1080p, 0, 30, sizeLimitSettings(10, {
+      playbackSpeed: 0.5, encoders: CAPS_WITH_ATEMPO, hwAccel: 'cpu'
+    }));
+    expect(plan.clipDuration).toBe(60);
+    expect(vfArg(plan.pass2Args)).toContain('setpts=PTS/0.5');
+    expect(afArg(plan.pass2Args)).toBe('atempo=0.500');
+  });
+
+  test('size-limit bitrate budgets against the OUTPUT duration (2x gets more bitrate)', () => {
+    const normal = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, { hwAccel: 'cpu', encoders: CAPS_NO_ATEMPO }));
+    // Video-only media (no audio) doesn't need atempo
+    const noAudio = { filePath: 'test.mp4', width: 1920, height: 1080, audioTracks: [] };
+    const fast = calculatePlan(noAudio, 0, 60, sizeLimitSettings(10, {
+      playbackSpeed: 2, hwAccel: 'cpu', encoders: CAPS_NO_ATEMPO
+    }));
+    expect(fast.videoBitrateKbps).toBeGreaterThan(normal.videoBitrateKbps);
+    expect(fast.estimatedSizeMB).toBeLessThanOrEqual(10);
+  });
+
+  test('video-only speed works without atempo capability', () => {
+    const noAudio = { filePath: 'test.mp4', width: 1920, height: 1080, audioTracks: [] };
+    const plan = calculatePlan(noAudio, 0, 60, sizeLimitSettings(10, {
+      playbackSpeed: 2, hwAccel: 'cpu', encoders: CAPS_NO_ATEMPO
+    }));
+    expect(vfArg(plan.pass2Args)).toContain('setpts=PTS/2');
+    expect(afArg(plan.pass2Args)).toBeNull();
+  });
+
+  test('audio speed without atempo capability throws a clear error', () => {
+    expect(() => calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      playbackSpeed: 2, hwAccel: 'cpu', encoders: CAPS_NO_ATEMPO
+    }))).toThrow(/atempo/);
+  });
+
+  test('MP3 export honors speed with -af atempo and output-duration -t', () => {
+    const plan = calculatePlan(media1080p, 0, 60, {
+      mode: 'size-limit', targetSizeMB: 10, outputFormat: 'mp3',
+      playbackSpeed: 1.5, encoders: CAPS_WITH_ATEMPO
+    });
+    expect(plan.clipDuration).toBeCloseTo(40, 6);
+    const tIdx = plan.singlePassArgs.indexOf('-t');
+    expect(plan.singlePassArgs[tIdx + 1]).toBe('40.000');
+    // 1.5x is a single atempo instance
+    expect(afArg(plan.singlePassArgs)).toBe('atempo=1.500');
+  });
+
+  test('3x speed chains atempo instances (2x then 1.5x)', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      playbackSpeed: 3, hwAccel: 'cpu', encoders: CAPS_WITH_ATEMPO
+    }));
+    expect(afArg(plan.pass2Args)).toBe('atempo=2,atempo=1.500');
+  });
+
+  test('GIF export applies setpts but never atempo', () => {
+    const plan = calculatePlan(media1080p, 0, 30, {
+      mode: 'auto', crfValue: 19, outputFormat: 'gif',
+      playbackSpeed: 2, hwAccel: 'cpu', encoders: CAPS_NO_ATEMPO
+    });
+    expect(vfArg(plan.singlePassArgs)).toContain('setpts=PTS/2');
+    expect(afArg(plan.singlePassArgs)).toBeNull();
+  });
+
+  test('speed of 1 (or missing) changes nothing', () => {
+    const plan = calculatePlan(media1080p, 0, 30, sizeLimitSettings(10, { hwAccel: 'cpu', encoders: CAPS_WITH_ATEMPO }));
+    expect(plan.clipDuration).toBe(30);
+    expect(vfArg(plan.pass2Args)).toBeNull();
+    expect(afArg(plan.pass2Args)).toBeNull();
+  });
+
+  test('out-of-range speeds are clamped', () => {
+    const plan = calculatePlan(media1080p, 0, 30, sizeLimitSettings(10, {
+      playbackSpeed: 99, hwAccel: 'cpu', encoders: CAPS_WITH_ATEMPO
+    }));
+    expect(plan.playbackSpeed).toBe(4);
+    expect(plan.clipDuration).toBeCloseTo(7.5, 6);
+  });
+
+  test('atempoFilter factors >2x and <0.5x into chained instances', () => {
+    const { atempoFilter, normalizeSpeed } = require('../main/export-planner')._internals;
+    expect(atempoFilter(3)).toBe('atempo=2,atempo=1.500');
+    expect(atempoFilter(4)).toBe('atempo=2,atempo=2.000');
+    expect(atempoFilter(0.25)).toBe('atempo=0.5,atempo=0.500');
+    expect(atempoFilter(1.25)).toBe('atempo=1.250');
+    expect(normalizeSpeed(undefined)).toBe(1);
+    expect(normalizeSpeed('banana')).toBe(1);
+    expect(normalizeSpeed(0)).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // calculatePlan — edge cases
 // ---------------------------------------------------------------------------
 

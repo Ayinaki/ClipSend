@@ -135,3 +135,34 @@ describe('MergePlayer.seekToGlobal autoplay passthrough', () => {
     spy.mockRestore();
   });
 });
+
+describe('MergePlayer theme awareness', () => {
+  test('resolves light/dark scrubber colors from the document theme', () => {
+    const player = setupDom();
+    expect(player._themeColor('bg')).toBe('#1a1a1a');
+    expect(player._themeColor('boundary')).toBe('rgba(255,255,255,0.3)');
+
+    document.documentElement.dataset.theme = 'light';
+    expect(player._themeColor('bg')).toBe('#dcdcdc');
+    expect(player._themeColor('playhead')).toBe('#1a1a1a');
+    expect(player._themeColor('boundary')).toBe('rgba(0,0,0,0.35)');
+
+    document.documentElement.dataset.theme = '';
+  });
+
+  test('redraws on theme change and stops listening after destroy', () => {
+    const player = setupDom();
+    const spy = jest.spyOn(player, '_drawScrubber');
+
+    document.documentElement.dataset.theme = 'light';
+    document.dispatchEvent(new window.Event('themechange'));
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    player.destroy();
+    spy.mockClear();
+    document.dispatchEvent(new window.Event('themechange'));
+    expect(spy).not.toHaveBeenCalled();
+
+    document.documentElement.dataset.theme = '';
+  });
+});

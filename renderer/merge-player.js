@@ -18,10 +18,20 @@ const MIN_TRIM_SECONDS = 0.5;
 const STRIP_PADDING_LEFT = 12;
 
 // --- Scrubber colours ---
-const COL_BG         = '#1a1a1a';
-const COL_PROGRESS   = '#2ba87e'; // app accent color (teal)
-const COL_BOUNDARY   = 'rgba(255,255,255,0.3)';
-const COL_PLAYHEAD   = '#ffffff';
+// Dark/light pairs: the scrubber flips with the app theme (read from
+// <html data-theme>) so it doesn't read as a dark bar inside the light-mode
+// chrome. The progress teal is shared — it clears both backgrounds.
+const COL_DARK = {
+  bg:       '#1a1a1a',
+  boundary: 'rgba(255,255,255,0.3)',
+  playhead: '#ffffff'
+};
+const COL_LIGHT = {
+  bg:       '#dcdcdc',
+  boundary: 'rgba(0,0,0,0.35)',
+  playhead: '#1a1a1a'
+};
+const COL_PROGRESS = '#2ba87e'; // app accent color (teal)
 
 export class MergePlayer {
   /**
@@ -72,6 +82,12 @@ export class MergePlayer {
     this._setupScrubberSize();
     this._bindScrubberEvents();
     this._drawScrubber();
+
+    // Redraw when the app theme flips (light <-> dark changes the track
+    // color) or the accessibility font changes (scrubber text redrawn).
+    this._onThemeChange = () => this._drawScrubber();
+    document.addEventListener('themechange', this._onThemeChange);
+    document.addEventListener('fontchange', this._onThemeChange);
   }
 
   // =========================================================================
@@ -518,6 +534,17 @@ export class MergePlayer {
   // Scrubber — drawing
   // =========================================================================
 
+  /** True when the app is in light theme (the scrubber flips with it). */
+  _isLight() {
+    return document.documentElement.dataset.theme === 'light';
+  }
+
+  /** Theme-resolved scrubber color for a COL_DARK/COL_LIGHT key. */
+  _themeColor(key) {
+    const set = this._isLight() ? COL_LIGHT : COL_DARK;
+    return set[key] || COL_DARK[key];
+  }
+
   _scheduleRedraw() {
     if (this._animFrame) return;
     this._animFrame = requestAnimationFrame(() => {
@@ -565,7 +592,7 @@ export class MergePlayer {
     const H = SCRUBBER_HEIGHT;
 
     // Background (unfilled track)
-    ctx.fillStyle = COL_BG;
+    ctx.fillStyle = this._themeColor('bg');
     ctx.fillRect(0, 0, W, H);
 
     if (this.totalDuration <= 0 || this.clips.length === 0) {
@@ -610,13 +637,13 @@ export class MergePlayer {
     // Draw clip boundary tick marks
     for (let i = 1; i < this.boundaries.length; i++) {
       const x = secondsToX(this.boundaries[i].start);
-      ctx.fillStyle = COL_BOUNDARY;
+      ctx.fillStyle = this._themeColor('boundary');
       ctx.fillRect(x - 0.5, 0, 1, H);
     }
 
     // Draw playhead
     const elapsedX = secondsToX(globalTime);
-    ctx.fillStyle = COL_PLAYHEAD;
+    ctx.fillStyle = this._themeColor('playhead');
     ctx.fillRect(elapsedX - PLAYHEAD_W / 2, 0, PLAYHEAD_W, H);
 
     // Mirror the playhead on the clip blocks row so the current position is
@@ -749,6 +776,10 @@ export class MergePlayer {
     this.video.removeEventListener('ended', this._onEnded);
     this.video.removeEventListener('play', this._onPlay);
     this.video.removeEventListener('pause', this._onPause);
+    if (this._onThemeChange) {
+      document.removeEventListener('themechange', this._onThemeChange);
+      document.removeEventListener('fontchange', this._onThemeChange);
+    }
     window.removeEventListener('mousemove', this._onScrubberMoveRef);
     window.removeEventListener('mouseup', this._onScrubberUpRef);
     if (this._resizeHandler) window.removeEventListener('resize', this._resizeHandler);
