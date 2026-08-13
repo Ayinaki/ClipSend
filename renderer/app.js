@@ -72,7 +72,15 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // --- Undo/redo history (trim trims, multi-trim segments, crop, merge ops) ---
-  const undoManager = createUndoManager(50);
+  // One undo history per editor mode: Trim and Merge are separate projects,
+  // and a shared stack would let one mode's entries block (or mutate) the
+  // other's history. Each manager only ever holds its own mode's snapshots.
+  const undoHistory = {
+    trim: createUndoManager(50),
+    merge: createUndoManager(50)
+  };
+  const activeUndo = () => undoHistory[currentMergeMode ? 'merge' : 'trim'];
+  const captureCurrentState = () => (currentMergeMode ? captureMergeState() : captureTrimState());
 
   function cloneMergeClips(clips) {
     return (clips || []).map(c => {
@@ -111,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
   /** Push the pre-edit state onto the undo stack (call BEFORE mutating). */
   function recordUndo(label) {
     if (exportProgressState && exportProgressState.isActive) return;
-    undoManager.push(currentMergeMode ? captureMergeState() : captureTrimState());
+    activeUndo().push(captureCurrentState());
   }
 
   /** Restore a snapshot captured by captureTrimState/captureMergeState. */
@@ -131,44 +139,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Undo history is shared across Trim and Merge, so a snapshot is only
-  // valid in the mode it was captured in — undoing a trim edit while Merge is
-  // open would mutate the hidden trim project (and park merge state on redo).
-  function modeMatches(snap) {
-    return !!snap && (snap.mode === 'merge') === currentMergeMode;
-  }
-
+  // Each mode has its own history (see undoHistory above), so no mode guard
+  // is needed — undo/redo only ever touch the active mode's snapshots.
   function undo() {
-    // Peek first so a cross-mode entry is refused without touching the stacks.
-    const peek = undoManager.peekUndo();
+    const mgr = activeUndo();
+    const peek = mgr.peekUndo();
     if (!peek) {
       toast('Nothing to undo');
       return;
     }
-    if (!modeMatches(peek)) {
-      toast('Nothing to undo in this mode');
-      return;
-    }
     // Pass the current state so undo can store it for redo — redo must
     // restore the edited state, not re-apply the pre-edit one.
-    const current = currentMergeMode ? captureMergeState() : captureTrimState();
-    const snap = undoManager.undo(current);
+    const snap = mgr.undo(captureCurrentState());
     applySnapshot(snap);
     toast(`Undid: ${snap.label || 'edit'}`);
   }
 
   function redo() {
-    const peek = undoManager.peekRedo();
+    const mgr = activeUndo();
+    const peek = mgr.peekRedo();
     if (!peek) {
       toast('Nothing to redo');
       return;
     }
-    if (!modeMatches(peek)) {
-      toast('Nothing to redo in this mode');
-      return;
-    }
-    const current = currentMergeMode ? captureMergeState() : captureTrimState();
-    const snap = undoManager.redo(current);
+    const snap = mgr.redo(captureCurrentState());
     applySnapshot(snap);
     toast(`Redid: ${snap.label || 'edit'}`);
   }
@@ -1054,8 +1048,10 @@ document.addEventListener('DOMContentLoaded', () => {
       currentMediaInfo = result.mediaInfo;
       fps = result.mediaInfo.frameRate || 30;
 
-      // A new source file starts a fresh edit session — no history to undo into.
-      undoManager.clear();
+      // A new source file starts a fresh edit session — no history to undo
+      // into. Both modes reset so neither carries stale snapshots across.
+      undoHistory.trim.clear();
+      undoHistory.merge.clear();
       
       populateAudioTracks(result.mediaInfo.audioTracks);
       populateResolutions(result.mediaInfo);
