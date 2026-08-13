@@ -25,9 +25,13 @@ describe('theme fade', () => {
     fadeTheme('#0d0d0d');
     const layer = document.querySelector('.cs-theme-fade');
     expect(layer.classList.contains('fading')).toBe(false);
-    // rAF (when present) ticks on ~16ms frames; the setTimeout fallback also
-    // lands well inside this window, so a real wait covers both paths.
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    // The class lands after two rAF ticks (or the setTimeout fallback). Don't
+    // bet on wall-clock timing — CI runners can stretch a fixed wait past the
+    // frame, so poll until it appears (normally resolves in ~2 frames).
+    const deadline = Date.now() + 2000;
+    while (!layer.classList.contains('fading') && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     expect(layer.classList.contains('fading')).toBe(true);
   });
 
