@@ -2108,11 +2108,10 @@ document.addEventListener('DOMContentLoaded', () => {
           recordUndo('Remove clip');
           mergePlayer.removeClipAtIndex(index);
           mergeClips.splice(index, 1);
-          // Drop the thumbnail temp file so removed clips don't leak in %TEMP%
-          // (the main process also sweeps leftovers on quit).
-          if (removed && removed.thumbnailTempPath) {
-            window.clipSend.cleanupFiles([removed.thumbnailTempPath]);
-          }
+          // Note: the thumbnail temp file is intentionally left in place —
+          // undo may restore this clip, and its thumbnail must still exist.
+          // The main process cleans thumbnails on quit and sweeps stale ones
+          // at startup, so removed clips don't linger forever.
           // The compatibility warning described a different clip set — clear it.
           showMergeWarnings([]);
           updateMergeUI();

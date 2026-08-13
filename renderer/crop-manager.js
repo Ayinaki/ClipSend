@@ -55,6 +55,12 @@ class CropManager {
     const enabled = !!state.enable;
     this.isEnabled = enabled;
     if (this.enableCheckbox) this.enableCheckbox.checked = enabled;
+    // Restore the preset pill + aspect-ratio lock too, so undo brings back
+    // the full crop configuration (older snapshots lack these — default safe).
+    if (state.preset !== undefined) {
+      this.lockedAspectRatio = state.ratio || null;
+      if (this.pills && this.pills.length) this._setPreset(state.preset || 'none');
+    }
     this.cropNative = {
       x: Math.round(state.x) || 0,
       y: Math.round(state.y) || 0,
@@ -428,6 +434,10 @@ class CropManager {
   getCropSettings() {
     return {
       enable: this.isEnabled,
+      // Preset + ratio are UI state undo must restore (the crop box alone
+      // leaves the pill highlight and aspect lock stale after an undo).
+      preset: this.activePreset || 'none',
+      ratio: this.lockedAspectRatio,
       ...this.cropNative
     };
   }
