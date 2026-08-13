@@ -1,6 +1,6 @@
 {
   "name": "video-compressor",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "",
   "main": "main/main.js",
   "scripts": {
@@ -24,7 +24,7 @@
     "productName": "ClipSend",
     "artifactName": "${productName}.Setup.${version}.${ext}",
     "win": {
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "files": [
       "main/**/*",

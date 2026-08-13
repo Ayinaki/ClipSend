@@ -97,3 +97,35 @@ describe('Timeline zoom', () => {
     expect(onZoomChange).toHaveBeenLastCalledWith(100);
   });
 });
+
+describe('Timeline theme awareness', () => {
+  test('resolves light/dark colors and maps the segment palette at draw time', () => {
+    const { timeline } = setup();
+    // Default (no data-theme): the dark palette.
+    expect(timeline._themeColor('bg')).toBe('#1a1a1a');
+    expect(timeline._segmentColor('#8fe0bf')).toBe('#8fe0bf');
+
+    document.documentElement.dataset.theme = 'light';
+    expect(timeline._themeColor('bg')).toBe('#ececec');
+    expect(timeline._themeColor('playhead')).toBe('#1a1a1a');
+    expect(timeline._themeColor('waveformBright')).toBe('rgba(0, 0, 0, 0.75)');
+    // Light-mint palette entries swap for deeper teals on the light track.
+    expect(timeline._segmentColor('#8fe0bf')).toBe('#2ba87e');
+    expect(timeline._segmentColor('#c4f2e0')).toBe('#3aa67f');
+    // Unknown colors pass through untouched.
+    expect(timeline._segmentColor('#123456')).toBe('#123456');
+
+    document.documentElement.dataset.theme = 'dark';
+    expect(timeline._themeColor('bg')).toBe('#1a1a1a');
+    document.documentElement.dataset.theme = '';
+  });
+
+  test('redraws when the app theme changes', () => {
+    const { timeline } = setup();
+    const spy = jest.spyOn(timeline, '_scheduleRedraw');
+    document.documentElement.dataset.theme = 'light';
+    document.dispatchEvent(new window.Event('themechange'));
+    expect(spy).toHaveBeenCalled();
+    document.documentElement.dataset.theme = '';
+  });
+});

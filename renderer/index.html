@@ -363,24 +363,42 @@
                 <span class="time-display" contenteditable="true" spellcheck="false">00:00:00:00</span>
               </div>
               <div class="volume-container">
-                <button class="transport-btn mute-btn" id="mute-btn" title="Mute/Unmute">&#xE767;</button>
+                <button class="transport-btn mute-btn" id="mute-btn" title="Mute/Unmute"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></button>
                 <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" step="0.01" value="0.6">
               </div>
             </div>
             
-            <!-- Centered controls -->
+            <!-- Centered controls: grouped into clusters (In / Playback / Out /
+                 Loop) so the eye lands on the right button — the teal play
+                 button anchors the row. Titles carry the shortcut hints. -->
             <div class="transport-controls center-controls">
-              <button class="transport-btn jump-in-btn" title="Jump to In">&#xE892;</button>
-              <button class="transport-btn set-in-btn" title="Set In" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">[</button>
-              <button class="transport-btn play-btn" title="Play/Pause">&#xE768;</button>
-              <button class="transport-btn prev-frame-btn" title="Previous Frame" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">&lt;</button>
-              <button class="transport-btn next-frame-btn" title="Next Frame" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">&gt;</button>
-              <button class="transport-btn stop-btn" title="Stop">&#xE71A;</button>
-              <button class="transport-btn set-out-btn" title="Set Out" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">]</button>
-              <button class="transport-btn jump-out-btn" title="Jump to Out">&#xE893;</button>
-              <button class="transport-btn loop-btn" id="trim-loop-btn" title="Loop playback (I / O to set range)">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
-              </button>
+              <div class="transport-group" role="group" aria-label="Trim start">
+                <button class="transport-btn jump-in-btn" title="Jump to In Point (Home)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="18 19 9 12 18 5 18 19" fill="currentColor" stroke="none"/><line x1="5" y1="5" x2="5" y2="19" stroke-width="2.5"/></svg></button>
+                <button class="transport-btn set-in-btn" title="Set In Point (I)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5 H9 V19 H15"/></svg></button>
+              </div>
+              <div class="transport-group" role="group" aria-label="Playback">
+                <button class="transport-btn prev-frame-btn" title="Previous Frame (&larr;)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+                <button class="transport-btn play-btn" title="Play (Space)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/></svg></button>
+                <button class="transport-btn next-frame-btn" title="Next Frame (&rarr;)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+              </div>
+              <div class="transport-group" role="group" aria-label="Trim end">
+                <button class="transport-btn set-out-btn" title="Set Out Point (O)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5 H15 V19 H9"/></svg></button>
+                <button class="transport-btn jump-out-btn" title="Jump to Out Point (End)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 5 15 12 6 19 6 5" fill="currentColor" stroke="none"/><line x1="19" y1="5" x2="19" y2="19" stroke-width="2.5"/></svg></button>
+              </div>
+              <div class="transport-group" role="group" aria-label="Loop playback">
+                <button class="transport-btn loop-btn" id="trim-loop-btn" title="Loop playback (I / O to set range)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+                <select id="speed-select" class="speed-select" title="Playback speed (also applies to the export)" aria-label="Playback speed">
+                  <option value="0.5">0.5×</option>
+                  <option value="0.75">0.75×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                  <option value="2">2×</option>
+                  <option value="3">3×</option>
+                </select>
+              </div>
             </div>
 
             <!-- Right info -->
@@ -465,19 +483,27 @@
                 <span class="merge-timecode" id="merge-timecode">00:00 / 00:00</span>
               </div>
               <div class="volume-container">
-                <button class="transport-btn mute-btn" id="merge-mute-btn" title="Mute/Unmute">&#xE767;</button>
+                <button class="transport-btn mute-btn" id="merge-mute-btn" title="Mute/Unmute"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></button>
                 <input type="range" id="merge-volume-slider" class="volume-slider" min="0" max="1" step="0.01" value="0.6">
               </div>
             </div>
             <div class="merge-transport-controls">
-              <button class="transport-btn jump-in-btn" id="merge-jump-in-btn" title="Jump to Trim In">&#xE892;</button>
-              <button class="transport-btn set-in-btn" id="merge-set-in-btn" title="Set Trim In" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">[</button>
-              <button class="transport-btn play-btn" id="merge-play-btn" title="Play/Pause">&#xE768;</button>
-              <button class="transport-btn set-out-btn" id="merge-set-out-btn" title="Set Trim Out" style="font-family: var(--font-mono); font-weight: bold; font-size: 14px;">]</button>
-              <button class="transport-btn jump-out-btn" id="merge-jump-out-btn" title="Jump to Trim Out">&#xE893;</button>
-              <button class="transport-btn loop-btn" id="merge-loop-btn" title="Loop playback (I / O to set range)">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
-              </button>
+              <div class="transport-group" role="group" aria-label="Clip trim start">
+                <button class="transport-btn jump-in-btn" id="merge-jump-in-btn" title="Jump to Trim In (Home)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="18 19 9 12 18 5 18 19" fill="currentColor" stroke="none"/><line x1="5" y1="5" x2="5" y2="19" stroke-width="2.5"/></svg></button>
+                <button class="transport-btn set-in-btn" id="merge-set-in-btn" title="Set Trim In (I)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5 H9 V19 H15"/></svg></button>
+              </div>
+              <div class="transport-group" role="group" aria-label="Playback">
+                <button class="transport-btn play-btn" id="merge-play-btn" title="Play (Space)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/></svg></button>
+              </div>
+              <div class="transport-group" role="group" aria-label="Clip trim end">
+                <button class="transport-btn set-out-btn" id="merge-set-out-btn" title="Set Trim Out (O)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5 H15 V19 H9"/></svg></button>
+                <button class="transport-btn jump-out-btn" id="merge-jump-out-btn" title="Jump to Trim Out (End)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 5 15 12 6 19 6 5" fill="currentColor" stroke="none"/><line x1="19" y1="5" x2="19" y2="19" stroke-width="2.5"/></svg></button>
+              </div>
+              <div class="transport-group" role="group" aria-label="Loop playback">
+                <button class="transport-btn loop-btn" id="merge-loop-btn" title="Loop playback (I / O to set range)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+              </div>
             </div>
             <div class="merge-right-controls">
               <div class="merge-trim-info" id="merge-trim-info">
@@ -511,21 +537,22 @@
         <div class="panel-content shortcuts-content" style="overflow-y: auto; padding-right: 8px;">
           <div class="shortcut-group active" id="shortcuts-trim-section">
             <div class="shortcut-group-title">Trim Mode</div>
-            <div class="shortcut-row"><span>Play / Pause</span><span class="shortcut-keys"><kbd>Space</kbd></span></div>
-            <div class="shortcut-row"><span>Step one frame</span><span class="shortcut-keys"><kbd>&larr;</kbd><kbd>&rarr;</kbd></span></div>
-            <div class="shortcut-row"><span>Set trim in / out</span><span class="shortcut-keys"><kbd>I</kbd><kbd>O</kbd></span></div>
-            <div class="shortcut-row"><span>Jump to in / out</span><span class="shortcut-keys"><kbd>Home</kbd><kbd>End</kbd></span></div>
+            <div class="shortcut-row"><span>Play / Pause</span><span class="shortcut-keys"><kbd data-shortcut-action="playPause"></kbd></span></div>
+            <div class="shortcut-row"><span>Step one frame</span><span class="shortcut-keys"><kbd data-shortcut-action="frameBack"></kbd><kbd data-shortcut-action="frameForward"></kbd></span></div>
+            <div class="shortcut-row"><span>Set trim in / out</span><span class="shortcut-keys"><kbd data-shortcut-action="setIn"></kbd><kbd data-shortcut-action="setOut"></kbd></span></div>
+            <div class="shortcut-row"><span>Jump to in / out</span><span class="shortcut-keys"><kbd data-shortcut-action="jumpIn"></kbd><kbd data-shortcut-action="jumpOut"></kbd></span></div>
             <div class="shortcut-row"><span>Zoom timeline</span><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>Scroll</kbd></span></div>
           </div>
           <div class="shortcut-group" id="shortcuts-merge-section">
             <div class="shortcut-group-title">Merge Mode</div>
-            <div class="shortcut-row"><span>Play / Pause</span><span class="shortcut-keys"><kbd>Space</kbd></span></div>
-            <div class="shortcut-row"><span>Set clip trim in / out</span><span class="shortcut-keys"><kbd>I</kbd><kbd>O</kbd></span></div>
-            <div class="shortcut-row"><span>Jump to clip in / out</span><span class="shortcut-keys"><kbd>Home</kbd><kbd>End</kbd></span></div>
+            <div class="shortcut-row"><span>Play / Pause</span><span class="shortcut-keys"><kbd data-shortcut-action="playPause"></kbd></span></div>
+            <div class="shortcut-row"><span>Set clip trim in / out</span><span class="shortcut-keys"><kbd data-shortcut-action="setIn"></kbd><kbd data-shortcut-action="setOut"></kbd></span></div>
+            <div class="shortcut-row"><span>Jump to clip in / out</span><span class="shortcut-keys"><kbd data-shortcut-action="jumpIn"></kbd><kbd data-shortcut-action="jumpOut"></kbd></span></div>
           </div>
           <div class="shortcut-group" id="shortcuts-global-section">
             <div class="shortcut-group-title">Global</div>
-            <div class="shortcut-row"><span>Show this help</span><span class="shortcut-keys"><kbd>?</kbd></span></div>
+            <div class="shortcut-row"><span>Show this help</span><span class="shortcut-keys"><kbd data-shortcut-action="showShortcuts"></kbd></span></div>
+            <div class="shortcut-row"><span>Undo / Redo</span><span class="shortcut-keys"><kbd data-shortcut-action="undo"></kbd><kbd data-shortcut-action="redo"></kbd></span></div>
             <div class="shortcut-row"><span>Close dialogs</span><span class="shortcut-keys"><kbd>Esc</kbd></span></div>
           </div>
         </div>
@@ -534,13 +561,22 @@
 
     <!-- Settings Modal Overlay -->
     <div id="settings-modal" class="modal-overlay" style="display: none;">
-      <div class="modal-content panel">
+      <div class="modal-content panel settings-modal">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
           <span>Settings</span>
-          <button id="close-settings-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button id="replay-onboarding-btn" class="secondary-btn" style="display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 11px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg>
+              Replay Welcome Tour
+            </button>
+            <button id="close-settings-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          </div>
         </div>
-        <div class="panel-content">
-          <div class="input-group">
+        <!-- Two-column grid so the growing setting list stays short instead of
+             forcing a scroll. Full-width rows (export dir, footer) span both. -->
+        <div class="panel-content settings-grid">
+          <div class="settings-section-title">General</div>
+          <div class="input-group settings-grid-full">
             <label>Default Export Directory:</label>
             <div style="display: flex; gap: 4px;">
               <input type="text" id="setting-export-dir" readonly class="track-select" style="flex: 1; cursor: default;" placeholder="Not set (will prompt every time)">
@@ -549,18 +585,19 @@
             </div>
           </div>
           
-          <div class="input-group" style="margin-top: 10px;">
+          <div class="settings-section-title">Video Export</div>
+          <div class="input-group">
             <label>Video Codec:</label>
             <select id="setting-video-codec" class="track-select">
               <option value="h264">H.264 (MP4) - Best compatibility</option>
               <option value="av1">AV1 (MP4) - Best quality per MB</option>
             </select>
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-              AV1 looks dramatically better at the same file size (Discord plays it). Files export in your chosen format (MP4) with AAC audio, but encode slower and may not play in older apps.
+              AV1 looks dramatically better at the same file size, but encodes slower and may not play in older apps.
             </div>
           </div>
           
-          <div class="input-group" style="margin-top: 15px;">
+          <div class="input-group">
             <label>Hardware Acceleration:</label>
             <select id="setting-hw-accel" class="track-select">
               <option value="auto">Auto</option>
@@ -574,7 +611,7 @@
             </div>
           </div>
           
-          <div class="input-group" style="margin-top: 15px;">
+          <div class="input-group">
             <label class="custom-checkbox-label">
               <input type="checkbox" id="setting-max-quality" class="custom-checkbox-input">
               <span class="custom-checkbox-box"></span>
@@ -585,15 +622,7 @@
             </div>
           </div>
           
-          <div class="input-group" style="margin-top: 15px;">
-            <label class="custom-checkbox-label">
-              <input type="checkbox" id="setting-show-waveform" class="custom-checkbox-input" checked>
-              <span class="custom-checkbox-box"></span>
-              Show Audio Waveform
-            </label>
-          </div>
-          
-          <div class="input-group" style="margin-top: 15px;">
+          <div class="input-group">
             <label class="custom-checkbox-label">
               <input type="checkbox" id="setting-disable-downscale" class="custom-checkbox-input">
               <span class="custom-checkbox-box"></span>
@@ -604,13 +633,81 @@
             </div>
           </div>
           
-          <div class="input-group" style="margin-top: 15px; border-top: 1px solid var(--panel-border); padding-top: 12px;">
-            <button id="replay-onboarding-btn" class="secondary-btn" style="display: flex; align-items: center; gap: 6px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg>
-              Replay Welcome Tour
-            </button>
+          <div class="settings-section-title">Appearance</div>
+          <div class="input-group">
+            <label>Theme:</label>
+            <select id="setting-theme" class="track-select">
+              <option value="auto">Auto (System)</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
           </div>
-          
+
+          <div class="input-group">
+            <label>Accessibility Font:</label>
+            <select id="setting-font" class="track-select">
+              <option value="default">System Default</option>
+              <option value="opendyslexic">OpenDyslexic</option>
+            </select>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              A typeface designed to reduce some symptoms of dyslexia.
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="custom-checkbox-label">
+              <input type="checkbox" id="setting-show-waveform" class="custom-checkbox-input" checked>
+              <span class="custom-checkbox-box"></span>
+              Show Audio Waveform
+            </label>
+          </div>
+
+          <div class="settings-section-title">Filenames</div>
+
+          <div class="input-group">
+            <label>Trim Export Filename:</label>
+            <input type="text" id="setting-filename-template-trim" class="form-input" placeholder="{name} - Trimmed">
+            <div style="font-size: 11px; color: var(--text-muted);">
+              Tokens: {name} {date} {time} {codec} {res} {size} — e.g. <code>{name} [{res}] - {date}</code>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>Merge Export Filename:</label>
+            <input type="text" id="setting-filename-template-merge" class="form-input" placeholder="Merged Video - {date}">
+          </div>
+
+          <div class="settings-section-title">Keyboard Shortcuts</div>
+          <div class="input-group settings-grid-full">
+            <label>Keyboard Shortcuts:</label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button id="setting-shortcuts-btn" class="secondary-btn" style="white-space: nowrap;">Customize Keyboard Shortcuts...</button>
+              <span style="font-size: 11px; color: var(--text-muted);">Remap the transport and editing keys shown in the ? help modal.</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Keyboard Shortcut Editor Modal Overlay -->
+    <div id="shortcut-editor-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content panel" style="width: 480px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
+          <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE946;</span> Keyboard Shortcuts</span>
+          <button id="shortcut-editor-close-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+        </div>
+        <div class="panel-content" id="shortcut-editor-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-top: 10px;">
+          <!-- Rows are built from keymap.js ACTIONS so the list never drifts
+               from the actions the dispatch actually handles. Click a key to
+               re-record it; press Esc to cancel, Del/Backspace to clear. -->
+        </div>
+        <!-- Footer padding matches the panel-content rhythm (10px sides) so
+             the buttons don't hug the modal edges; bottom padding keeps the
+             bar off the modal's bottom border. -->
+        <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 10px 10px 6px; margin-top: 10px; border-top: 1px solid var(--panel-border);">
+          <button id="shortcut-reset-btn" class="secondary-btn">Reset to Defaults</button>
+          <span style="font-size: 11px; color: var(--text-muted);">Click a key to change &middot; Esc cancels &middot; Del clears</span>
+          <button id="shortcut-editor-done-btn" class="primary-btn">Done</button>
         </div>
       </div>
     </div>

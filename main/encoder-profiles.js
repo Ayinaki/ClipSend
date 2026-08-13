@@ -252,12 +252,42 @@ function parseEncoderCapabilities(stdout) {
   };
 }
 
-/** Run `ffmpeg -encoders` and resolve the capability map (null on failure). */
+/**
+ * Parse `ffmpeg -hide_banner -filters` stdout for the audio/video filters the
+ * app gates behavior on. `atempo` (pitch-preserving audio speed) was missing
+ * from the slim build until it was added to scripts/build-ffmpeg.sh, so the
+ * planner refuses audio+speed exports unless this runtime probe reports it.
+ */
+function parseFilterCapabilities(stdout) {
+  const lines = String(stdout || '').split('\n');
+  // Filter lines look like: " .. setpts  V->V  Set PTS for the output..." —
+  // two flag chars (timeline/slice/audio/video), then the filter name.
+  const hasAtempo = lines.some(line =>
+    /^\s*[TSC.][ASV.]\s+atempo\b/.test(line)
+  );
+  return { atempo: hasAtempo };
+}
+
+/**
+ * Run `ffmpeg -encoders` (plus `-filters`) and resolve the capability map
+ * (null on failure). The filter probe shares the promise cache with the
+ * encoder probe via ipc-handlers' getEncoderCapabilities.
+ */
 function detectAvailableEncoders(ffmpegPath) {
   return new Promise((resolve) => {
     execFile(ffmpegPath, ['-encoders'], { maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
       if (error) return resolve(null);
-      resolve(parseEncoderCapabilities(stdout));
+      const caps = parseEncoderCapabilities(stdout);
+      execFile(ffmpegPath, ['-hide_banner', '-filters'], { maxBuffer: 4 * 1024 * 1024 }, (filterError, filterOut) => {
+        if (!filterError) {
+          caps.atempo = parseFilterCapabilities(filterOut).atempo;
+        } else {
+          // A failed filter probe must not fail the whole detection: atempo
+          // simply stays false and audio+speed exports get the clear error.
+          caps.atempo = false;
+        }
+        resolve(caps);
+      });
     });
   });
 }
@@ -274,5 +304,6 @@ module.exports = {
   audioCodecFor,
   containerForFormat,
   parseEncoderCapabilities,
+  parseFilterCapabilities,
   detectAvailableEncoders
 };

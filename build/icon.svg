@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- ClipSend app icon — "Trim & Play": the Set In/Out bracket motif from the
+       transport bar framing a play triangle. Brand teal (#2ba87e) on the dark
+       tile, mint (#3ddc97) play mark. Pure SVG source; build/icon.png is a
+       render of this file. -->
+  <rect width="256" height="256" rx="56" fill="#131313"/>
+  <path d="M96 64 L64 64 L64 192 L96 192" stroke="#2ba87e" stroke-width="17" stroke-linecap="round" fill="none"/>
+  <path d="M160 64 L192 64 L192 192 L160 192" stroke="#2ba87e" stroke-width="17" stroke-linecap="round" fill="none"/>
+  <path d="M112 102 L112 154 L154 128 Z" fill="#3ddc97"/>
+</svg>

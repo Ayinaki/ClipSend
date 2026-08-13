@@ -17,7 +17,8 @@ const Store = require('electron-store');
  *   Resolves the main window lazily (it may not exist yet at tray creation).
  */
 function createTray(getWindow) {
-  let icon = nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.png'));
+  // .ico picks the closest embedded size; resize forces the 16px tray slot.
+  let icon = nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.ico'));
   if (icon.isEmpty()) return null;
   icon = icon.resize({ width: 16, height: 16 });
 

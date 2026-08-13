@@ -31,13 +31,11 @@ function createWindow() {
   const bounds = saved ? saved.bounds : null;
 
   const mainWindow = new BrowserWindow({
-    width: (bounds && bounds.width) || 1500,
-    height: (bounds && bounds.height) || 800,
-    // The window is user-resizable so it fits smaller screens; the custom
-    // frameless titlebar handles maximize/restore itself. Min bounds keep the
-    // workbench layout (sidebar + stage + timeline) from collapsing.
-    minWidth: 900,
-    minHeight: 560,
+    // Fixed-size window (1500×800): the workbench layout (sidebar + stage +
+    // timeline) is designed for exactly this size. Position and maximized
+    // state persist across restarts, but the size itself never changes.
+    width: 1500,
+    height: 800,
     ...(bounds && Number.isFinite(bounds.x) && Number.isFinite(bounds.y)
       ? { x: bounds.x, y: bounds.y }
       : {}),
@@ -47,9 +45,11 @@ function createWindow() {
       nodeIntegration: false
     },
     frame: false,
-    resizable: true,
+    resizable: false,
     backgroundColor: '#1e1e1e',
-    icon: path.join(__dirname, '..', 'build', 'icon.png')
+    // Multi-size .ico — Windows taskbar/titlebar pick the right size and are
+    // less prone to icon-cache staleness than a single PNG.
+    icon: path.join(__dirname, '..', 'build', 'icon.ico')
   });
 
   if (saved && saved.isMaximized) mainWindow.maximize();

@@ -109,7 +109,12 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
   // ------ Input validation ------
   validateInputs(mediaInfo, trimIn, trimOut, settings);
 
-  const clipDuration = trimOut - trimIn;
+  const sourceDuration = trimOut - trimIn;
+  // Playback speed: the file's on-screen length is sourceDuration / speed
+  // (setpts/atempo shorten or lengthen it). Bitrate budgets, -t durations,
+  // size estimates, and encoder progress all work on the OUTPUT duration.
+  const speed = normalizeSpeed(settings.playbackSpeed);
+  const clipDuration = sourceDuration / speed;
 
   let audioBitrateKbps = settings.audioBitrateKbps ?? DEFAULT_AUDIO_BITRATE_KBPS;
   let videoBitrateKbps = 0;
@@ -252,6 +257,21 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     hasAudio = true;
   }
 
+  // Speed with audio needs the atempo filter. The bundled slim FFmpeg build
+  // did not ship it until atempo was added to scripts/build-ffmpeg.sh, so the
+  // runtime capability map (encoder:detect -> settings.encoders.atempo) gates
+  // it. Without it an audio+speed export would silently desync or fail with a
+  // cryptic "filter not found" error, so fail loudly with a clear message.
+  if (speed !== 1 && hasAudio && settings.outputFormat !== 'gif') {
+    const atempoAvailable = !!(settings.encoders && settings.encoders.atempo);
+    if (!atempoAvailable) {
+      throw new Error(
+        `Speed ${speed}x with audio requires the atempo filter, which this FFmpeg build does not ship. ` +
+        'Update ClipSend to a build with the latest bundled FFmpeg, or remove the audio track from the export.'
+      );
+    }
+  }
+
   // ------ MP3 audio-only export ------
   if (settings.outputFormat === 'mp3') {
     if (!hasAudio) {
@@ -269,8 +289,13 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       '-map', `0:a:${selectedAudioTrackIndex}`,
       '-c:a', 'libmp3lame',
       '-b:a', `${mp3BitrateKbps}k`,
-      '-t', seekTimes.duration.toFixed(3)
+      '-t', clipDuration.toFixed(3)
     ];
+
+    // Tempo change is audio-only, so the atempo chain applies here too.
+    if (speed !== 1) {
+      singlePassArgs.push('-af', atempoFilter(speed));
+    }
 
     const estimatedSizeMB = (mp3BitrateKbps * 1000 * clipDuration / 8) / (1024 * 1024);
 
@@ -282,6 +307,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       audioTracks: mediaInfo.audioTracks,
       selectedAudioOrdinal: selectedAudioTrackIndex,
       encoder: 'libmp3lame',
+      playbackSpeed: speed,
       codec: 'mp3',
       container: 'mp3',
       outputFormat: 'mp3',
@@ -322,7 +348,8 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       crop: settings.crop,
       maxQuality: settings.maxQuality,
       outputFormat: settings.outputFormat,
-      codec: videoCodec
+      codec: videoCodec,
+      speed
     });
 
     return {
@@ -339,6 +366,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       // GIF extraction has no real video codec/container; report it honestly.
       codec: settings.outputFormat === 'gif' ? 'gif' : videoCodec,
       container: containerForFormat(settings.outputFormat),
+      playbackSpeed: speed,
       targetSizeMB: settings.targetSizeMB,
       estimatedSizeMB: parseFloat((((videoBitrateKbps + audioBitrateKbps) * 1000 * clipDuration / 8) / (1024 * 1024)).toFixed(2)),
       videoBitrateKbps: Math.round(videoBitrateKbps),
@@ -358,13 +386,13 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     selectedAudioTrackIndex,
     width,
     height,
-    needsScale,
-    frameRate: mediaInfo.frameRate,
-    encoder,
-    crop: settings.crop,
-    maxQuality: settings.maxQuality,
-    codec: videoCodec
-  });
+    needsScale,      frameRate: mediaInfo.frameRate,
+      encoder,
+      crop: settings.crop,
+      maxQuality: settings.maxQuality,
+      codec: videoCodec,
+      speed
+    });
 
   const pass2Args = buildPassArgs({
     pass: 2,
@@ -381,7 +409,8 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     encoder,
     crop: settings.crop,
     maxQuality: settings.maxQuality,
-    codec: videoCodec
+    codec: videoCodec,
+    speed
   });
 
   // ------ Estimated output size ------
@@ -405,7 +434,8 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     selectedAudioOrdinal: selectedAudioTrackIndex,
     encoder,
     codec: videoCodec,
-    container: containerForFormat(settings.outputFormat)
+    container: containerForFormat(settings.outputFormat),
+    playbackSpeed: speed
   };
 }
 
@@ -530,6 +560,37 @@ function computeSeekTimes(trimIn, trimOut) {
 }
 
 /**
+ * Clamp a playback-speed request into the supported range. Anything missing/
+ * non-numeric means 1x (no tempo change at all).
+ */
+function normalizeSpeed(speed) {
+  const s = Number(speed);
+  if (!isFinite(s) || s <= 0) return 1;
+  return Math.min(4, Math.max(0.25, s));
+}
+
+/**
+ * Build an atempo filter chain for a target speed. Older FFmpeg's atempo is
+ * limited to 0.5–2.0 per instance, so speeds outside that range are factored
+ * into chained instances whose product equals the target (e.g. 3x = 1.5x × 2x).
+ * Modern builds allow 0.5–100 in one filter, but the chain is universally safe.
+ */
+function atempoFilter(speed) {
+  const parts = [];
+  let remaining = speed;
+  while (remaining > 2) {
+    parts.push('atempo=2');
+    remaining /= 2;
+  }
+  while (remaining < 0.5) {
+    parts.push('atempo=0.5');
+    remaining /= 0.5;
+  }
+  parts.push(`atempo=${remaining.toFixed(3)}`);
+  return parts.join(',');
+}
+
+/**
  * Build the FFmpeg argument array for one pass.
  */
 function buildPassArgs(opts) {
@@ -538,7 +599,8 @@ function buildPassArgs(opts) {
     videoBitrateKbps, crfValue, audioBitrateKbps,
     hasAudio, selectedAudioTrackIndex,
     width, height, needsScale, frameRate,
-    encoder, crop, maxQuality, outputFormat
+    encoder, crop, maxQuality, outputFormat,
+    speed = 1
   } = opts;
 
   const args = [
@@ -563,7 +625,10 @@ function buildPassArgs(opts) {
     }));
   }
   
-  args.push('-t', seekTimes.duration.toFixed(3));
+  // -t limits OUTPUT time: with speed, the output is sourceDuration / speed
+  // (setpts/atempo compress or stretch the timeline), so the stop point must
+  // follow the sped-up clock, not the source clock.
+  args.push('-t', (seekTimes.duration / speed).toFixed(3));
 
   // Video stream mapping
   args.push('-map', '0:v:0');
@@ -598,6 +663,14 @@ function buildPassArgs(opts) {
     filters.push(`scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`);
   }
 
+  // Playback speed: compress (or stretch) the video timeline. setpts is
+  // shipped by every build; the audio side (atempo) is gated on the runtime
+  // capability map in calculatePlan. Placed last so it operates on the
+  // already-cropped/scaled frames.
+  if (speed !== 1) {
+    filters.push(`setpts=PTS/${speed}`);
+  }
+
   if (filters.length > 0) {
     args.push('-vf', filters.join(','));
   }
@@ -614,6 +687,12 @@ function buildPassArgs(opts) {
       args.push('-c:a', audioCodecFor(container));
       const audioBitrateArg = audioBitrateKbps + 'k';
       args.push('-b:a', audioBitrateArg);
+      // Tempo-change the audio to match setpts (atempo preserves pitch).
+      // GIF extraction maps no audio stream, so the filter chain must stay
+      // video-only there.
+      if (speed !== 1 && outputFormat !== 'gif') {
+        args.push('-af', atempoFilter(speed));
+      }
     }
     // MP4 (both H.264 and AV1) benefits from the faststart relocation so
     // video starts playing before the whole file downloads.
@@ -638,6 +717,8 @@ module.exports = {
     resolveResolution,
     computeSeekTimes,
     buildPassArgs,
+    normalizeSpeed,
+    atempoFilter,
     QUALITY_FLOORS,
     SAFETY_MARGIN,
     MUXING_OVERHEAD,

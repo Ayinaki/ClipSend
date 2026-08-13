@@ -1,3 +1,19 @@
+/* OpenDyslexic (SIL OFL 1.1, see renderer/fonts/OFL.txt): the accessibility
+   font option in Settings. Bundled locally because the app is offline and
+   Windows-only — no font CDN. Swapped in via html[data-font] below. */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('../fonts/OpenDyslexic-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('../fonts/OpenDyslexic-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --bg-color: #0d0d0d;
   --panel-bg: #1a1a1a;
@@ -22,6 +38,79 @@
   --timecode-color: #3ddc97;
   --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   --font-mono: 'Consolas', 'Courier New', monospace;
+
+  /* Surface/text tokens used across components. Several were referenced
+     (--bg-primary, --text-primary, ...) without ever being defined, so the
+     affected elements silently fell back to inherited colors; defining them
+     here fixes that AND gives the light theme one knob to turn. The video
+     letterbox stays dark in both themes (media-canvas convention). */
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #161616;
+  --bg-tertiary: #121212;
+  --surface-0: #0a0a0a;   /* sunken wells (timecode, inputs) */
+  --surface-1: #1a1a1a;   /* form inputs */
+  --surface-2: #141414;   /* panels */
+  --surface-3: #2a2a2a;   /* tooltips, chips */
+  --text-primary: #ffffff;
+  --text-secondary: #bbbbbb;
+  --text-tertiary: #888888;
+  --border-strong: #444444;
+  --hover-bg: #333333;
+  --hover-bg-soft: rgba(255, 255, 255, 0.08);
+  --disabled-bg: #333333;
+  --scrollbar-thumb: #444444;
+  --inset-bg: rgba(0, 0, 0, 0.35);
+  --stage-bg: #050505;
+  --drop-border: rgba(255, 255, 255, 0.12);
+  --btn-secondary-bg: #333333;
+  --btn-secondary-hover: #444444;
+  --kbd-bg: #222222;
+  /* Custom dropdown chevron (data-URI — CSS vars can't reach into SVGs, so
+     each theme ships its own stroke color matching --text-secondary). */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23bbbbbb' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: dark;
+}
+
+/* Accessibility font: flipping data-font swaps --font-family everywhere it's
+   referenced, so every surface (buttons, dropdowns, labels) follows at once. */
+html[data-font="opendyslexic"] {
+  --font-family: 'OpenDyslexic', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* --- Light theme: every surface/text token flips via the data attribute;
+   the accent/success teals are shared because they clear WCAG AA on both
+   backgrounds. The video letterbox and timeline canvas intentionally stay
+   dark (media areas read as "content", like a video editor). --- */
+:root[data-theme="light"] {
+  --bg-color: #ececec;
+  --panel-bg: #ffffff;
+  --panel-border: #e0e0e0;
+  --text-color: #3a3a3a;
+  --text-muted: #888888;
+  --timecode-color: #00796b;
+  --bg-primary: #ececec;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f4f4f4;
+  --surface-0: #f0f0f0;
+  --surface-1: #ffffff;
+  --surface-2: #fafafa;
+  --surface-3: #e8e8e8;
+  --text-primary: #1c1c1c;
+  --text-secondary: #555555;
+  --text-tertiary: #999999;
+  --border-strong: #c8c8c8;
+  --hover-bg: #e2e2e2;
+  --hover-bg-soft: rgba(0, 0, 0, 0.06);
+  --disabled-bg: #e8e8e8;
+  --scrollbar-thumb: #c0c0c0;
+  --inset-bg: rgba(0, 0, 0, 0.05);
+  --stage-bg: #e6e6e6;
+  --drop-border: rgba(0, 0, 0, 0.15);
+  --btn-secondary-bg: #e8e8e8;
+  --btn-secondary-hover: #dcdcdc;
+  --kbd-bg: #e4e4e4;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23555555' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: light;
 }
 
 body {
@@ -61,7 +150,7 @@ body {
 
 .titlebar-title {
   font-size: 11px;
-  color: #999;
+  color: var(--text-muted);
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -154,7 +243,7 @@ body {
 }
 
 .titlebar-estimate-sep {
-  color: #444;
+  color: var(--text-muted);
 }
 
 .titlebar-export-btn {
@@ -173,7 +262,7 @@ body {
 .win-btn {
   background: transparent;
   border: none;
-  color: #999; /* 6.1:1 on the title bar, vs 3.0:1 before */
+  color: var(--text-muted); /* 6.1:1 on the title bar, vs 3.0:1 before */
   width: 46px;
   height: 28px;
   font-family: "Segoe MDL2 Assets", "Segoe UI Symbol", sans-serif;
@@ -185,8 +274,8 @@ body {
 }
 
 .win-btn:hover {
-  background-color: #222;
-  color: #fff;
+  background-color: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 .win-close-btn:hover {
@@ -223,8 +312,17 @@ body {
 #changelog-content,
 #update-notes-container {
   scrollbar-width: thin;
-  scrollbar-color: #444 transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-gutter: stable;
+}
+
+/* While the merge clip list shows only its empty drag-drop hint, drop the
+   reserved scrollbar gutter so the dashed box stretches edge-to-edge and
+   stays centered in the panel — otherwise the 10px right-side gutter makes
+   it sit ~5px left of center. Clips appearing re-enable the stable gutter
+   (via :has no longer matching), so the list never jumps once it overflows. */
+#merge-clip-list:has(> #merge-empty-list) {
+  scrollbar-gutter: auto;
 }
 
 .sidebar-content::-webkit-scrollbar,
@@ -248,7 +346,7 @@ body {
 #warnings-modal-content::-webkit-scrollbar-thumb,
 #changelog-content::-webkit-scrollbar-thumb,
 #update-notes-container::-webkit-scrollbar-thumb {
-  background-color: #444;
+  background-color: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
@@ -257,11 +355,11 @@ body {
 #warnings-modal-content::-webkit-scrollbar-thumb:hover,
 #changelog-content::-webkit-scrollbar-thumb:hover,
 #update-notes-container::-webkit-scrollbar-thumb:hover {
-  background-color: #555;
+  background-color: var(--hover-bg);
 }
 
 .panel {
-  background-color: #141414;
+  background-color: var(--surface-2);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   display: flex;
@@ -274,7 +372,7 @@ body {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #666;
+  color: var(--text-muted);
   background-color: transparent;
   user-select: none;
   letter-spacing: 1px;
@@ -326,10 +424,10 @@ button:hover {
 }
 
 button:disabled {
-  background-color: #333;
-  color: #888; /* WCAG exempts disabled controls; #888 keeps them legible */
+  background-color: var(--disabled-bg);
+  color: var(--text-tertiary); /* WCAG exempts disabled controls; keeps them legible */
   cursor: not-allowed;
-  border-color: #222;
+  border-color: var(--panel-border);
 }
 
 .primary-btn {
@@ -342,11 +440,11 @@ button:disabled {
 }
 
 .secondary-btn {
-  background-color: #333;
-  color: #ddd;
+  background-color: var(--btn-secondary-bg);
+  color: var(--text-primary);
 }
 .secondary-btn:hover {
-  background-color: #444;
+  background-color: var(--btn-secondary-hover);
 }
 
 .cancel-btn {
@@ -358,20 +456,71 @@ button:disabled {
   background-color: rgba(244, 67, 54, 0.1);
 }
 
+/* --- Dropdowns & select-like fields ---
+   Windows renders the open select popup natively and it can't be themed, but
+   the closed control is fully ours: appearance-none kills the OS arrow, a
+   custom chevron (per-theme stroke) replaces it, and the surface/radius
+   tokens match the rest of the UI instead of the stock widget. The popup
+   itself inherits color-scheme from :root, so it renders dark/light with the
+   app. */
+select,
 .track-select {
-  background-color: #111;
-  color: #fff;
-  border: 1px solid #444;
-  padding: 5px 8px;
-  border-radius: 3px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px; /* shape-consistency lock */
+  padding: 8px 10px;
   font-family: inherit;
   font-size: 12px;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Chevron + right padding for real dropdowns only. The compound selectors
+   out-specify .form-input (feedback modal) and .speed-select (transport bar)
+   so the arrow is never lost to their padding rules. */
+select.track-select,
+select.speed-select,
+select.form-input {
+  padding: 6px 30px 6px 10px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+  cursor: pointer;
+}
+
+select:hover {
+  border-color: var(--border-strong);
+}
+
+select:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 1px var(--accent-color);
+}
+
+select:disabled {
+  background-color: var(--disabled-bg);
+  color: var(--text-tertiary);
+  border-color: var(--panel-border);
+  cursor: not-allowed;
+}
+
+/* Helps platforms that render the popup in-engine (Chromium on non-Windows);
+   the Windows popup is OS-drawn and ignores these. */
+select option {
+  background-color: var(--surface-1);
+  color: var(--text-primary);
+}
+select option:disabled {
+  color: var(--text-tertiary);
 }
 
 .form-input {
-  background-color: #1a1a1a;
-  color: #eee;
+  background-color: var(--surface-1);
+  color: var(--text-primary);
   border: 1px solid var(--panel-border);
   padding: 8px 10px;
   border-radius: 4px;
@@ -385,7 +534,7 @@ button:disabled {
   box-shadow: 0 0 0 1px var(--accent-color);
 }
 .form-input::placeholder {
-  color: #666;
+  color: var(--text-muted);
 }
 /* The custom-size field is a plain number entry - drop the browser's native
    up/down stepper so it matches the other inputs. */
@@ -393,6 +542,154 @@ button:disabled {
 #custom-size-input::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* --- Custom dropdown (replaces native <select> popups) ---
+   Windows draws the open <select> popup as an OS widget that CSS can't
+   reach, so utils/dropdown.js swaps each select for a styled button + a
+   fixed-position list rendered in the app DOM. The button mirrors the old
+   select base exactly (same tokens, chevron, radius); the menu uses panel
+   surfaces with a shadow so it reads as a floating layer above modals
+   (z-index beats .modal-overlay's 1000). */
+.cs-dropdown {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+.cs-dropdown.full-width {
+  display: block;
+}
+
+.cs-dropdown-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  background-color: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 6px 30px 6px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cs-dropdown-btn:hover {
+  border-color: var(--border-strong);
+}
+.cs-dropdown.open .cs-dropdown-btn,
+.cs-dropdown-btn:focus-visible {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 1px var(--accent-color);
+}
+.cs-dropdown.disabled .cs-dropdown-btn {
+  background-color: var(--disabled-bg);
+  color: var(--text-tertiary);
+  border-color: var(--panel-border);
+  cursor: not-allowed;
+}
+
+/* The selected-value label: centered when it fits, left-aligned (with
+   ellipsis) when it doesn't. width: max-content + auto side margins centers
+   only short text; max-width: 100% clamps long values (audio-track names,
+   verbose encoder labels) back to the content box so they stay left-aligned
+   and never collide with the chevron. */
+.cs-dropdown-label {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Compact transport-bar variant (matches select.speed-select). The 11px mono
+   "1×" read as "1x" — the Consolas × glyph is tiny at that size — so the
+   speed value gets the same size + tracking as the timecode readouts. */
+.cs-dropdown.speed .cs-dropdown-btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 3px 26px 3px 8px;
+  background-position: right 6px center;
+  background-size: 11px;
+}
+.cs-dropdown.speed .cs-dropdown-btn:hover {
+  border-color: var(--accent-color);
+}
+
+/* Feedback-modal variant (matches .form-input). */
+.cs-dropdown.form .cs-dropdown-btn {
+  font-size: 13px;
+}
+
+.cs-dropdown-menu {
+  position: fixed;
+  z-index: 2000; /* above .modal-overlay (1000) and everything else */
+  /* border-box so the inline min-width (button width) is the TOTAL width —
+     content-box used to add padding+border on top, making every menu 10px
+     wider than its button and lunge to the right of it. */
+  box-sizing: border-box;
+  /* Fallback only (the JS always sets an inline min-width): a fixed element
+     resolves % against the viewport, so max-content is the honest default. */
+  min-width: max-content;
+  max-width: calc(100vw - 16px);
+  max-height: 280px;
+  overflow-y: auto;
+  background-color: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+}
+
+.cs-dropdown-option {
+  padding: 7px 10px;
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+/* The option text itself: centered when it fits, left-aligned (with
+   ellipsis) when it doesn't — mirrors .cs-dropdown-label so short option
+   labels sit centered under the button's centered label. */
+.cs-dropdown-option-text {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-dropdown-option:hover,
+.cs-dropdown-option.active {
+  background-color: var(--hover-bg);
+}
+/* The current value gets a teal tint (matches the loop-button active state). */
+.cs-dropdown-option.selected {
+  background-color: rgba(43, 168, 126, 0.15);
+  color: var(--timecode-color);
+}
+.cs-dropdown-option.disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+.cs-dropdown-option.disabled:hover {
+  background-color: transparent;
 }
 #custom-size-input {
   -moz-appearance: textfield;
@@ -495,7 +792,7 @@ button:disabled {
   min-width: 0; /* let wide stage content scroll internally instead of widening the layout */
   display: flex;
   flex-direction: column;
-  background-color: #050505;
+  background-color: var(--stage-bg);
   position: relative;
   padding: 10px 10px 10px 10px;
   box-sizing: border-box;
@@ -622,7 +919,7 @@ button:disabled {
 }
 .empty-message {
   text-align: center;
-  color: #666;
+  color: var(--text-muted);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -635,9 +932,9 @@ button:disabled {
 
 .drop-zone-hint {
   box-sizing: border-box;
-  border: 2px dashed rgba(255, 255, 255, 0.1);
+  border: 2px dashed var(--drop-border);
   border-radius: 8px;
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--hover-bg-soft);
   flex: 1;
 }
 
@@ -653,7 +950,7 @@ button:disabled {
   transition: background 0.15s, border-color 0.15s;
 }
 .merge-clip-item:hover {
-  background: rgba(255,255,255,0.08);
+  background: var(--hover-bg-soft);
   border-color: var(--panel-border);
 }
 .merge-clip-item img {
@@ -662,7 +959,7 @@ button:disabled {
   object-fit: cover;
   border-radius: 3px;
   background: #000;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid var(--panel-border);
 }
 .merge-clip-info {
   flex: 1;
@@ -709,6 +1006,10 @@ button:disabled {
   height: 100%;
   border: 1px solid var(--panel-border);
   border-radius: 4px;
+  /* Blocks are video frames: keep a dark backing so the overlay text (index
+     chip, duration label) stays legible in BOTH themes — a light backing with
+     no thumbnail loaded would leave white-on-light text. */
+  background-color: #1a1a1a;
   background-size: cover;
   background-position: center;
   position: relative;
@@ -861,13 +1162,25 @@ button:disabled {
   text-align: center;
   padding: 4px 0;
   white-space: nowrap;
+  /* Overlay on the video frame: white in both themes (same as the index
+     chip), never the body text color, which would go dark-on-dark in light
+     mode. */
+  color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 
 #merge-timeline-strip {
   position: relative;
   scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* The merge empty-state is a placeholder, not media: it sits on the
+   (always-black) video area, so it must cover that black with the themed
+   surface or the whole stage reads dark in light mode. Once clips load, the
+   empty state hides and the video area returns to black for playback. */
+#merge-empty-stage {
+  background: var(--bg-primary);
 }
 
 /* Playhead overlay drawn directly on the clip blocks row, mirroring the
@@ -892,11 +1205,11 @@ button:disabled {
   background: transparent;
 }
 #merge-timeline-strip::-webkit-scrollbar-thumb {
-  background: #333;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 #merge-timeline-strip::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: var(--hover-bg);
 }
 
 /* Merge Player Styles */
@@ -904,7 +1217,7 @@ button:disabled {
   width: 100%;
   padding: 8px 12px 4px 12px;
   box-sizing: border-box;
-  background: #161616;
+  background: var(--bg-secondary);
   border-top: 1px solid var(--panel-border);
   overflow-x: auto;
   overflow-y: hidden;
@@ -922,17 +1235,17 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: 4px 12px 10px 12px;
-  background-color: #161616;
-  height: 38px;
+  padding: 4px 12px 8px;
+  background-color: var(--bg-secondary);
+  height: 40px; /* room for the grouped transport chips */
   box-sizing: border-box;
   border-bottom: 1px solid var(--panel-border);
 }
 .merge-timecode-container {
-  background-color: #0a0a0a;
+  background-color: var(--surface-0);
   padding: 2px 8px;
   border-radius: 2px;
-  border: 1px solid #444;
+  border: 1px solid var(--border-strong);
   box-shadow: inset 0 1px 4px rgba(0,0,0,0.8);
   justify-self: start;
 }
@@ -945,7 +1258,7 @@ button:disabled {
 }
 .merge-transport-controls {
   display: flex;
-  gap: 2px;
+  gap: 6px; /* between clusters */
   align-items: center;
   justify-self: center;
 }
@@ -965,14 +1278,14 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 11px;
   white-space: nowrap;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--inset-bg);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 4px 10px;
 }
 
 .merge-trim-info .trim-value {
-  color: #fff;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -991,7 +1304,7 @@ button:disabled {
 }
 .merge-trim-info .merge-reset-trim-btn:hover {
   background: rgba(244, 67, 54, 0.15);
-  color: #fff;
+  color: var(--text-primary);
   border-color: rgba(244, 67, 54, 0.4);
 }
 
@@ -1027,7 +1340,7 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   justify-self: end;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--inset-bg);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 4px 8px;
@@ -1049,8 +1362,8 @@ button:disabled {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
+  background: var(--surface-3);
+  border: 1px solid var(--panel-border);
   color: var(--text-secondary);
   font-size: 10px;
   font-weight: 600;
@@ -1107,10 +1420,10 @@ button:disabled {
 .timeline-container {
   height: 76px;
   width: 100%;
-  background-color: #121212;
+  background-color: var(--bg-tertiary);
   border-left: 1px solid var(--panel-border);
   border-right: 1px solid var(--panel-border);
-  border-bottom: 1px solid #1a1a1a;
+  border-bottom: 1px solid var(--panel-border);
   box-sizing: border-box;
 }
 
@@ -1121,7 +1434,7 @@ button:disabled {
   align-items: center;
   gap: 12px;
   padding: 6px 12px;
-  background-color: #121212;
+  background-color: var(--bg-tertiary);
   border: 1px solid var(--panel-border);
   border-bottom: none;
   box-sizing: border-box;
@@ -1130,7 +1443,7 @@ button:disabled {
 .trim-timeline-title {
   font-size: 12px;
   font-weight: 600;
-  color: #ddd;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1155,7 +1468,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 2px;
-  background: #161616;
+  background: var(--bg-secondary);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 1px;
@@ -1169,14 +1482,14 @@ button:disabled {
   justify-content: center;
   background: transparent;
   border: none;
-  color: #bbb;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
   border-radius: 3px;
 }
 .zoom-btn:hover {
-  background: #333;
-  color: #fff;
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 .zoom-btn:active {
   transform: scale(0.9);
@@ -1191,7 +1504,7 @@ button:disabled {
   cursor: pointer;
 }
 .zoom-readout:hover {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 #timeline-canvas {
@@ -1201,14 +1514,19 @@ button:disabled {
   cursor: pointer;
 }
 
-/* Transport Bar */
+/* Transport Bar
+   The controls are grouped into segmented clusters (In / Playback / Out /
+   Loop) so a row of identical gray icons never blurs together: each cluster
+   is a recessed chip (surface-1), and the play button is the teal anchor.
+   The invisible 1px border + box-sizing keep the loop-active ring and any
+   future state from shifting the layout. */
 .transport-bar {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   padding: 4px 12px;
-  background-color: #161616;
-  height: 32px;
+  background-color: var(--bg-secondary);
+  height: 36px;
   box-sizing: border-box;
   border-left: 1px solid var(--panel-border);
   border-right: 1px solid var(--panel-border);
@@ -1218,15 +1536,26 @@ button:disabled {
 
 .transport-controls {
   display: flex;
-  gap: 2px;
+  gap: 6px; /* between clusters */
   align-items: center;
   justify-self: center;
+}
+
+.transport-group {
+  display: flex;
+  align-items: center;
+  gap: 1px; /* inside a cluster */
+  background-color: var(--surface-1);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1px;
 }
 
 .transport-btn {
   background-color: transparent;
   border: 1px solid transparent;
-  color: #aaa;
+  box-sizing: border-box;
+  color: var(--text-secondary);
   width: 24px;
   height: 24px;
   padding: 0;
@@ -1234,13 +1563,37 @@ button:disabled {
   justify-content: center;
   align-items: center;
   font-family: "Segoe MDL2 Assets", sans-serif;
-  font-size: 12px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
+  font-size: 13px;
+  border-radius: 3px;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 .transport-btn:hover {
-  background-color: #333;
-  border-color: #444;
+  background-color: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* Play is the anchor: filled teal so the eye finds it instantly, slightly
+   wider than the square icon buttons around it. */
+.transport-btn.play-btn {
+  background-color: var(--success-color);
+  color: #fff;
+  width: 30px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.transport-btn.play-btn:hover {
+  background-color: var(--success-hover);
+  color: #fff;
+}
+
+/* The speed dropdown sits inside the loop cluster: strip its own border so
+   it merges with the chip (its chevron still marks it as a picker). */
+.transport-group .cs-dropdown-btn {
+  background-color: transparent;
+  border-color: transparent;
+}
+.transport-group .cs-dropdown-btn:hover {
+  background-color: var(--hover-bg);
+  border-color: transparent;
 }
 
 /* Loop toggle — teal fill + ring when active so the state is obvious. */
@@ -1253,6 +1606,23 @@ button:disabled {
   color: var(--timecode-color);
 }
 
+/* Playback speed select (sits in the trim transport, next to Loop): a
+   compact dropdown reusing the shared select base + chevron. Same selector
+   specificity as the base rule, so these paddings win by source order.
+   Kept in sync with the .cs-dropdown.speed button above (12px mono + 0.5px
+   tracking, matching the timecode readouts) so the × stays legible. */
+select.speed-select {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 3px 26px 3px 8px;
+  background-position: right 6px center;
+  background-size: 11px;
+}
+select.speed-select:hover {
+  border-color: var(--accent-color);
+}
+
 
 .left-controls {
   display: flex;
@@ -1262,10 +1632,10 @@ button:disabled {
 }
 
 .timecode-container {
-  background-color: #0a0a0a;
+  background-color: var(--surface-0);
   padding: 2px 8px;
   border-radius: 2px;
-  border: 1px solid #444;
+  border: 1px solid var(--border-strong);
   box-shadow: inset 0 1px 4px rgba(0,0,0,0.8);
 }
 
@@ -1288,7 +1658,7 @@ button:disabled {
   -webkit-appearance: none;
   width: 60px;
   height: 4px;
-  background: #333;
+  background: var(--hover-bg);
   border-radius: 2px;
   outline: none;
 }
@@ -1317,17 +1687,17 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 11px;
   white-space: nowrap;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--inset-bg);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 4px 10px;
 }
 
 .trim-label {
-  color: #777;
+  color: var(--text-muted);
 }
 .trim-value {
-  color: #fff;
+  color: var(--text-primary);
   font-weight: 600;
   margin-left: 4px;
 }
@@ -1345,7 +1715,7 @@ button:disabled {
 }
 .trim-info .trim-reset-btn:hover {
   background: rgba(244, 67, 54, 0.15);
-  color: #fff;
+  color: var(--text-primary);
   border-color: rgba(244, 67, 54, 0.4);
 }
 
@@ -1354,7 +1724,7 @@ button:disabled {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--inset-bg);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 4px 8px;
@@ -1437,7 +1807,7 @@ button:disabled {
 .warning-card-title {
   font-weight: 600;
   font-size: 13px;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .warning-card-body {
@@ -1476,10 +1846,10 @@ button:disabled {
 .titlebar-progress-bar {
   width: 150px;
   height: 6px;
-  background-color: #000;
+  background-color: var(--surface-0);
   border-radius: 3px;
   overflow: hidden;
-  border: 1px solid #333;
+  border: 1px solid var(--panel-border);
 }
 
 .titlebar-progress-fill {
@@ -1514,9 +1884,9 @@ button:disabled {
   z-index: 900;
   top: 0;
   left: 0;
-  background: #2a2a2a;
-  border: 1px solid #3d3d3d;
-  color: #e8e8e8;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
   font-family: var(--font-family);
   font-size: 11px;
   font-weight: 500;
@@ -1547,9 +1917,9 @@ button:disabled {
   transform: translateX(-50%) rotate(45deg);
   width: 8px;
   height: 8px;
-  background: #2a2a2a;
-  border-left: 1px solid #3d3d3d;
-  border-top: 1px solid #3d3d3d;
+  background: var(--surface-3);
+  border-left: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border-strong);
 }
 
 .tooltip-bubble.visible {
@@ -1573,7 +1943,11 @@ button:disabled {
 /* Modal Overlay */
 .modal-overlay {
   position: absolute;
-  top: 32px; /* below title bar */
+  /* Full-window dim/blur — reaching the title bar too, so the backdrop never
+     leaves a crisp strip above the dialog. Trade-off: the title bar (drag
+     region + window controls) is inert while a modal is open, which is
+     standard modal behavior. */
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
@@ -1607,9 +1981,57 @@ button:disabled {
   width: 500px;
   max-width: 90%;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-  border: 1px solid #444;
+  border: 1px solid var(--border-strong);
   /* The dialog settles into place: slight scale + rise as it appears. */
   animation: modal-dialog-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Settings modal: a wider two-column grid keeps the growing setting list
+   short instead of forcing a long scroll. Full-width rows (export dir, the
+   footer button) span both columns; the grid itself scrolls if the window is
+   short, while the header stays pinned. */
+.settings-modal {
+  width: 720px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 20px; /* tight vertical rhythm so the modal fits without scrolling */
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1; /* scrolls under a pinned footer (see .settings-grid-footer) */
+}
+.settings-grid-full {
+  grid-column: 1 / -1;
+}
+/* Section labels give the flat setting list structure — the trailing hairline
+   visually separates each group (General / Video Export / Appearance /
+   Filenames) without adding box borders. */
+.settings-section-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+.settings-section-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background-color: var(--panel-border);
+}
+.settings-section-title:first-child {
+  margin-top: 0;
 }
 @keyframes modal-dialog-in {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
@@ -1650,7 +2072,10 @@ button:disabled {
   padding: 28px 32px;
   border: 1px solid var(--panel-border);
   border-radius: 4px; /* shape-consistency lock */
-  background: rgba(255, 255, 255, 0.02);
+  /* Solid surface, not the translucent hover tint: the merge empty-state
+     card sits on the (always-black) video area, so a translucent tint would
+     leave the card dark while its text flips to the light-theme colors. */
+  background: var(--bg-secondary);
   max-width: 460px;
   box-sizing: border-box;
 }
@@ -1671,7 +2096,7 @@ button:disabled {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #eee;
+  color: var(--text-primary);
 }
 .drop-card-copy p {
   margin: 0;
@@ -1703,13 +2128,13 @@ button:disabled {
 .toast {
   pointer-events: auto;
   max-width: 320px;
-  background: #1e1e1e;
-  border: 1px solid #333;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-left: 3px solid var(--accent-color);
   border-radius: 6px;
   padding: 9px 14px;
   font-size: 12px;
-  color: #ddd;
+  color: var(--text-primary);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
   opacity: 0;
   transform: translateY(8px);
@@ -1765,7 +2190,7 @@ button:disabled {
   justify-content: center;
   align-items: center;
   height: 126px;
-  background: #0c0c0c;
+  background: var(--stage-bg);
   border-bottom: 1px solid var(--panel-border);
   padding: 15px 20px;
   box-sizing: border-box;
@@ -1799,12 +2224,12 @@ button:disabled {
 .onboarding-body kbd {
   font-family: var(--font-mono);
   font-size: 11px;
-  background: #222;
-  border: 1px solid #3a3a3a;
+  background: var(--kbd-bg);
+  border: 1px solid var(--panel-border);
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 1px 6px;
-  color: #ddd;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 .onboarding-shortcuts {
@@ -1837,7 +2262,7 @@ button:disabled {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #333;
+  background: var(--hover-bg);
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 .onboarding-dot.active {
@@ -1890,15 +2315,15 @@ button:disabled {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary, #bbb);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover-bg-soft);
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .crop-preset-pill:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: #fff;
+  background: var(--hover-bg-soft);
+  color: var(--text-primary);
 }
 .crop-preset-pill.active {
   background-color: var(--success-color);
@@ -1945,10 +2370,10 @@ button:disabled {
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 12.5px;
-  color: #ddd;
+  color: var(--text-primary);
 }
 .shortcut-row:nth-child(odd) {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hover-bg-soft);
 }
 .shortcut-row .shortcut-name {
   color: var(--text-color);
@@ -1962,11 +2387,98 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--accent-color);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hover-bg-soft);
   border: 1px solid var(--panel-border);
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 2px 6px;
   min-width: 20px;
   text-align: center;
+}
+
+/* --- Keyboard shortcut editor (Settings) --- */
+/* Two-column rows (label left, key button right) — compact enough that the
+   full action list fits without scrolling. Clicking a key button arms
+   capture; the button then pulses accent and reads "Press a key…". */
+.shortcut-edit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+.shortcut-edit-row:nth-child(odd) {
+  background: var(--hover-bg-soft);
+}
+.shortcut-edit-label {
+  color: var(--text-primary);
+}
+.shortcut-key-btn {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--panel-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 4px 14px;
+  min-width: 108px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.shortcut-key-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+.shortcut-key-btn.recording {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  animation: shortcut-record-pulse 1.2s ease-in-out infinite;
+}
+.shortcut-key-btn.conflict {
+  border-color: #e5484d;
+  color: #e5484d;
+  animation: none;
+}
+@keyframes shortcut-record-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color) 0%, transparent); }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 30%, transparent); }
+}
+/* Reduced-motion users get a static accent outline instead of the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-key-btn.recording {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 30%, transparent);
+  }
+}
+
+
+/* Theme "fade" transition: when the theme flips, a wash of the OLD theme's
+   background color fades out (0.6 -> 0) over the new theme — a quick,
+   unobtrusive crossfade instead of an instant snap. Built by
+   renderer/utils/theme-fade.js; the color rides in an inline --fade-color so
+   the theme swap doesn't repaint the wash. */
+.cs-theme-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 9000; /* above dropdown menus (2000) and modal overlays (1000) */
+  pointer-events: none; /* the app stays clickable under the brief wash */
+  background-color: var(--fade-color);
+  opacity: 0.6;
+  transition: opacity 0.38s ease-out;
+  will-change: opacity;
+}
+.cs-theme-fade.fading {
+  opacity: 0;
+}
+/* Reduced-motion users get an instant swap (the JS also skips the wash). */
+@media (prefers-reduced-motion: reduce) {
+  .cs-theme-fade {
+    transition: none;
+  }
 }

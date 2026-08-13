@@ -26,13 +26,52 @@ const HANDLE_WIDTH = 10;      // horizontal grab area for each handle
 const PLAYHEAD_WIDTH = 2;
 
 // --- Colours ---
-const COL_BG           = '#1a1a1a';
-const COL_TRACK        = '#222222';
-const COL_DIMMED       = 'rgba(0, 0, 0, 0.70)';
-const COL_PLAYHEAD     = '#ffffff';
+// Dark/light pairs: the canvas flips with the app theme (read from
+// <html data-theme>) so it doesn't read as a dark hole inside the light-mode
+// chrome. The dark set is the pre-theme app palette; the light set keeps the
+// same structure (dark dim overlay, teal kept segments) on light surfaces.
+const COL_DARK = {
+  bg:             '#1a1a1a',
+  track:          '#222222',
+  dimmed:         'rgba(0, 0, 0, 0.70)',
+  playhead:       '#ffffff',
+  playheadGlow:   'rgba(255, 255, 255, 0.18)',
+  waveformDim:    'rgba(255, 255, 255, 0.2)',
+  waveformBright: 'rgba(255, 255, 255, 0.8)',
+  keptOutline:    'rgba(255, 255, 255, 0.85)',
+  gridLine:       'rgba(255, 255, 255, 0.05)',
+  rulerTickMajor: '#5a5a5a',
+  rulerTickMinor: '#3c3c3c',
+  rulerLabel:     '#777',
+  currentTime:    '#ffffff'
+};
+const COL_LIGHT = {
+  bg:             '#ececec',
+  track:          '#d6d6d6',
+  dimmed:         'rgba(0, 0, 0, 0.45)',
+  playhead:       '#1a1a1a',
+  playheadGlow:   'rgba(0, 0, 0, 0.12)',
+  waveformDim:    'rgba(0, 0, 0, 0.22)',
+  waveformBright: 'rgba(0, 0, 0, 0.75)',
+  keptOutline:    'rgba(0, 0, 0, 0.85)',
+  gridLine:       'rgba(0, 0, 0, 0.08)',
+  rulerTickMajor: '#9a9a9a',
+  rulerTickMinor: '#b8b8b8',
+  rulerLabel:     '#888',
+  currentTime:    '#1a1a1a'
+};
 // Single-hue teal ramp (matches the app accent) so multi-trim segments stay
-// distinguishable without introducing rainbow neon accents.
-const COL_PALETTE      = ['#2ba87e', '#8fe0bf', '#1d8f6b', '#c4f2e0', '#0f6e54'];
+// distinguishable without introducing rainbow neon accents. Stored segment
+// colors are the dark hexes; the light map swaps them for deeper teals at
+// draw time so they stay legible on a light track.
+const COL_PALETTE = ['#2ba87e', '#8fe0bf', '#1d8f6b', '#c4f2e0', '#0f6e54'];
+const COL_PALETTE_LIGHT = {
+  '#2ba87e': '#1d8f6b',
+  '#8fe0bf': '#2ba87e',
+  '#1d8f6b': '#0f6e54',
+  '#c4f2e0': '#3aa67f',
+  '#0f6e54': '#0a5a44'
+};
 
 // --- Hit-test tolerance (px either side of handle edge) ---
 const GRAB_TOLERANCE = 8;
@@ -48,6 +87,7 @@ export class Timeline {
    * @param {object} callbacks
    * @param {function(number)} callbacks.onSeek        — user clicked/dragged playhead
    * @param {function(segments, activeId)} callbacks.onSegmentChange — trim boundary changed
+   * @param {function()} callbacks.onBeforeEdit — called before a mutating gesture (handle drag / trash)
    */
   constructor(canvas, callbacks = {}) {
     this.canvas = canvas;
@@ -86,6 +126,12 @@ export class Timeline {
     this._setupSize();
     this._bindEvents();
     this._draw();
+
+    // Redraw when the app theme flips (light <-> dark changes canvas colors)
+    // or the accessibility font changes (text is drawn in the new face).
+    this._onThemeChange = () => this._scheduleRedraw();
+    document.addEventListener('themechange', this._onThemeChange);
+    document.addEventListener('fontchange', this._onThemeChange);
   }
 
   // -----------------------------------------------------------------------
@@ -259,6 +305,36 @@ export class Timeline {
     this._draw();
   }
 
+  /**
+   * Replace the full edit state from an undo/redo snapshot (see
+   * app.js captureTrimState). Emits exactly once so consumers re-render
+   * without flooding listeners, and mirrors setMultiTrim's collapse rule
+   * when multi-trim is off with multiple segments.
+   *
+   * @param {object} state - { segments, activeSegmentId, multiTrim }
+   */
+  restoreState(state) {
+    if (!state) return;
+    if (Array.isArray(state.segments) && state.segments.length > 0) {
+      this.segments = state.segments.map(s => ({ ...s }));
+      const maxId = this.segments.reduce((m, s) => Math.max(m, Number(s.id) || 0), 0);
+      this.nextSegmentId = maxId + 1;
+    }
+    if (state.activeSegmentId != null && this.segments.some(s => s.id === state.activeSegmentId)) {
+      this.activeSegmentId = state.activeSegmentId;
+    } else if (this.segments.length > 0) {
+      this.activeSegmentId = this.segments[0].id;
+    }
+    if (typeof state.multiTrim === 'boolean') {
+      this.isMultiTrim = state.multiTrim;
+      if (!this.isMultiTrim && this.segments.length > 1) {
+        this.segments = [this.segments[0]];
+      }
+    }
+    this._emitSegments();
+    this._draw();
+  }
+
   /** Let the timeline know the video is playing (shows the playhead time bubble). */
   setPlaying(playing) {
     this.isPlaying = playing;
@@ -392,6 +468,23 @@ export class Timeline {
     });
   }
 
+  /** True when the app is in light theme (the canvas flips with it). */
+  _isLight() {
+    return document.documentElement.dataset.theme === 'light';
+  }
+
+  /** Theme-resolved color for a COL_DARK/COL_LIGHT key (dark is the fallback). */
+  _themeColor(key) {
+    const set = this._isLight() ? COL_LIGHT : COL_DARK;
+    return set[key] || COL_DARK[key];
+  }
+
+  /** Map a stored segment color through the light palette (draw-time only). */
+  _segmentColor(color) {
+    if (!this._isLight()) return color;
+    return COL_PALETTE_LIGHT[color] || color;
+  }
+
   _draw() {
     this._updateDimensions();
     const ctx = this.ctx;
@@ -399,7 +492,7 @@ export class Timeline {
     const H = CANVAS_HEIGHT;
 
     // Background
-    ctx.fillStyle = COL_BG;
+    ctx.fillStyle = this._themeColor('bg');
     ctx.fillRect(0, 0, W, H);
 
     if (this.duration <= 0) return;
@@ -407,14 +500,14 @@ export class Timeline {
     const trackY = HANDLE_HEIGHT;
 
     // --- Track bar (full width, muted) ---
-    ctx.fillStyle = COL_TRACK;
+    ctx.fillStyle = this._themeColor('track');
     ctx.fillRect(this._trackLeft, trackY, this._trackWidth, TRACK_HEIGHT);
 
     // --- Waveform Overlay (background, full track) ---
-    this._drawWaveform(ctx, trackY, this._trackLeft, this._trackRight, 'rgba(255, 255, 255, 0.2)');
+    this._drawWaveform(ctx, trackY, this._trackLeft, this._trackRight, this._themeColor('waveformDim'));
 
     // --- Dim + striped overlay covering everything outside the kept regions ---
-    ctx.fillStyle = COL_DIMMED;
+    ctx.fillStyle = this._themeColor('dimmed');
     ctx.fillRect(this._trackLeft, trackY, this._trackWidth, TRACK_HEIGHT);
     if (!this._stripePattern) this._createStripePattern();
     if (this._stripePattern) {
@@ -433,28 +526,30 @@ export class Timeline {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
       ctx.fillRect(inX - 2, trackY - 2, (outX - inX) + 4, TRACK_HEIGHT + 4);
 
-      // Kept region fill (bright when active, muted otherwise)
-      ctx.fillStyle = isActive ? seg.color : this._adjustColor(seg.color, 0.55);
+      // Kept region fill (bright when active, muted otherwise). The segment
+      // color is theme-mapped at draw time so stored state stays canonical.
+      const segColor = this._segmentColor(seg.color);
+      ctx.fillStyle = isActive ? segColor : this._adjustColor(segColor, 0.55);
       ctx.fillRect(inX, trackY, outX - inX, TRACK_HEIGHT);
 
-      // Waveform for this segment in bright white
-      this._drawWaveform(ctx, trackY, inX, outX, 'rgba(255, 255, 255, 0.8)');
+      // Waveform for this segment in bright contrast
+      this._drawWaveform(ctx, trackY, inX, outX, this._themeColor('waveformBright'));
 
       // Kept-window outline on the active segment
       if (isActive) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.strokeStyle = this._themeColor('keptOutline');
         ctx.lineWidth = 1;
         ctx.strokeRect(inX + 0.5, trackY + 0.5, Math.max(0, (outX - inX) - 1), TRACK_HEIGHT - 1);
       }
 
       // Numbered chip (multi-trim only) so segments are easy to tell apart
       if (this.isMultiTrim && this.segments.length > 1) {
-        this._drawSegmentChip(ctx, inX, trackY, si + 1, seg.color);
+        this._drawSegmentChip(ctx, inX, trackY, si + 1, segColor);
       }
 
       // Handles
-      this._drawHandle(ctx, inX, seg.color, 'in', isActive, seg.id);
-      this._drawHandle(ctx, outX, seg.color, 'out', isActive, seg.id);
+      this._drawHandle(ctx, inX, segColor, 'in', isActive, seg.id);
+      this._drawHandle(ctx, outX, segColor, 'out', isActive, seg.id);
 
       // Trash Icon (if multi-trim and more than 1 segment)
       if (this.isMultiTrim && this.segments.length > 1) {
@@ -559,16 +654,16 @@ export class Timeline {
       const major = idx % 2 === 0;
 
       // Faint grid line through the whole body
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.fillStyle = this._themeColor('gridLine');
       ctx.fillRect(x, 0, 1, BODY_HEIGHT);
 
       // Tick in the ruler
-      ctx.fillStyle = major ? '#5a5a5a' : '#3c3c3c';
+      ctx.fillStyle = major ? this._themeColor('rulerTickMajor') : this._themeColor('rulerTickMinor');
       ctx.fillRect(x, y, 1, major ? 7 : 4);
 
       // Time label
       if (idx % labelEvery === 0) {
-        ctx.fillStyle = '#777';
+        ctx.fillStyle = this._themeColor('rulerLabel');
         const tx = Math.min(x + 4, W - 26);
         ctx.fillText(this._formatRulerTime(tick, step), tx, H - 3);
       }
@@ -579,7 +674,7 @@ export class Timeline {
 
     // Current-time marker on the ruler
     const px = this._secondsToX(this.playhead);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = this._themeColor('currentTime');
     ctx.fillRect(px - 0.5, y + 1, 1, 3);
   }
 
@@ -595,15 +690,15 @@ export class Timeline {
     const x = this._secondsToX(this.playhead);
 
     // Soft glow either side of the line
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.fillStyle = this._themeColor('playheadGlow');
     ctx.fillRect(x - 3, 0, 6, BODY_HEIGHT);
 
     // Thin line spanning the body
-    ctx.fillStyle = COL_PLAYHEAD;
+    ctx.fillStyle = this._themeColor('playhead');
     ctx.fillRect(x - 1, 0, PLAYHEAD_WIDTH, BODY_HEIGHT);
 
     // Cap triangle at the top
-    ctx.fillStyle = COL_PLAYHEAD;
+    ctx.fillStyle = this._themeColor('playhead');
     ctx.beginPath();
     ctx.moveTo(x - 5, 0);
     ctx.lineTo(x + 5, 0);
@@ -792,6 +887,12 @@ export class Timeline {
     const x = this._canvasX(e);
     const y = this._canvasY(e);
     const hit = this._hitTest(x, y);
+
+    // Mutating gestures (handle drag, trash delete) announce themselves
+    // BEFORE touching state so the host can snapshot for undo/redo.
+    if (hit.type === 'trash' || hit.type === 'in' || hit.type === 'out') {
+      if (this.callbacks.onBeforeEdit) this.callbacks.onBeforeEdit();
+    }
 
     if (hit.type === 'trash') {
       this.segments = this.segments.filter(s => s.id !== hit.id);

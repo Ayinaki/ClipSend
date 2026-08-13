@@ -129,6 +129,40 @@ describe('built renderer bundle (smoke)', () => {
     expect(document.getElementById('settings-modal').style.display).toBe('flex');
   });
 
+  test('theme select flips the document theme and persists it', () => {
+    document.getElementById('settings-btn').click();
+    const themeSelect = document.getElementById('setting-theme');
+    expect(themeSelect).toBeTruthy();
+
+    // The Auto (System) option is offered alongside the explicit choices.
+    expect(themeSelect.querySelector('option[value="auto"]')).toBeTruthy();
+    expect(themeSelect.querySelector('option[value="dark"]')).toBeTruthy();
+    expect(themeSelect.querySelector('option[value="light"]')).toBeTruthy();
+
+    // Dark is the default until changed.
+    expect(document.documentElement.dataset.theme).toBe('dark');
+
+    themeSelect.value = 'light';
+    themeSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    // The data-theme attribute must flip immediately (CSS vars react to it).
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(window.clipSend.setSetting).toHaveBeenCalledWith('theme', 'light');
+  });
+
+  test('auto theme resolves without crashing and persists the auto choice', () => {
+    document.getElementById('settings-btn').click();
+    const themeSelect = document.getElementById('setting-theme');
+
+    themeSelect.value = 'auto';
+    themeSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    // jsdom has no matchMedia, so auto must resolve to the dark fallback and
+    // never throw; the raw choice is what gets persisted.
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(window.clipSend.setSetting).toHaveBeenCalledWith('theme', 'auto');
+  });
+
   test('only one modal is visible at a time (no stacking)', () => {
     const modalIds = ['settings-modal', 'changelog-modal', 'feedback-modal', 'export-modal', 'warnings-modal', 'update-modal', 'shortcuts-modal', 'error-modal'];
 

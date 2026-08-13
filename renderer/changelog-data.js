@@ -1,5 +1,23 @@
 window.changelogData = [
   {
+    "version": "v2.2.0: Remappable Shortcuts, Undo & New Icon",
+    "date": "August 2026",
+    "changes": [
+      "Feature: Remap any keyboard shortcut from Settings — click a key, press its replacement, and it's saved instantly. Keys already in use are blocked, Esc cancels, and Delete clears a binding. The ? help modal always shows your real keys.",
+      "Feature: Undo and redo (Ctrl+Z / Ctrl+Y) for trims, cropping, and merge edits.",
+      "Feature: Custom export filenames with tokens like {name}, {date}, and {res} for both Trim and Merge exports.",
+      "Feature: Playback speed control (0.5×–3×) in the transport bar — exports match the speed you set.",
+      "Feature: Accessibility font setting — OpenDyslexic ships with the app and switches the whole interface.",
+      "Feature: New app icon — the Set In/Out brackets with a play triangle — across the window, taskbar, tray, and installer.",
+      "Enhancement: Settings reorganized into clear sections, and every dropdown in the app now uses the custom styled menus.",
+      "Enhancement: Theme changes crossfade smoothly instead of snapping.",
+      "Enhancement: Merge exports get a Copy to Clipboard button, matching Trim exports.",
+      "Enhancement: Transport bar buttons regrouped by job (In / Playback / Out / Loop) with cleaner Set In/Out icons.",
+      "Fix: The app window is a fixed 1500×800 again — it was accidentally made resizable.",
+      "Fix: Modal backdrops now blur the whole window, including the title bar."
+    ]
+  },
+  {
     "version": "v2.1.1: AV1 In Your Chosen Format + Unified Progress",
     "date": "August 2026",
     "changes": [
