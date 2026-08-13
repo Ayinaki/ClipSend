@@ -132,7 +132,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function undo() {
-    const snap = undoManager.undo();
+    // Pass the current state so undo can store it for redo — redo must
+    // restore the edited state, not re-apply the pre-edit one.
+    const current = currentMergeMode ? captureMergeState() : captureTrimState();
+    const snap = undoManager.undo(current);
     if (!snap) {
       toast('Nothing to undo');
       return;
@@ -142,7 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function redo() {
-    const snap = undoManager.redo();
+    const current = currentMergeMode ? captureMergeState() : captureTrimState();
+    const snap = undoManager.redo(current);
     if (!snap) {
       toast('Nothing to redo');
       return;
