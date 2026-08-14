@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v2.2.1: Discord Free Tier Raised to 20 MB",
+    "date": "August 2026",
+    "changes": [
+      "Enhancement: The default Discord (Free) preset now targets 20 MB — Discord raised the free tier upload limit from 10 MB to 20 MB."
+    ]
+  },
+  {
     "version": "v2.2.0: Remappable Shortcuts, Undo & New Icon",
     "date": "August 2026",
     "changes": [
@@ -14,8 +21,7 @@ window.changelogData = [
       "Enhancement: Merge exports get a Copy to Clipboard button, matching Trim exports.",
       "Enhancement: Transport bar buttons regrouped by job (In / Playback / Out / Loop) with cleaner Set In/Out icons.",
       "Fix: The app window is a fixed 1500×800 again — it was accidentally made resizable.",
-      "Fix: Modal backdrops now blur the whole window, including the title bar.",
-      "Enhancement: The default Discord (Free) preset now targets 20 MB — Discord raised the free tier upload limit from 10 MB to 20 MB."
+      "Fix: Modal backdrops now blur the whole window, including the title bar."
     ]
   },
   {
