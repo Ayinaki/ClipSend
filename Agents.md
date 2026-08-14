@@ -10,7 +10,7 @@ presets: 20 MB, 50 MB, 500 MB) or to GIF/MP3. Exports are hardware-accelerated w
 (NVENC / QSV / AMF) with CPU fallback, and H.264 or AV1 codecs are supported. See `README.md`
 for the full feature description.
 
-- Repo: `Ayinaki/ClipSend` (package name: `video-compressor`, version 2.1.1)
+- Repo: `Ayinaki/ClipSend` (package name: `video-compressor`, version 2.2.1)
 - **Windows-only target.** Bundled binaries are `.exe` files; CI runs on `windows-latest`.
 - Plain JavaScript everywhere. **No TypeScript**, no framework, no bundler for the main process.
 
