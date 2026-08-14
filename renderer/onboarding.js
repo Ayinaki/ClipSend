@@ -106,7 +106,7 @@ const VISUAL_EXPORT = `
   <text x="90" y="37.5" font-size="8" fill="#aaa" font-family="Segoe UI, sans-serif">MP4 (Video)</text>
   <path d="M288 31l6 6 6-6" stroke="#666" stroke-width="1.5" stroke-linejoin="round"/>
   <rect x="82" y="46" width="220" height="15" rx="3" fill="#1d1d1d" stroke="#333"/>
-  <text x="90" y="56.5" font-size="8" fill="#aaa" font-family="Segoe UI, sans-serif">10 MB - Discord (Free)</text>
+  <text x="90" y="56.5" font-size="8" fill="#aaa" font-family="Segoe UI, sans-serif">20 MB - Discord (Free)</text>
   <path d="M288 50l6 6 6-6" stroke="#666" stroke-width="1.5" stroke-linejoin="round"/>
   <rect x="82" y="65" width="220" height="15" rx="3" fill="#1d1d1d" stroke="#333"/>
   <text x="90" y="75.5" font-size="8" fill="#aaa" font-family="Segoe UI, sans-serif">Native</text>

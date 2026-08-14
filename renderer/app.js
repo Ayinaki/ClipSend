@@ -325,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Hardcode presets to match presets.js (normally we'd IPC this, but hardcoding for simplicity in UI)
   const presets = [
-    { id: 'discord-free', label: '10 MB - Discord (Free)', sizeMB: 10, mode: 'size-limit' },
+    { id: 'discord-free', label: '20 MB - Discord (Free)', sizeMB: 20, mode: 'size-limit' },
     { id: 'discord-nitro-basic', label: '50 MB - Discord (Nitro Basic)', sizeMB: 50, mode: 'size-limit' },
     { id: 'discord-nitro', label: '500 MB - Discord (Nitro)', sizeMB: 500, mode: 'size-limit' },
     { id: 'custom-size', label: 'Custom Target Size', mode: 'size-limit', isCustom: true },
@@ -339,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     presetSelect.appendChild(opt);
   });
   
-  // Set default to 10 MB Discord Free
+  // Set default to 20 MB Discord Free
   presetSelect.value = 'discord-free';
 
   presetSelect.addEventListener('change', () => {
@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const presetId = presetSelect.value;
     const preset = presets.find(p => p.id === presetId);
     
-    let targetSizeMB = preset ? preset.sizeMB : 10;
+    let targetSizeMB = preset ? preset.sizeMB : 20;
     let mode = preset ? (preset.mode || 'size-limit') : 'size-limit';
 
     if (preset && preset.isCustom && !isMp3) {
