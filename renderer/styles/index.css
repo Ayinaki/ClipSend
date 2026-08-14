@@ -36,6 +36,9 @@
   --success-hover: #00685c;
   /* Bright teal-mint readouts (timecodes) - same hue family as the accent. */
   --timecode-color: #3ddc97;
+  /* Warning amber (titlebar + modal warning icons). The count pill keeps a
+     fixed mid-amber fill with dark text, since amber is theme-neutral. */
+  --warning-color: #d9a441;
   --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   --font-mono: 'Consolas', 'Courier New', monospace;
 
@@ -88,6 +91,7 @@ html[data-font="opendyslexic"] {
   --text-color: #3a3a3a;
   --text-muted: #888888;
   --timecode-color: #00796b;
+  --warning-color: #9a6f00;
   --bg-primary: #ececec;
   --bg-secondary: #ffffff;
   --bg-tertiary: #f4f4f4;
@@ -157,11 +161,12 @@ body {
 }
 
 .update-badge-btn {
-  background: linear-gradient(135deg, rgba(33, 150, 243, 0.2), rgba(0, 230, 118, 0.2));
-  color: #00e676;
-  border: 1px solid rgba(0, 230, 118, 0.4);
+  /* Flat teal chip, same language as the filled buttons (no gradient, no lift). */
+  background-color: var(--success-color);
+  color: #fff; /* white on #00796b = 5.3:1, WCAG AA */
+  border: 1px solid transparent;
   padding: 2px 8px;
-  border-radius: 12px;
+  border-radius: 4px;
   font-size: 10px;
   font-weight: 600;
   margin-left: 8px;
@@ -169,15 +174,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  transition: all 0.2s ease;
   outline: none;
 }
 
 .update-badge-btn:hover {
-  background: linear-gradient(135deg, rgba(33, 150, 243, 0.35), rgba(0, 230, 118, 0.35));
-  border-color: #00e676;
-  color: #fff;
-  transform: translateY(-1px);
+  background-color: var(--success-hover);
 }
 
 .titlebar-controls {
@@ -190,6 +191,10 @@ body {
 /* Window buttons stay clickable even though their column is a drag region */
 .titlebar-controls .win-btn {
   -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px; /* one glyph size for the whole icon row */
 }
 
 /* Centered export-estimate cluster in the title bar.
@@ -208,7 +213,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--surface-0);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 2px 10px;
@@ -233,9 +238,8 @@ body {
 .titlebar-estimate-item .plan-val {
   color: var(--text-primary);
   font-weight: 500;
-  color: #ddd;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface-1);
+  border: 1px solid var(--panel-border);
   border-radius: 3px;
   padding: 0 5px;
   line-height: 14px;
@@ -358,6 +362,75 @@ body {
   background-color: var(--hover-bg);
 }
 
+/* Update-modal release notes: a scrollable inset panel whose content is the
+   sanitized HTML of GitHub's generated changelog. The nested selectors style
+   that whitelisted markup (headings, lists, links, inline code) to match the
+   rest of the app instead of inheriting browser defaults. */
+#update-notes-container {
+  background: var(--inset-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+#update-notes-container h1,
+#update-notes-container h2,
+#update-notes-container h3,
+#update-notes-container h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+#update-notes-container p {
+  margin: 0 0 8px;
+}
+#update-notes-container p:last-child {
+  margin-bottom: 0;
+}
+#update-notes-container ul,
+#update-notes-container ol {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+#update-notes-container li {
+  margin-bottom: 4px;
+}
+#update-notes-container li:last-child {
+  margin-bottom: 0;
+}
+#update-notes-container a {
+  color: var(--accent-color);
+  text-decoration: none;
+}
+#update-notes-container a:hover {
+  text-decoration: underline;
+}
+#update-notes-container strong,
+#update-notes-container b {
+  color: var(--text-primary);
+}
+#update-notes-container code,
+#update-notes-container tt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--kbd-bg);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+#update-notes-container details {
+  margin-bottom: 8px;
+}
+#update-notes-container summary {
+  cursor: pointer;
+  color: var(--accent-color);
+}
+
 .panel {
   background-color: var(--surface-2);
   border: 1px solid var(--panel-border);
@@ -421,6 +494,13 @@ button {
 
 button:hover {
   background-color: var(--success-hover);
+}
+
+/* Mouse focus stays flat, but keyboard nav needs a visible ring (matches the
+   onboarding modal). Selects/inputs keep their own box-shadow ring. */
+button:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 button:disabled {
@@ -587,10 +667,14 @@ select option:disabled {
 .cs-dropdown-btn:hover {
   border-color: var(--border-strong);
 }
-.cs-dropdown.open .cs-dropdown-btn,
-.cs-dropdown-btn:focus-visible {
+.cs-dropdown.open .cs-dropdown-btn {
   border-color: var(--accent-color);
   box-shadow: 0 0 0 1px var(--accent-color);
+}
+/* Focus ring comes from the shared button:focus-visible rule; keep only the
+   accent border here so the two don't double up. */
+.cs-dropdown-btn:focus-visible {
+  border-color: var(--accent-color);
 }
 .cs-dropdown.disabled .cs-dropdown-btn {
   background-color: var(--disabled-bg);
@@ -1780,7 +1864,7 @@ select.speed-select:hover {
 }
 
 .warning-card-icon {
-  color: #d9a441;
+  color: var(--warning-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2441,8 +2525,8 @@ select.speed-select:hover {
   animation: shortcut-record-pulse 1.2s ease-in-out infinite;
 }
 .shortcut-key-btn.conflict {
-  border-color: #e5484d;
-  color: #e5484d;
+  border-color: var(--error-color);
+  color: var(--error-color);
   animation: none;
 }
 @keyframes shortcut-record-pulse {

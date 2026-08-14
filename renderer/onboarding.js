@@ -12,59 +12,65 @@ const AUTO_SHOW_DELAY_MS = 700;
 const SETTING_KEY = 'hasSeenOnboarding';
 
 // --- Step visuals (ghost mocks of the real UI, hand-authored) ---
+//
+// The SVGs are injected into the DOM (not loaded as images), so CSS custom
+// properties resolve inside them. Chrome colors reference the app tokens so
+// the mocks flip with the light theme; the only literals left are media bits
+// (the black video frame, thumbnail time bar) that stay dark in both themes,
+// matching the real letterbox convention.
 
 // A play button framed by two trim brackets: "trim + playback" in one glyph.
 const VISUAL_WELCOME = `
 <svg viewBox="0 0 380 96" fill="none" aria-hidden="true">
-  <rect x="110" y="14" width="160" height="68" rx="6" fill="#141414" stroke="#2a2a2a"/>
-  <rect x="110" y="14" width="160" height="68" rx="6" fill="#2ba87e" opacity="0.08"/>
+  <rect x="110" y="14" width="160" height="68" rx="6" fill="var(--surface-2)" stroke="var(--panel-border)"/>
+  <rect x="110" y="14" width="160" height="68" rx="6" fill="var(--accent-color)" opacity="0.08"/>
   <rect x="122" y="26" width="136" height="44" rx="3" fill="#000"/>
-  <path d="M172 38v20l16-10z" fill="#3ddc97"/>
-  <path d="M110 26v44M96 26h28M96 70h28" stroke="#3ddc97" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M270 26v44M256 26h28M256 70h28" stroke="#3ddc97" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M172 38v20l16-10z" fill="var(--timecode-color)"/>
+  <path d="M110 26v44M96 26h28M96 70h28" stroke="var(--timecode-color)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M270 26v44M256 26h28M256 70h28" stroke="var(--timecode-color)" stroke-width="2.5" stroke-linecap="round"/>
 </svg>`;
 
 // Waveform with the kept-window highlight, trim brackets and playhead.
 const VISUAL_TRIM = `
 <svg viewBox="0 0 380 96" fill="none" aria-hidden="true">
-  <rect x="16" y="16" width="348" height="54" rx="4" fill="#121212" stroke="#2a2a2a"/>
-  <rect x="102" y="16" width="104" height="54" fill="#2ba87e" opacity="0.1"/>
-  <rect x="24" y="58" width="3" height="12" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="34" y="54" width="3" height="16" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="44" y="50" width="3" height="20" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="54" y="56" width="3" height="14" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="64" y="61" width="3" height="9" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="74" y="48" width="3" height="22" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="84" y="39" width="3" height="31" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="94" y="53" width="3" height="17" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="104" y="58" width="3" height="12" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="114" y="44" width="3" height="26" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="124" y="35" width="3" height="35" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="134" y="46" width="3" height="24" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="144" y="56" width="3" height="14" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="154" y="42" width="3" height="28" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="164" y="51" width="3" height="19" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="174" y="38" width="3" height="32" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="184" y="46" width="3" height="24" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="194" y="58" width="3" height="12" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="204" y="52" width="3" height="18" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="214" y="44" width="3" height="26" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="224" y="40" width="3" height="30" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="234" y="49" width="3" height="21" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="244" y="57" width="3" height="13" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <rect x="254" y="60" width="3" height="10" rx="1.5" fill="#1d8f6b" opacity="0.9"/>
-  <rect x="264" y="55" width="3" height="15" rx="1.5" fill="#3ddc97" opacity="0.9"/>
-  <rect x="274" y="59" width="3" height="11" rx="1.5" fill="#2ba87e" opacity="0.9"/>
-  <path d="M102 22v42M90 22h24M90 64h24" stroke="#3ddc97" stroke-width="2" stroke-linecap="round"/>
-  <path d="M206 22v42M194 22h24M194 64h24" stroke="#3ddc97" stroke-width="2" stroke-linecap="round"/>
-  <line x1="150" y1="16" x2="150" y2="70" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-  <path d="M144 16h12l-6 6z" fill="#fff"/>
-  <rect x="26" y="76" width="2" height="3" rx="1" fill="#333"/>
-  <rect x="86" y="76" width="2" height="3" rx="1" fill="#333"/>
-  <rect x="146" y="76" width="2" height="3" rx="1" fill="#333"/>
-  <rect x="206" y="76" width="2" height="3" rx="1" fill="#333"/>
-  <rect x="266" y="76" width="2" height="3" rx="1" fill="#333"/>
-  <rect x="326" y="76" width="2" height="3" rx="1" fill="#333"/>
+  <rect x="16" y="16" width="348" height="54" rx="4" fill="var(--bg-tertiary)" stroke="var(--panel-border)"/>
+  <rect x="102" y="16" width="104" height="54" fill="var(--accent-color)" opacity="0.1"/>
+  <rect x="24" y="58" width="3" height="12" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="34" y="54" width="3" height="16" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="44" y="50" width="3" height="20" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="54" y="56" width="3" height="14" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="64" y="61" width="3" height="9" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="74" y="48" width="3" height="22" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="84" y="39" width="3" height="31" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="94" y="53" width="3" height="17" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="104" y="58" width="3" height="12" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="114" y="44" width="3" height="26" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="124" y="35" width="3" height="35" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="134" y="46" width="3" height="24" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="144" y="56" width="3" height="14" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="154" y="42" width="3" height="28" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="164" y="51" width="3" height="19" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="174" y="38" width="3" height="32" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="184" y="46" width="3" height="24" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="194" y="58" width="3" height="12" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="204" y="52" width="3" height="18" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="214" y="44" width="3" height="26" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="224" y="40" width="3" height="30" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="234" y="49" width="3" height="21" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="244" y="57" width="3" height="13" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <rect x="254" y="60" width="3" height="10" rx="1.5" fill="var(--accent-hover)" opacity="0.9"/>
+  <rect x="264" y="55" width="3" height="15" rx="1.5" fill="var(--timecode-color)" opacity="0.9"/>
+  <rect x="274" y="59" width="3" height="11" rx="1.5" fill="var(--accent-color)" opacity="0.9"/>
+  <path d="M102 22v42M90 22h24M90 64h24" stroke="var(--timecode-color)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M206 22v42M194 22h24M194 64h24" stroke="var(--timecode-color)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="150" y1="16" x2="150" y2="70" stroke="var(--text-primary)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M144 16h12l-6 6z" fill="var(--text-primary)"/>
+  <rect x="26" y="76" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+  <rect x="86" y="76" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+  <rect x="146" y="76" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+  <rect x="206" y="76" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+  <rect x="266" y="76" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+  <rect x="326" y="76" width="2" height="3" rx="1" fill="var(--border-strong)"/>
 </svg>`;
 
 // Three merge blocks (first selected in teal) with an insertion caret showing reorder.
@@ -72,46 +78,46 @@ const VISUAL_MERGE = `
 <svg viewBox="0 0 380 96" fill="none" aria-hidden="true">
   <defs>
     <pattern id="onb-stripe" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width="3" height="6" fill="#2ba87e" opacity="0.15"/>
+      <rect width="3" height="6" fill="var(--accent-color)" opacity="0.15"/>
     </pattern>
   </defs>
-  <rect x="18" y="22" width="96" height="52" rx="4" fill="#171717" stroke="#2ba87e"/>
+  <rect x="18" y="22" width="96" height="52" rx="4" fill="var(--bg-secondary)" stroke="var(--accent-color)"/>
   <rect x="18" y="22" width="96" height="52" rx="4" fill="url(#onb-stripe)"/>
   <rect x="23" y="27" width="16" height="16" rx="3" fill="#eee"/>
   <text x="31" y="39" text-anchor="middle" font-size="9" font-weight="700" fill="#111" font-family="Segoe UI, sans-serif">1</text>
   <rect x="18" y="64" width="96" height="10" fill="#000" opacity="0.45"/>
   <text x="66" y="71.5" text-anchor="middle" font-size="7" fill="#bbb" font-family="Consolas, monospace">2:39</text>
-  <rect x="122" y="22" width="110" height="52" rx="4" fill="#171717" stroke="#2f2f2f"/>
+  <rect x="122" y="22" width="110" height="52" rx="4" fill="var(--bg-secondary)" stroke="var(--panel-border)"/>
   <rect x="122" y="22" width="110" height="52" rx="4" fill="url(#onb-stripe)"/>
   <rect x="127" y="27" width="16" height="16" rx="3" fill="#eee"/>
   <text x="135" y="39" text-anchor="middle" font-size="9" font-weight="700" fill="#111" font-family="Segoe UI, sans-serif">2</text>
   <rect x="122" y="64" width="110" height="10" fill="#000" opacity="0.45"/>
   <text x="177" y="71.5" text-anchor="middle" font-size="7" fill="#bbb" font-family="Consolas, monospace">2:41</text>
-  <rect x="240" y="22" width="82" height="52" rx="4" fill="#171717" stroke="#2f2f2f"/>
+  <rect x="240" y="22" width="82" height="52" rx="4" fill="var(--bg-secondary)" stroke="var(--panel-border)"/>
   <rect x="240" y="22" width="82" height="52" rx="4" fill="url(#onb-stripe)"/>
   <rect x="245" y="27" width="16" height="16" rx="3" fill="#eee"/>
   <text x="253" y="39" text-anchor="middle" font-size="9" font-weight="700" fill="#111" font-family="Segoe UI, sans-serif">3</text>
   <rect x="240" y="64" width="82" height="10" fill="#000" opacity="0.45"/>
   <text x="281" y="71.5" text-anchor="middle" font-size="7" fill="#bbb" font-family="Consolas, monospace">0:47</text>
-  <rect x="236" y="38" width="2" height="20" rx="1" fill="#3ddc97"/>
-  <path d="M238 44l5 3-5 3z" fill="#3ddc97"/>
+  <rect x="236" y="38" width="2" height="20" rx="1" fill="var(--timecode-color)"/>
+  <path d="M238 44l5 3-5 3z" fill="var(--timecode-color)"/>
 </svg>`;
 
 // Mock of the shared Export Settings panel (three selects + export button).
 const VISUAL_EXPORT = `
 <svg viewBox="0 0 380 96" fill="none" aria-hidden="true">
-  <rect x="70" y="8" width="244" height="80" rx="4" fill="#141414" stroke="#2a2a2a"/>
-  <text x="82" y="21" font-size="7" font-weight="700" letter-spacing="1.5" fill="#666" font-family="Segoe UI, sans-serif">EXPORT SETTINGS</text>
-  <rect x="82" y="27" width="220" height="15" rx="3" fill="#1d1d1d" stroke="#333"/>
-  <text x="90" y="37.5" font-size="8" fill="#aaa" font-family="Segoe UI, sans-serif">MP4 (Video)</text>
-  <path d="M288 31l6 6 6-6" stroke="#666" stroke-width="1.5" stroke-linejoin="round"/>
-  <rect x="82" y="46" width="220" height="15" rx="3" fill="#1d1d1d" stroke="#333"/>
-  <text x="90" y="56.5" font-size="8" fill="#aaa" font-family="Segoe UI, sans-serif">20 MB - Discord (Free)</text>
-  <path d="M288 50l6 6 6-6" stroke="#666" stroke-width="1.5" stroke-linejoin="round"/>
-  <rect x="82" y="65" width="220" height="15" rx="3" fill="#1d1d1d" stroke="#333"/>
-  <text x="90" y="75.5" font-size="8" fill="#aaa" font-family="Segoe UI, sans-serif">Native</text>
-  <path d="M288 69l6 6 6-6" stroke="#666" stroke-width="1.5" stroke-linejoin="round"/>
-  <rect x="30" y="65" width="30" height="15" rx="3" fill="#2ba87e"/>
+  <rect x="70" y="8" width="244" height="80" rx="4" fill="var(--surface-2)" stroke="var(--panel-border)"/>
+  <text x="82" y="21" font-size="7" font-weight="700" letter-spacing="1.5" fill="var(--text-muted)" font-family="Segoe UI, sans-serif">EXPORT SETTINGS</text>
+  <rect x="82" y="27" width="220" height="15" rx="3" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="90" y="37.5" font-size="8" fill="var(--text-secondary)" font-family="Segoe UI, sans-serif">MP4 (Video)</text>
+  <path d="M288 31l6 6 6-6" stroke="var(--text-muted)" stroke-width="1.5" stroke-linejoin="round"/>
+  <rect x="82" y="46" width="220" height="15" rx="3" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="90" y="56.5" font-size="8" fill="var(--text-secondary)" font-family="Segoe UI, sans-serif">20 MB - Discord (Free)</text>
+  <path d="M288 50l6 6 6-6" stroke="var(--text-muted)" stroke-width="1.5" stroke-linejoin="round"/>
+  <rect x="82" y="65" width="220" height="15" rx="3" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="90" y="75.5" font-size="8" fill="var(--text-secondary)" font-family="Segoe UI, sans-serif">Native</text>
+  <path d="M288 69l6 6 6-6" stroke="var(--text-muted)" stroke-width="1.5" stroke-linejoin="round"/>
+  <rect x="30" y="65" width="30" height="15" rx="3" fill="var(--accent-color)"/>
   <path d="M40 69v7l6-3.5z" fill="#fff"/>
 </svg>`;
 
@@ -119,19 +125,19 @@ const VISUAL_EXPORT = `
 // step's visual for hardware acceleration + the AV1 codec choice.
 const VISUAL_ENCODING = `
 <svg viewBox="0 0 380 96" fill="none" aria-hidden="true">
-  <rect x="94" y="18" width="190" height="60" rx="6" fill="#141414" stroke="#2a2a2a"/>
-  <rect x="94" y="18" width="190" height="60" rx="6" fill="#2ba87e" opacity="0.06"/>
-  <rect x="112" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="128" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="112" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="128" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="240" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="256" y="24" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="240" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="256" y="68" width="10" height="4" rx="1" fill="#2f2f2f"/>
-  <rect x="150" y="32" width="78" height="32" rx="3" fill="#1d1d1d" stroke="#3ddc97"/>
-  <text x="189" y="54" text-anchor="middle" font-size="13" font-weight="700" fill="#3ddc97" font-family="Consolas, monospace">AV1</text>
-  <rect x="256" y="46" width="100" height="20" rx="10" fill="#2ba87e"/>
+  <rect x="94" y="18" width="190" height="60" rx="6" fill="var(--surface-2)" stroke="var(--panel-border)"/>
+  <rect x="94" y="18" width="190" height="60" rx="6" fill="var(--accent-color)" opacity="0.06"/>
+  <rect x="112" y="24" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="128" y="24" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="112" y="68" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="128" y="68" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="240" y="24" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="256" y="24" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="240" y="68" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="256" y="68" width="10" height="4" rx="1" fill="var(--panel-border)"/>
+  <rect x="150" y="32" width="78" height="32" rx="3" fill="var(--surface-1)" stroke="var(--timecode-color)"/>
+  <text x="189" y="54" text-anchor="middle" font-size="13" font-weight="700" fill="var(--timecode-color)" font-family="Consolas, monospace">AV1</text>
+  <rect x="256" y="46" width="100" height="20" rx="10" fill="var(--accent-color)"/>
   <text x="306" y="60" text-anchor="middle" font-size="9" font-weight="700" fill="#0d1f1a" font-family="Segoe UI, sans-serif">2x quality per MB</text>
 </svg>`;
 
@@ -140,26 +146,26 @@ const VISUAL_ENCODING = `
 // keys are the ones that set / step trim points.
 const VISUAL_SHORTCUTS = `
 <svg viewBox="0 0 380 96" fill="none" aria-hidden="true">
-  <rect x="34" y="22" width="112" height="18" rx="4" fill="#1d1d1d" stroke="#3a3a3a"/>
-  <text x="90" y="36.5" text-anchor="middle" font-size="8" fill="#bbb" font-family="Consolas, monospace">Space</text>
-  <rect x="154" y="22" width="30" height="18" rx="4" fill="#161616" stroke="#2ba87e"/>
-  <text x="169" y="36.5" text-anchor="middle" font-size="9" fill="#3ddc97" font-family="Consolas, monospace">I</text>
-  <rect x="188" y="22" width="30" height="18" rx="4" fill="#161616" stroke="#2ba87e"/>
-  <text x="203" y="36.5" text-anchor="middle" font-size="9" fill="#3ddc97" font-family="Consolas, monospace">O</text>
-  <rect x="232" y="22" width="54" height="18" rx="4" fill="#1d1d1d" stroke="#3a3a3a"/>
-  <text x="259" y="36.5" text-anchor="middle" font-size="8" fill="#bbb" font-family="Consolas, monospace">Home</text>
-  <rect x="290" y="22" width="54" height="18" rx="4" fill="#1d1d1d" stroke="#3a3a3a"/>
-  <text x="317" y="36.5" text-anchor="middle" font-size="8" fill="#bbb" font-family="Consolas, monospace">End</text>
-  <rect x="67" y="54" width="52" height="18" rx="4" fill="#1d1d1d" stroke="#3a3a3a"/>
-  <text x="93" y="68.5" text-anchor="middle" font-size="8" fill="#bbb" font-family="Consolas, monospace">Ctrl</text>
-  <rect x="127" y="54" width="26" height="18" rx="4" fill="#161616" stroke="#2ba87e"/>
-  <text x="140" y="68.5" text-anchor="middle" font-size="10" fill="#3ddc97" font-family="Consolas, monospace">+</text>
-  <rect x="161" y="54" width="76" height="18" rx="4" fill="#1d1d1d" stroke="#3a3a3a"/>
-  <text x="199" y="68.5" text-anchor="middle" font-size="8" fill="#bbb" font-family="Consolas, monospace">Wheel</text>
-  <rect x="245" y="54" width="30" height="18" rx="4" fill="#161616" stroke="#2ba87e"/>
-  <text x="260" y="68.5" text-anchor="middle" font-size="10" fill="#3ddc97" font-family="Consolas, monospace">&larr;</text>
-  <rect x="283" y="54" width="30" height="18" rx="4" fill="#161616" stroke="#2ba87e"/>
-  <text x="298" y="68.5" text-anchor="middle" font-size="10" fill="#3ddc97" font-family="Consolas, monospace">&rarr;</text>
+  <rect x="34" y="22" width="112" height="18" rx="4" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="90" y="36.5" text-anchor="middle" font-size="8" fill="var(--text-secondary)" font-family="Consolas, monospace">Space</text>
+  <rect x="154" y="22" width="30" height="18" rx="4" fill="var(--bg-secondary)" stroke="var(--accent-color)"/>
+  <text x="169" y="36.5" text-anchor="middle" font-size="9" fill="var(--timecode-color)" font-family="Consolas, monospace">I</text>
+  <rect x="188" y="22" width="30" height="18" rx="4" fill="var(--bg-secondary)" stroke="var(--accent-color)"/>
+  <text x="203" y="36.5" text-anchor="middle" font-size="9" fill="var(--timecode-color)" font-family="Consolas, monospace">O</text>
+  <rect x="232" y="22" width="54" height="18" rx="4" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="259" y="36.5" text-anchor="middle" font-size="8" fill="var(--text-secondary)" font-family="Consolas, monospace">Home</text>
+  <rect x="290" y="22" width="54" height="18" rx="4" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="317" y="36.5" text-anchor="middle" font-size="8" fill="var(--text-secondary)" font-family="Consolas, monospace">End</text>
+  <rect x="67" y="54" width="52" height="18" rx="4" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="93" y="68.5" text-anchor="middle" font-size="8" fill="var(--text-secondary)" font-family="Consolas, monospace">Ctrl</text>
+  <rect x="127" y="54" width="26" height="18" rx="4" fill="var(--bg-secondary)" stroke="var(--accent-color)"/>
+  <text x="140" y="68.5" text-anchor="middle" font-size="10" fill="var(--timecode-color)" font-family="Consolas, monospace">+</text>
+  <rect x="161" y="54" width="76" height="18" rx="4" fill="var(--surface-1)" stroke="var(--panel-border)"/>
+  <text x="199" y="68.5" text-anchor="middle" font-size="8" fill="var(--text-secondary)" font-family="Consolas, monospace">Wheel</text>
+  <rect x="245" y="54" width="30" height="18" rx="4" fill="var(--bg-secondary)" stroke="var(--accent-color)"/>
+  <text x="260" y="68.5" text-anchor="middle" font-size="10" fill="var(--timecode-color)" font-family="Consolas, monospace">&larr;</text>
+  <rect x="283" y="54" width="30" height="18" rx="4" fill="var(--bg-secondary)" stroke="var(--accent-color)"/>
+  <text x="298" y="68.5" text-anchor="middle" font-size="10" fill="var(--timecode-color)" font-family="Consolas, monospace">&rarr;</text>
 </svg>`;
 
 /** Tour steps: title, body (HTML, may include <kbd>/shortcut chips), visual. */
