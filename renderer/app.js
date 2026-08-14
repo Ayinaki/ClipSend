@@ -14,6 +14,7 @@ import { createUndoManager } from './utils/undo-manager.js';
 import { enhanceAllSelects } from './utils/dropdown.js';
 import { ICON_PLAY, ICON_PAUSE } from './utils/icons.js';
 import { DEFAULT_BINDINGS, matchAction, bindingLabel, valueToBinding } from './utils/keymap.js';
+import { sanitizeReleaseNotes } from './utils/release-notes.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // Replace native <select> controls with custom dropdowns before anything
@@ -2756,7 +2757,14 @@ document.addEventListener('DOMContentLoaded', () => {
       updateModalVersionInfo.textContent = `A new version of ClipSend (${activeUpdateData.version}) is available. Current version is ${activeUpdateData.currentVersion || ''}.`;
     }
     if (updateNotesContainer) {
-      updateNotesContainer.textContent = activeUpdateData.releaseNotes || 'No release notes provided.';
+      // GitHub release notes arrive as HTML; render a sanitized subset so the
+      // changelog looks like a changelog instead of a wall of markup text.
+      const notesHtml = sanitizeReleaseNotes(activeUpdateData.releaseNotes);
+      if (notesHtml) {
+        updateNotesContainer.innerHTML = notesHtml;
+      } else {
+        updateNotesContainer.textContent = 'No release notes provided.';
+      }
     }
     if (updateProgressSection) updateProgressSection.style.display = 'none';
     if (startUpdateBtn) {
@@ -2774,6 +2782,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   updateLaterBtn?.addEventListener('click', () => {
     if (updateModal) closeModal(updateModal);
+  });
+
+  // Changelog links (mentions, PR numbers, compare URLs) must open in the
+  // default browser — navigating the app window to GitHub would strand the
+  // user on a webpage with no way back into the app.
+  updateNotesContainer?.addEventListener('click', (e) => {
+    const anchor = e.target.closest ? e.target.closest('a') : null;
+    if (!anchor) return;
+    e.preventDefault();
+    const href = anchor.getAttribute('href');
+    if (href && window.clipSend.openExternalUrl) {
+      window.clipSend.openExternalUrl(href);
+    }
   });
 
   startUpdateBtn?.addEventListener('click', async () => {

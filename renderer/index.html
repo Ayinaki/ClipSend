@@ -36,7 +36,7 @@
         </div>
       </div>
       <div class="titlebar-controls">
-        <button id="titlebar-warning-btn" class="win-btn" data-tooltip="View Warnings" aria-label="View Warnings" style="font-size: 13px; color: #d9a441; display: none; align-items: center; justify-content: center; position: relative;">
+        <button id="titlebar-warning-btn" class="win-btn" data-tooltip="View Warnings" aria-label="View Warnings" style="color: var(--warning-color); display: none; align-items: center; justify-content: center; position: relative;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
             <line x1="12" y1="9" x2="12" y2="13"></line>
@@ -44,10 +44,10 @@
           </svg>
           <span id="titlebar-warning-count" class="titlebar-warning-count" style="display: none;">0</span>
         </button>
-        <button id="changelog-btn" class="win-btn" data-tooltip="Changelog" aria-label="Changelog" style="font-size: 13px;">&#xE81C;</button>
-        <button id="feedback-btn" class="win-btn" data-tooltip="Send Feedback" aria-label="Send Feedback" style="font-size: 13px;">&#xE939;</button>
-        <button id="help-btn" class="win-btn" data-tooltip="Keyboard Shortcuts" aria-label="Keyboard Shortcuts" style="font-size: 14px;">&#xE946;</button>
-        <button id="settings-btn" class="win-btn" data-tooltip="Settings" aria-label="Settings" style="font-size: 12px;">&#xE713;</button>
+        <button id="changelog-btn" class="win-btn" data-tooltip="Changelog" aria-label="Changelog">&#xE81C;</button>
+        <button id="feedback-btn" class="win-btn" data-tooltip="Send Feedback" aria-label="Send Feedback">&#xE939;</button>
+        <button id="help-btn" class="win-btn" data-tooltip="Keyboard Shortcuts" aria-label="Keyboard Shortcuts">&#xE946;</button>
+        <button id="settings-btn" class="win-btn" data-tooltip="Settings" aria-label="Settings">&#xE713;</button>
         <button id="win-min" class="win-btn" data-tooltip="Minimize" aria-label="Minimize">&#xE921;</button>
         <button id="win-close" class="win-btn win-close-btn" data-tooltip="Close" aria-label="Close">&#xE8BB;</button>
       </div>
@@ -230,73 +230,73 @@
             <div class="drop-card">
               <div class="drop-card-visual" aria-hidden="true">
                 <svg viewBox="0 0 380 96" fill="none">
-                  <rect x="2" y="8" width="376" height="46" rx="4" fill="#121212" stroke="#2a2a2a"/>
-                  <rect x="5" y="37" width="2.5" height="17" rx="1" fill="#2ba87e" opacity="0.76"/>
-                  <rect x="12" y="40" width="2.5" height="14" rx="1" fill="#1d8f6b" opacity="0.67"/>
-                  <rect x="19" y="33" width="2.5" height="21" rx="1" fill="#2ba87e" opacity="0.84"/>
-                  <rect x="26" y="36" width="2.5" height="18" rx="1" fill="#2ba87e" opacity="0.76"/>
-                  <rect x="33" y="41" width="2.5" height="13" rx="1" fill="#1d8f6b" opacity="0.62"/>
-                  <rect x="40" y="29" width="2.5" height="25" rx="1" fill="#2ba87e" opacity="0.90"/>
-                  <rect x="47" y="29" width="2.5" height="25" rx="1" fill="#2ba87e" opacity="0.86"/>
-                  <rect x="54" y="43" width="2.5" height="11" rx="1" fill="#1d8f6b" opacity="0.57"/>
-                  <rect x="61" y="25" width="2.5" height="29" rx="1" fill="#3ddc97" opacity="0.92"/>
-                  <rect x="68" y="34" width="2.5" height="20" rx="1" fill="#2ba87e" opacity="0.73"/>
-                  <rect x="75" y="23" width="2.5" height="31" rx="1" fill="#3ddc97" opacity="0.94"/>
-                  <rect x="82" y="28" width="2.5" height="26" rx="1" fill="#2ba87e" opacity="0.83"/>
-                  <rect x="89" y="29" width="2.5" height="25" rx="1" fill="#2ba87e" opacity="0.80"/>
-                  <rect x="96" y="37" width="2.5" height="17" rx="1" fill="#1d8f6b" opacity="0.65"/>
-                  <rect x="103" y="37" width="2.5" height="17" rx="1" fill="#1d8f6b" opacity="0.64"/>
-                  <rect x="110" y="17" width="2.5" height="37" rx="1" fill="#3ddc97" opacity="0.98"/>
-                  <rect x="117" y="23" width="2.5" height="31" rx="1" fill="#2ba87e" opacity="0.88"/>
-                  <rect x="124" y="16" width="2.5" height="38" rx="1" fill="#3ddc97" opacity="0.98"/>
-                  <rect x="131" y="23" width="2.5" height="31" rx="1" fill="#2ba87e" opacity="0.86"/>
-                  <rect x="138" y="35" width="2.5" height="19" rx="1" fill="#1d8f6b" opacity="0.67"/>
-                  <rect x="145" y="15" width="2.5" height="39" rx="1" fill="#3ddc97" opacity="0.98"/>
-                  <rect x="152" y="14" width="2.5" height="40" rx="1" fill="#3ddc97" opacity="0.99"/>
-                  <rect x="159" y="28" width="2.5" height="26" rx="1" fill="#2ba87e" opacity="0.77"/>
-                  <rect x="166" y="41" width="2.5" height="13" rx="1" fill="#1d8f6b" opacity="0.57"/>
-                  <rect x="173" y="38" width="2.5" height="16" rx="1" fill="#1d8f6b" opacity="0.61"/>
-                  <rect x="180" y="41" width="2.5" height="13" rx="1" fill="#1d8f6b" opacity="0.58"/>
-                  <rect x="187" y="16" width="2.5" height="38" rx="1" fill="#3ddc97" opacity="0.94"/>
-                  <rect x="194" y="45" width="2.5" height="9" rx="1" fill="#1d8f6b" opacity="0.51"/>
-                  <rect x="201" y="45" width="2.5" height="9" rx="1" fill="#1d8f6b" opacity="0.51"/>
-                  <rect x="208" y="35" width="2.5" height="19" rx="1" fill="#1d8f6b" opacity="0.66"/>
-                  <rect x="215" y="31" width="2.5" height="23" rx="1" fill="#1d8f6b" opacity="0.72"/>
-                  <rect x="222" y="27" width="2.5" height="27" rx="1" fill="#2ba87e" opacity="0.79"/>
-                  <rect x="229" y="37" width="2.5" height="17" rx="1" fill="#1d8f6b" opacity="0.63"/>
-                  <rect x="236" y="18" width="2.5" height="36" rx="1" fill="#3ddc97" opacity="0.92"/>
-                  <rect x="243" y="14" width="2.5" height="40" rx="1" fill="#3ddc97" opacity="1.00"/>
-                  <rect x="250" y="27" width="2.5" height="27" rx="1" fill="#2ba87e" opacity="0.80"/>
-                  <rect x="257" y="20" width="2.5" height="34" rx="1" fill="#3ddc97" opacity="0.92"/>
-                  <rect x="264" y="18" width="2.5" height="36" rx="1" fill="#3ddc97" opacity="0.95"/>
-                  <rect x="271" y="22" width="2.5" height="32" rx="1" fill="#3ddc97" opacity="0.90"/>
-                  <rect x="278" y="30" width="2.5" height="24" rx="1" fill="#2ba87e" opacity="0.78"/>
-                  <rect x="285" y="27" width="2.5" height="27" rx="1" fill="#2ba87e" opacity="0.83"/>
-                  <rect x="292" y="25" width="2.5" height="29" rx="1" fill="#2ba87e" opacity="0.87"/>
-                  <rect x="299" y="28" width="2.5" height="26" rx="1" fill="#2ba87e" opacity="0.83"/>
-                  <rect x="306" y="23" width="2.5" height="31" rx="1" fill="#3ddc97" opacity="0.93"/>
-                  <rect x="313" y="41" width="2.5" height="13" rx="1" fill="#1d8f6b" opacity="0.60"/>
-                  <rect x="320" y="39" width="2.5" height="15" rx="1" fill="#1d8f6b" opacity="0.65"/>
-                  <rect x="327" y="35" width="2.5" height="19" rx="1" fill="#2ba87e" opacity="0.73"/>
-                  <rect x="334" y="25" width="2.5" height="29" rx="1" fill="#3ddc97" opacity="0.96"/>
-                  <rect x="341" y="42" width="2.5" height="12" rx="1" fill="#1d8f6b" opacity="0.60"/>
-                  <rect x="348" y="37" width="2.5" height="17" rx="1" fill="#1d8f6b" opacity="0.71"/>
-                  <rect x="355" y="40" width="2.5" height="14" rx="1" fill="#1d8f6b" opacity="0.65"/>
-                  <rect x="362" y="32" width="2.5" height="22" rx="1" fill="#2ba87e" opacity="0.88"/>
-                  <rect x="369" y="33" width="2.5" height="21" rx="1" fill="#2ba87e" opacity="0.87"/>
-                  <rect x="376" y="33" width="2.5" height="21" rx="1" fill="#2ba87e" opacity="0.88"/>
-                  <rect x="106" y="8" width="166" height="46" fill="#2ba87e" opacity="0.1"/>
-                  <path d="M106 12v36M98 12h16M98 48h16" stroke="#3ddc97" stroke-width="2" stroke-linecap="round"/>
-                  <path d="M272 12v36M264 12h16M264 48h16" stroke="#3ddc97" stroke-width="2" stroke-linecap="round"/>
-                  <line x1="190" y1="8" x2="190" y2="54" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-                  <path d="M184 8h12l-6 6z" fill="#fff"/>
-                  <rect x="6" y="58" width="2" height="3" rx="1" fill="#333"/>
-                  <rect x="68" y="58" width="2" height="3" rx="1" fill="#333"/>
-                  <rect x="130" y="58" width="2" height="3" rx="1" fill="#333"/>
-                  <rect x="192" y="58" width="2" height="3" rx="1" fill="#333"/>
-                  <rect x="254" y="58" width="2" height="3" rx="1" fill="#333"/>
-                  <rect x="316" y="58" width="2" height="3" rx="1" fill="#333"/>
-                  <rect x="374" y="58" width="2" height="3" rx="1" fill="#333"/>
+                  <rect x="2" y="8" width="376" height="46" rx="4" fill="var(--bg-tertiary)" stroke="var(--panel-border)"/>
+                  <rect x="5" y="37" width="2.5" height="17" rx="1" fill="var(--accent-color)" opacity="0.76"/>
+                  <rect x="12" y="40" width="2.5" height="14" rx="1" fill="var(--accent-hover)" opacity="0.67"/>
+                  <rect x="19" y="33" width="2.5" height="21" rx="1" fill="var(--accent-color)" opacity="0.84"/>
+                  <rect x="26" y="36" width="2.5" height="18" rx="1" fill="var(--accent-color)" opacity="0.76"/>
+                  <rect x="33" y="41" width="2.5" height="13" rx="1" fill="var(--accent-hover)" opacity="0.62"/>
+                  <rect x="40" y="29" width="2.5" height="25" rx="1" fill="var(--accent-color)" opacity="0.90"/>
+                  <rect x="47" y="29" width="2.5" height="25" rx="1" fill="var(--accent-color)" opacity="0.86"/>
+                  <rect x="54" y="43" width="2.5" height="11" rx="1" fill="var(--accent-hover)" opacity="0.57"/>
+                  <rect x="61" y="25" width="2.5" height="29" rx="1" fill="var(--timecode-color)" opacity="0.92"/>
+                  <rect x="68" y="34" width="2.5" height="20" rx="1" fill="var(--accent-color)" opacity="0.73"/>
+                  <rect x="75" y="23" width="2.5" height="31" rx="1" fill="var(--timecode-color)" opacity="0.94"/>
+                  <rect x="82" y="28" width="2.5" height="26" rx="1" fill="var(--accent-color)" opacity="0.83"/>
+                  <rect x="89" y="29" width="2.5" height="25" rx="1" fill="var(--accent-color)" opacity="0.80"/>
+                  <rect x="96" y="37" width="2.5" height="17" rx="1" fill="var(--accent-hover)" opacity="0.65"/>
+                  <rect x="103" y="37" width="2.5" height="17" rx="1" fill="var(--accent-hover)" opacity="0.64"/>
+                  <rect x="110" y="17" width="2.5" height="37" rx="1" fill="var(--timecode-color)" opacity="0.98"/>
+                  <rect x="117" y="23" width="2.5" height="31" rx="1" fill="var(--accent-color)" opacity="0.88"/>
+                  <rect x="124" y="16" width="2.5" height="38" rx="1" fill="var(--timecode-color)" opacity="0.98"/>
+                  <rect x="131" y="23" width="2.5" height="31" rx="1" fill="var(--accent-color)" opacity="0.86"/>
+                  <rect x="138" y="35" width="2.5" height="19" rx="1" fill="var(--accent-hover)" opacity="0.67"/>
+                  <rect x="145" y="15" width="2.5" height="39" rx="1" fill="var(--timecode-color)" opacity="0.98"/>
+                  <rect x="152" y="14" width="2.5" height="40" rx="1" fill="var(--timecode-color)" opacity="0.99"/>
+                  <rect x="159" y="28" width="2.5" height="26" rx="1" fill="var(--accent-color)" opacity="0.77"/>
+                  <rect x="166" y="41" width="2.5" height="13" rx="1" fill="var(--accent-hover)" opacity="0.57"/>
+                  <rect x="173" y="38" width="2.5" height="16" rx="1" fill="var(--accent-hover)" opacity="0.61"/>
+                  <rect x="180" y="41" width="2.5" height="13" rx="1" fill="var(--accent-hover)" opacity="0.58"/>
+                  <rect x="187" y="16" width="2.5" height="38" rx="1" fill="var(--timecode-color)" opacity="0.94"/>
+                  <rect x="194" y="45" width="2.5" height="9" rx="1" fill="var(--accent-hover)" opacity="0.51"/>
+                  <rect x="201" y="45" width="2.5" height="9" rx="1" fill="var(--accent-hover)" opacity="0.51"/>
+                  <rect x="208" y="35" width="2.5" height="19" rx="1" fill="var(--accent-hover)" opacity="0.66"/>
+                  <rect x="215" y="31" width="2.5" height="23" rx="1" fill="var(--accent-hover)" opacity="0.72"/>
+                  <rect x="222" y="27" width="2.5" height="27" rx="1" fill="var(--accent-color)" opacity="0.79"/>
+                  <rect x="229" y="37" width="2.5" height="17" rx="1" fill="var(--accent-hover)" opacity="0.63"/>
+                  <rect x="236" y="18" width="2.5" height="36" rx="1" fill="var(--timecode-color)" opacity="0.92"/>
+                  <rect x="243" y="14" width="2.5" height="40" rx="1" fill="var(--timecode-color)" opacity="1.00"/>
+                  <rect x="250" y="27" width="2.5" height="27" rx="1" fill="var(--accent-color)" opacity="0.80"/>
+                  <rect x="257" y="20" width="2.5" height="34" rx="1" fill="var(--timecode-color)" opacity="0.92"/>
+                  <rect x="264" y="18" width="2.5" height="36" rx="1" fill="var(--timecode-color)" opacity="0.95"/>
+                  <rect x="271" y="22" width="2.5" height="32" rx="1" fill="var(--timecode-color)" opacity="0.90"/>
+                  <rect x="278" y="30" width="2.5" height="24" rx="1" fill="var(--accent-color)" opacity="0.78"/>
+                  <rect x="285" y="27" width="2.5" height="27" rx="1" fill="var(--accent-color)" opacity="0.83"/>
+                  <rect x="292" y="25" width="2.5" height="29" rx="1" fill="var(--accent-color)" opacity="0.87"/>
+                  <rect x="299" y="28" width="2.5" height="26" rx="1" fill="var(--accent-color)" opacity="0.83"/>
+                  <rect x="306" y="23" width="2.5" height="31" rx="1" fill="var(--timecode-color)" opacity="0.93"/>
+                  <rect x="313" y="41" width="2.5" height="13" rx="1" fill="var(--accent-hover)" opacity="0.60"/>
+                  <rect x="320" y="39" width="2.5" height="15" rx="1" fill="var(--accent-hover)" opacity="0.65"/>
+                  <rect x="327" y="35" width="2.5" height="19" rx="1" fill="var(--accent-color)" opacity="0.73"/>
+                  <rect x="334" y="25" width="2.5" height="29" rx="1" fill="var(--timecode-color)" opacity="0.96"/>
+                  <rect x="341" y="42" width="2.5" height="12" rx="1" fill="var(--accent-hover)" opacity="0.60"/>
+                  <rect x="348" y="37" width="2.5" height="17" rx="1" fill="var(--accent-hover)" opacity="0.71"/>
+                  <rect x="355" y="40" width="2.5" height="14" rx="1" fill="var(--accent-hover)" opacity="0.65"/>
+                  <rect x="362" y="32" width="2.5" height="22" rx="1" fill="var(--accent-color)" opacity="0.88"/>
+                  <rect x="369" y="33" width="2.5" height="21" rx="1" fill="var(--accent-color)" opacity="0.87"/>
+                  <rect x="376" y="33" width="2.5" height="21" rx="1" fill="var(--accent-color)" opacity="0.88"/>
+                  <rect x="106" y="8" width="166" height="46" fill="var(--accent-color)" opacity="0.1"/>
+                  <path d="M106 12v36M98 12h16M98 48h16" stroke="var(--timecode-color)" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M272 12v36M264 12h16M264 48h16" stroke="var(--timecode-color)" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="190" y1="8" x2="190" y2="54" stroke="var(--text-primary)" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M184 8h12l-6 6z" fill="var(--text-primary)"/>
+                  <rect x="6" y="58" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+                  <rect x="68" y="58" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+                  <rect x="130" y="58" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+                  <rect x="192" y="58" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+                  <rect x="254" y="58" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+                  <rect x="316" y="58" width="2" height="3" rx="1" fill="var(--border-strong)"/>
+                  <rect x="374" y="58" width="2" height="3" rx="1" fill="var(--border-strong)"/>
                 </svg>
               </div>
               <div class="drop-card-copy">
@@ -351,7 +351,7 @@
           </div>
           <div class="timeline-container" style="position: relative;">
             <canvas id="timeline-canvas"></canvas>
-            <div id="waveform-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); color: #ccc; align-items: center; justify-content: center; font-size: 11px; pointer-events: none;">
+            <div id="waveform-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); color: var(--text-secondary); align-items: center; justify-content: center; font-size: 11px; pointer-events: none;">
               Extracting waveform...
             </div>
           </div>
@@ -432,11 +432,11 @@
                   <svg viewBox="0 0 380 96" fill="none">
                     <defs>
                       <pattern id="mock-stripe" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                        <rect width="3" height="6" fill="#2ba87e" opacity="0.16"/>
+                        <rect width="3" height="6" fill="var(--accent-color)" opacity="0.16"/>
                       </pattern>
                     </defs>
                     <g>
-                      <rect x="8" y="14" width="96" height="52" rx="4" fill="#171717" stroke="#2ba87e"/>
+                      <rect x="8" y="14" width="96" height="52" rx="4" fill="var(--bg-secondary)" stroke="var(--accent-color)"/>
                       <rect x="8" y="14" width="96" height="52" rx="4" fill="url(#mock-stripe)"/>
                       <rect x="13" y="19" width="14" height="14" rx="3" fill="#eee"/>
                       <text x="20" y="29" text-anchor="middle" font-size="8" font-weight="700" fill="#111" font-family="Segoe UI, sans-serif">1</text>
@@ -444,7 +444,7 @@
                       <text x="56" y="63.5" text-anchor="middle" font-size="7" fill="#bbb" font-family="Consolas, monospace">2:39</text>
                     </g>
                     <g>
-                      <rect x="112" y="14" width="112" height="52" rx="4" fill="#171717" stroke="#2f2f2f"/>
+                      <rect x="112" y="14" width="112" height="52" rx="4" fill="var(--bg-secondary)" stroke="var(--panel-border)"/>
                       <rect x="112" y="14" width="112" height="52" rx="4" fill="url(#mock-stripe)"/>
                       <rect x="117" y="19" width="14" height="14" rx="3" fill="#eee"/>
                       <text x="124" y="29" text-anchor="middle" font-size="8" font-weight="700" fill="#111" font-family="Segoe UI, sans-serif">2</text>
@@ -452,15 +452,15 @@
                       <text x="168" y="63.5" text-anchor="middle" font-size="7" fill="#bbb" font-family="Consolas, monospace">2:39</text>
                     </g>
                     <g>
-                      <rect x="232" y="14" width="84" height="52" rx="4" fill="#171717" stroke="#2f2f2f"/>
+                      <rect x="232" y="14" width="84" height="52" rx="4" fill="var(--bg-secondary)" stroke="var(--panel-border)"/>
                       <rect x="232" y="14" width="84" height="52" rx="4" fill="url(#mock-stripe)"/>
                       <rect x="237" y="19" width="14" height="14" rx="3" fill="#eee"/>
                       <text x="244" y="29" text-anchor="middle" font-size="8" font-weight="700" fill="#111" font-family="Segoe UI, sans-serif">3</text>
                       <rect x="232" y="56" width="84" height="10" fill="#000" opacity="0.45"/>
                       <text x="274" y="63.5" text-anchor="middle" font-size="7" fill="#bbb" font-family="Consolas, monospace">2:38</text>
                     </g>
-                    <rect x="324" y="14" width="44" height="52" rx="4" stroke="#3a3a3a" stroke-dasharray="4 3"/>
-                    <path d="M346 30v20M336 40h20" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+                    <rect x="324" y="14" width="44" height="52" rx="4" stroke="var(--panel-border)" stroke-dasharray="4 3"/>
+                    <path d="M346 30v20M336 40h20" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round"/>
                   </svg>
                 </div>
                 <div class="drop-card-copy">
@@ -532,7 +532,7 @@
       <div class="modal-content panel" style="width: 460px; max-height: 80vh; display: flex; flex-direction: column;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 12px; flex-shrink: 0;">
           <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE946;</span> Keyboard Shortcuts</span>
-          <button id="close-shortcuts-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="close-shortcuts-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content shortcuts-content" style="overflow-y: auto; padding-right: 8px;">
           <div class="shortcut-group active" id="shortcuts-trim-section">
@@ -569,7 +569,7 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg>
               Replay Welcome Tour
             </button>
-            <button id="close-settings-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+            <button id="close-settings-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
           </div>
         </div>
         <!-- Two-column grid so the growing setting list stays short instead of
@@ -694,7 +694,7 @@
       <div class="modal-content panel" style="width: 480px; max-height: 80vh; display: flex; flex-direction: column;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
           <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE946;</span> Keyboard Shortcuts</span>
-          <button id="shortcut-editor-close-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="shortcut-editor-close-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content" id="shortcut-editor-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-top: 10px;">
           <!-- Rows are built from keymap.js ACTIONS so the list never drifts
@@ -720,7 +720,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg>
             Quick Tour
           </span>
-          <button id="onboarding-close-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="onboarding-close-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="onboarding-visual" id="onboarding-visual"></div>
         <div class="onboarding-body">
@@ -743,7 +743,7 @@
       <div class="modal-content panel" style="width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 15px; flex-shrink: 0;">
           <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE81C;</span> What's New</span>
-          <button id="close-changelog-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="close-changelog-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content" id="changelog-content" style="overflow-y: auto; padding-right: 10px; flex-grow: 1;">
           <!-- Populated by JS -->
@@ -756,7 +756,7 @@
       <div class="modal-content panel" style="width: 450px;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 15px;">
           <span style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Segoe MDL2 Assets'; font-size: 14px;">&#xE939;</span> Send Feedback</span>
-          <button id="close-feedback-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="close-feedback-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content">
           <div class="input-group">
@@ -802,7 +802,7 @@
       <div class="modal-content panel">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
           <span>Export Complete</span>
-          <button id="close-export-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="close-export-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
           <div style="font-size: 14px; font-weight: 500;">Export completed successfully!</div>
@@ -823,14 +823,14 @@
       <div class="modal-content panel" style="width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
           <span style="display: flex; align-items: center; gap: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d9a441" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
               <line x1="12" y1="9" x2="12" y2="13"></line>
               <line x1="12" y1="17" x2="12.01" y2="17"></line>
             </svg>
             Warnings
           </span>
-          <button id="close-warnings-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="close-warnings-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px; overflow-y: auto;" id="warnings-modal-content">
           <!-- Populated by JS -->
@@ -852,13 +852,13 @@
             </svg>
             <span id="error-modal-title">Error</span>
           </span>
-          <button id="close-error-modal-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="close-error-modal-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px; overflow-y: auto;">
-          <div id="error-modal-message" style="font-size: 13px; color: #eee; line-height: 1.5;"></div>
+          <div id="error-modal-message" style="font-size: 13px; color: var(--text-primary); line-height: 1.5;"></div>
           <details id="error-modal-details" style="display: none;">
             <summary style="font-size: 11px; color: var(--text-muted); cursor: pointer; user-select: none;">Technical details</summary>
-            <pre id="error-modal-details-text" style="margin-top: 8px; background: #111; border: 1px solid #333; border-radius: 6px; padding: 10px; max-height: 200px; overflow-y: auto; font-size: 11px; color: #bbb; white-space: pre-wrap; line-height: 1.4;"></pre>
+            <pre id="error-modal-details-text" style="margin-top: 8px; background: var(--surface-0); border: 1px solid var(--panel-border); border-radius: 6px; padding: 10px; max-height: 200px; overflow-y: auto; font-size: 11px; color: var(--text-secondary); white-space: pre-wrap; line-height: 1.4;"></pre>
           </details>
           <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
             <button id="error-modal-ok-btn" class="primary-btn">OK</button>
@@ -874,20 +874,20 @@
             <span style="font-family: 'Segoe MDL2 Assets'; font-size: 13px;">&#xE896;</span>
             <span id="update-modal-title">Update Available</span>
           </span>
-          <button id="close-update-modal-btn" class="win-btn" style="height: 20px; width: 24px; color: #999;">&#xE8BB;</button>
+          <button id="close-update-modal-btn" class="win-btn" style="height: 20px; width: 24px; color: var(--text-muted);">&#xE8BB;</button>
         </div>
         <div class="panel-content" style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
-          <div style="font-size: 13px; color: #eee;" id="update-modal-version-info">
+          <div style="font-size: 13px; color: var(--text-primary);" id="update-modal-version-info">
             A new version of ClipSend is available.
           </div>
-          <div id="update-notes-container" style="background: #111; border: 1px solid #333; border-radius: 4px; padding: 10px; max-height: 140px; overflow-y: auto; font-size: 12px; color: #ccc; white-space: pre-wrap; line-height: 1.4;"></div>
+          <div id="update-notes-container"></div>
           
           <div id="update-progress-section" style="display: none; flex-direction: column; gap: 6px;">
             <div style="display: flex; justify-content: space-between; font-size: 12px;">
-              <span id="update-progress-status" style="color: #aaa;">Downloading update...</span>
+              <span id="update-progress-status" style="color: var(--text-secondary);">Downloading update...</span>
               <span id="update-progress-percent" style="font-weight: 600; color: var(--accent-color);">0%</span>
             </div>
-            <div style="width: 100%; height: 6px; background: #222; border-radius: 3px; overflow: hidden;">
+            <div style="width: 100%; height: 6px; background: var(--kbd-bg); border-radius: 3px; overflow: hidden;">
               <div id="update-progress-bar-fill" style="width: 0%; height: 100%; background: var(--accent-color); transition: width 0.2s;"></div>
             </div>
           </div>
