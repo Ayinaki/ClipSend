@@ -42,15 +42,15 @@ function customSettings(bitrateKbps, opts = {}) {
 // ---------------------------------------------------------------------------
 
 describe('Presets', () => {
-  test('provides four presets (10, 50, 500 MB and custom)', () => {
+  test('provides four presets (20, 50, 500 MB and custom)', () => {
     expect(SIZE_PRESETS).toHaveLength(4);
-    expect(SIZE_PRESETS.filter(p => !p.isCustom).map(p => p.sizeMB)).toEqual([10, 50, 500]);
+    expect(SIZE_PRESETS.filter(p => !p.isCustom).map(p => p.sizeMB)).toEqual([20, 50, 500]);
   });
 
-  test('default preset is discord-free (10 MB)', () => {
+  test('default preset is discord-free (20 MB)', () => {
     const d = getDefaultPreset();
     expect(d.id).toBe('discord-free');
-    expect(d.sizeMB).toBe(10);
+    expect(d.sizeMB).toBe(20);
   });
 
   test('getPresetById returns null for unknown id', () => {
