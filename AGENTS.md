@@ -1,4 +1,4 @@
-# Agents.md — ClipSend
+# AGENTS.md — ClipSend
 
 Guidance for AI coding agents (and humans) working in this repository.
 
@@ -10,7 +10,7 @@ presets: 20 MB, 50 MB, 500 MB) or to GIF/MP3. Exports are hardware-accelerated w
 (NVENC / QSV / AMF) with CPU fallback, and H.264 or AV1 codecs are supported. See `README.md`
 for the full feature description.
 
-- Repo: `Ayinaki/ClipSend` (package name: `video-compressor`, version 2.2.1)
+- Repo: `Ayinaki/ClipSend` (package name: `video-compressor`, version 2.2.2)
 - **Windows-only target.** Bundled binaries are `.exe` files; CI runs on `windows-latest`.
 - Plain JavaScript everywhere. **No TypeScript**, no framework, no bundler for the main process.
 
@@ -112,6 +112,9 @@ output directory — absolute Windows backslash paths break x264's pass 2. Prese
   spawning FFmpeg. Keep new testable logic pure and export internals when useful.
 - Tests must not rely on Electron APIs at runtime (modules guard for that, e.g. `updater.js`
   requires electron-updater lazily, `taskbar.js` no-ops without Electron).
+- jsdom's `document.documentElement.innerHTML = html` does not run `<script src>` tags, so
+  `window.changelogData` is undefined in `smoke.bundle.test.js` and `renderChangelog()` no-ops.
+  The changelog timeline is never actually rendered by any test.
 
 ## Conventions & gotchas
 
@@ -131,6 +134,14 @@ output directory — absolute Windows backslash paths break x264's pass 2. Prese
   stripped under contextIsolation.
 - The renderer hardcodes presets to match `main/presets.js` (`SIZE_PRESETS`) — keep in sync.
 - `app.js` dispatches `window.resize` on mode switch back to Trim (canvas re-measure workaround).
+- User-facing copy must read human, not AI-generated: no em dashes, no stock AI vocabulary,
+  no filler. "De-slop" / "fix the writing" requests mean apply the `anti-slop-writing` skill.
+- Open external URLs through `window.clipSend.openExternalUrl` (`shell:openExternal`), never by
+  navigating the app window (an `<a href>` click or `window.location`): the frameless window
+  has no back/chrome, so a navigation strands the user.
+- `renderer/changelog-data.js` breaks the renderer-ESM rule: a plain `<script src>` in
+  `index.html` that sets `window.changelogData` (plus a `module.exports` guard). It is not
+  esbuild-bundled; validate with `node --check`, never `require` it in Node (`window` undefined).
 - Untracked workspace dirs `.freebuff/`, `.agents/`, `skills-lock.json` are agent tooling,
   not app code — leave them alone.
 
