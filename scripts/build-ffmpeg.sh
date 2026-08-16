@@ -14,8 +14,9 @@
 # downloads for users).
 #
 # REQUIRED feature set (audited against main/*.js):
-#   encoders : libx264, libaom-av1, libsvtav1, aac, libmp3lame, mjpeg (thumbs),
-#              png (gif palette, needs --enable-zlib), gif (merged gif output),
+#   encoders : libx264, libaom-av1, libsvtav1, libvpx-vp9 (WebM), aac, opus
+#              (native, WebM audio), libmp3lame, mjpeg (thumbs), png (gif
+#              palette, needs --enable-zlib), gif (merged gif output),
 #              wrapped_avframe (yuv4mpegpipe default), rawvideo (gifski y4m),
 #              pcm_s16le (waveform), h264/av1 nvenc + qsv + amf (hardware)
 #   muxers   : mp4/mov (+faststart), matroska/webm, mp3, gif, image2, wav,
@@ -64,6 +65,7 @@ BUILD_AOM="${BUILD_AOM:-1}"
 BUILD_SVT="${BUILD_SVT:-1}"
 BUILD_DAV1D="${BUILD_DAV1D:-1}" # software AV1 decode (native av1 decoder is HW-only)
 BUILD_LAME="${BUILD_LAME:-1}"
+BUILD_VPX="${BUILD_VPX:-1}"     # VP8/VP9 (WebM export)
 BUILD_VPL="${BUILD_VPL:-1}"     # Intel QSV
 BUILD_NVENC="${BUILD_NVENC:-1}" # NVIDIA NVENC (headers only)
 BUILD_AMF="${BUILD_AMF:-1}"     # AMD AMF (headers only)
@@ -214,6 +216,22 @@ if [ "$BUILD_LAME" = "1" ]; then
   )
 fi
 
+if [ "$BUILD_VPX" = "1" ]; then
+  log "Building libvpx (VP8/VP9)"
+  # Pin to a release tag (CHANGELOG "v1.14.1 \"Venetian Duck\""). libvpx has
+  # its own configure (not autotools); the mingw cross target builds a static
+  # libvpx.a that ffmpeg links. Tools/tests/examples are all dropped.
+  fetch libvpx https://github.com/webmproject/libvpx.git v1.14.1
+  (
+    cd "$WORK/libvpx"
+    ./configure --target=x86_64-win64-gcc --prefix="$PREFIX" \
+      --enable-static --disable-shared \
+      --disable-examples --disable-docs --disable-tools --disable-unit-tests \
+      --disable-webm-io --disable-libyuv
+    make -j"$JOBS" && make install
+  )
+fi
+
 if [ "$BUILD_VPL" = "1" ]; then
   log "Building Intel oneVPL (QSV)"
   # Pin to the current release tag; master drifts and QSV is already the most
@@ -267,6 +285,7 @@ CONFIG_EXT=""
 [ "$BUILD_SVT" = "1" ]   && CONFIG_EXT="$CONFIG_EXT --enable-libsvtav1"
 [ "$BUILD_DAV1D" = "1" ] && CONFIG_EXT="$CONFIG_EXT --enable-libdav1d"
 [ "$BUILD_LAME" = "1" ]  && CONFIG_EXT="$CONFIG_EXT --enable-libmp3lame"
+[ "$BUILD_VPX" = "1" ]   && CONFIG_EXT="$CONFIG_EXT --enable-libvpx"
 [ "$BUILD_VPL" = "1" ]   && CONFIG_EXT="$CONFIG_EXT --enable-libvpl"
 [ "$BUILD_NVENC" = "1" ] && CONFIG_EXT="$CONFIG_EXT --enable-ffnvcodec --enable-nvenc"
 [ "$BUILD_AMF" = "1" ]   && CONFIG_EXT="$CONFIG_EXT --enable-amf"
@@ -274,8 +293,13 @@ CONFIG_EXT=""
 EXTRA_LIBS="-lstdc++ -lpthread -static"
 
 # The hardware encoder names are built-in; only the *_nvenc / *_qsv / *_amf
-# entries matter, and they require the SDK lines above.
-ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,png,gif,wrapped_avframe,rawvideo,pcm_s16le"
+# entries matter, and they require the SDK lines above. libvpx_vp9 (the WebM
+# video encoder) is appended conditionally because it needs --enable-libvpx;
+# `opus` is FFmpeg's native Opus encoder (no external lib — the slim build
+# deliberately avoids linking libopus). It is flagged experimental, so the
+# planner appends `-strict -2` for WebM audio.
+ENCODERS="libx264,libaom_av1,libsvtav1,aac,libmp3lame,mjpeg,png,gif,wrapped_avframe,rawvideo,pcm_s16le,opus"
+[ "$BUILD_VPX" = "1" ]   && ENCODERS="$ENCODERS,libvpx_vp9"
 [ "$BUILD_NVENC" = "1" ] && ENCODERS="$ENCODERS,h264_nvenc,av1_nvenc"
 [ "$BUILD_VPL" = "1" ]   && ENCODERS="$ENCODERS,h264_qsv,av1_qsv"
 [ "$BUILD_AMF" = "1" ]   && ENCODERS="$ENCODERS,h264_amf,av1_amf"
@@ -311,7 +335,7 @@ log "Configuring FFmpeg (minimal)"
     # record) so the CI log shows the real reason instead of the truncated
     # "ERROR: ... not found using pkg-config" line.
     echo "---- ffbuild/config.log: pkg-config / external library failures ----"
-    grep -n -A 6 -i "pkg-config\|SvtAv1Enc\|libaom\|libx264\|libmp3lame\|libdav1d\|ERROR" ffbuild/config.log | head -120 || true
+    grep -n -A 6 -i "pkg-config\|SvtAv1Enc\|libaom\|libx264\|libmp3lame\|libvpx\|libdav1d\|ERROR" ffbuild/config.log | head -120 || true
     exit 1
   fi
 
@@ -364,6 +388,7 @@ if [ -n "$RUN_FF" ]; then
   for e in libx264 libaom-av1 libsvtav1 aac libmp3lame mjpeg png gif wrapped_avframe pcm_s16le; do
     require_encoder "$e"
   done
+  [ "$BUILD_VPX" = "1" ]   && { require_encoder libvpx-vp9; require_encoder opus; }
   [ "$BUILD_NVENC" = "1" ] && { require_encoder h264_nvenc; require_encoder av1_nvenc; }
   [ "$BUILD_VPL" = "1" ]   && { require_encoder h264_qsv; require_encoder av1_qsv; }
   [ "$BUILD_AMF" = "1" ]   && { require_encoder h264_amf; require_encoder av1_amf; }

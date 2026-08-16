@@ -5,6 +5,7 @@ const {
   cpuEncoderFor,
   audioCodecFor,
   containerForFormat,
+  codecForFormat,
   parseEncoderCapabilities,
   parseFilterCapabilities
 } = require('../main/encoder-profiles');
@@ -21,6 +22,13 @@ describe('pickEncoder', () => {
   test('cpu forces the CPU encoder for the codec', () => {
     expect(pickEncoder({ hwAccel: 'cpu', videoCodec: 'h264', encoders: CAPS })).toBe('libx264');
     expect(pickEncoder({ hwAccel: 'cpu', videoCodec: 'av1', encoders: CAPS })).toBe('libsvtav1');
+  });
+
+  test('vp9 always resolves to libvpx-vp9 regardless of hardware preference', () => {
+    const caps = { ...CAPS, vpx9: true };
+    expect(pickEncoder({ hwAccel: 'auto', videoCodec: 'vp9', encoders: caps })).toBe('libvpx-vp9');
+    expect(pickEncoder({ hwAccel: 'nvenc', videoCodec: 'vp9', encoders: caps })).toBe('libvpx-vp9');
+    expect(pickEncoder({ hwAccel: 'cpu', videoCodec: 'vp9', encoders: caps })).toBe('libvpx-vp9');
   });
 
   test('auto prefers the first available vendor', () => {
@@ -116,6 +124,23 @@ describe('buildVideoCodecArgs', () => {
     expect(args[args.indexOf('-pass') + 1]).toBe('2');
   });
 
+  test('libvpx-vp9 quality mode uses -crf with -b:v 0 and row-mt', () => {
+    const args = buildVideoCodecArgs({ encoder: 'libvpx-vp9', crfValue: 32 });
+    expect(args).toContain('libvpx-vp9');
+    expect(args).toContain('-deadline');
+    expect(args).toContain('-crf');
+    expect(args).toContain('-b:v');
+    expect(args).toContain('-row-mt');
+  });
+
+  test('libvpx-vp9 size mode appends -pass for two-pass encodes', () => {
+    const args = buildVideoCodecArgs({ encoder: 'libvpx-vp9', videoBitrateKbps: 1000, pass: 1 });
+    expect(args).toContain('-b:v');
+    expect(args).toContain('-maxrate');
+    expect(args).toContain('-pass');
+    expect(args[args.indexOf('-pass') + 1]).toBe('1');
+  });
+
   test('h264_qsv uses -global_quality and AMF uses -rc cqp + -qp_i', () => {
     const qsv = buildVideoCodecArgs({ encoder: 'h264_qsv', crfValue: 18 });
     expect(qsv).toContain('-global_quality');
@@ -145,15 +170,24 @@ describe('helpers', () => {
   test('cpuEncoderFor / audioCodecFor / containerForFormat map formats', () => {
     expect(cpuEncoderFor('h264')).toBe('libx264');
     expect(cpuEncoderFor('av1')).toBe('libsvtav1');
-    // Video always muxes into the picked format — mp4 uses AAC, webm (if ever
-    // requested) uses opus.
+    expect(cpuEncoderFor('vp9')).toBe('libvpx-vp9');
+    // Video muxes into the picked format — mp4 uses AAC, webm uses the native
+    // opus encoder (the slim build links no external audio libs).
     expect(audioCodecFor('mp4')).toBe('aac');
-    expect(audioCodecFor('webm')).toBe('libopus');
+    expect(audioCodecFor('webm')).toBe('opus');
     expect(containerForFormat('mp4')).toBe('mp4');
+    expect(containerForFormat('webm')).toBe('webm');
     expect(containerForFormat('gif')).toBe('gif');
     expect(containerForFormat('mp3')).toBe('mp3');
-    // AV1 is not forced into webm anymore — mp4 (the format picker default).
-    expect(containerForFormat('mp4')).toBe('mp4');
+  });
+
+  test('codecForFormat remaps H.264 to VP9 only for WebM', () => {
+    expect(codecForFormat('mp4', 'h264')).toBe('h264');
+    expect(codecForFormat('webm', 'h264')).toBe('vp9');
+    expect(codecForFormat('webm', 'av1')).toBe('av1');
+    expect(codecForFormat('gif', 'h264')).toBe('h264');
+    expect(codecForFormat('mp3', 'h264')).toBe('h264');
+    expect(codecForFormat(undefined, 'h264')).toBe('h264');
   });
 
   test('parseEncoderCapabilities reads names from -encoders output', () => {
@@ -163,6 +197,7 @@ describe('helpers', () => {
       ' V....D av1_nvenc            NVIDIA AV1 (codec av1)',
       ' V....D h264_qsv             H.264 / AVC (Intel Quick Sync) (codec h264)',
       ' V..... libsvtav1            SVT-AV1 (codec av1)',
+      ' V..... libvpx-vp9           libvpx VP9 (codec vp9)',
       ' A..... libmp3lame           libmp3lame MP3 (codec mp3)'
     ].join('\n');
 
@@ -172,6 +207,7 @@ describe('helpers', () => {
     expect(caps.amf).toEqual({ h264: false, av1: false });
     expect(caps.svtav1).toBe(true);
     expect(caps.libx264).toBe(true);
+    expect(caps.vpx9).toBe(true);
   });
 
   test('parseEncoderCapabilities tolerates empty output', () => {

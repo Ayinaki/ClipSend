@@ -614,14 +614,18 @@ document.addEventListener('DOMContentLoaded', () => {
             : 'Merged Video',
           codec: basePlan && basePlan.codec,
           res: basePlan && basePlan.width && basePlan.height ? `${basePlan.width}x${basePlan.height}` : null,
-          sizeMB: basePlan && (basePlan.targetSizeMB != null ? basePlan.targetSizeMB : basePlan.estimatedSizeMB)
+          sizeMB: basePlan && (basePlan.targetSizeMB != null ? basePlan.targetSizeMB : basePlan.estimatedSizeMB),
+          // The segments are pre-encoded in the picked container, so the
+          // merged destination must carry the same extension (.webm for WebM)
+          // for the concat muxer to pick the right container.
+          format: basePlan && basePlan.outputFormat
         });
         if (!mergedFinalDest) {
           progressUI.hide();
           return;
         }
-        // Segments and the final merge are always MP4 — the format picker
-        // decides the container (AV1 is muxed into MP4 too).
+        // Segments and the final merge follow the format picker (WebM segments
+        // pre-encode as VP9/Opus webm; AV1-in-MP4 stays MP4).
       }
 
       let generatedTempFiles = [];
@@ -734,7 +738,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let segOutputPath = null;
         if (isMulti && exportMode === 'merged' && !isMp3) {
           const tempDir = await window.clipSend.getTempPath();
-          segOutputPath = `${tempDir}\\clipsend-seg-${Date.now()}-${i}.mp4`;
+          // Segments are pre-encoded in the picked container (WebM segments
+          // must not be named .mp4 — ffmpeg picks the output muxer from the
+          // extension, and VP9/Opus can't mux into MP4).
+          const segExt = segPlan.outputFormat === 'webm' ? 'webm' : 'mp4';
+          segOutputPath = `${tempDir}\\clipsend-seg-${Date.now()}-${i}.${segExt}`;
           generatedTempFiles.push(segOutputPath);
         }
 
@@ -784,7 +792,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Route the titlebar cancel to the merge pipeline during this phase
         // too (the same mergeExportActive flag the merge-mode export uses).
         mergeExportActive = true;
-        const mergeResult = await window.clipSend.startMerge(generatedTempFiles, mergedFinalDest, [], { skipConvert: true });
+        // Segments are pre-encoded in the final codec/container, so the merge
+        // must know them: the concat-filter fallback re-encodes in that codec
+        // (H.264 can't mux into a .webm destination), and the handler must not
+        // schedule a redundant post-conversion on top of the already-final
+        // segments (skipConvert).
+        const mergeResult = await window.clipSend.startMerge(generatedTempFiles, mergedFinalDest, [], {
+          skipConvert: true,
+          format: segPlan.outputFormat,
+          codec: segPlan.codec
+        });
         mergeExportActive = false;
         
         await doCleanup();

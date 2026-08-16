@@ -5,8 +5,9 @@
  * hardware-acceleration preference, the chosen video codec (H.264 / AV1),
  * and what the bundled FFmpeg reports as available, the planner resolves the
  * concrete encoder and builds the right rate-control args for it. The
- * container always follows the format picker (mp4 for video, including
- * AV1-in-MP4 with AAC audio, which Discord plays natively).
+ * container follows the format picker: mp4 (H.264 or AV1, AAC audio),
+ * webm (VP9 or AV1, Opus audio), gif, or mp3. WebM cannot carry H.264, so
+ * an H.264 request under WebM is remapped to VP9 (libvpx-vp9, CPU-only).
  */
 
 /**
@@ -79,7 +80,8 @@ const {
   buildVideoCodecArgs,
   isHardwareEncoder,
   audioCodecFor,
-  containerForFormat
+  containerForFormat,
+  codecForFormat
 } = require('./encoder-profiles');
 
 // ---------------------------------------------------------------------------
@@ -128,10 +130,39 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
   let isSinglePass = false;
   let crfValue = undefined;
   let warnings = [];
+  // Codec-remap warnings (e.g. WebM -> VP9) are recorded early but merged
+  // into `warnings` AFTER the resolution decision — resolveResolution
+  // replaces the array wholesale, so pushing early would lose them.
+  let codecWarnings = [];
 
   // Resolve the concrete encoder from the user's HW preference + codec choice
-  // + what this machine's FFmpeg actually ships.
-  const videoCodec = settings.videoCodec === 'av1' ? 'av1' : 'h264';
+  // + what this machine's FFmpeg actually ships. WebM remaps an H.264 request
+  // to VP9 (the container cannot carry H.264); AV1 stays AV1 in WebM.
+  const requestedCodec = settings.videoCodec === 'av1' ? 'av1' : 'h264';
+  const videoCodec = codecForFormat(settings.outputFormat, requestedCodec);
+  const isWebm = settings.outputFormat === 'webm';
+
+  // WebM + H.264 means VP9, which is software-only here and must exist in
+  // the bundled build. Gate on the runtime capability map when it's known
+  // (same pattern as the atempo check below) so an old FFmpeg build fails
+  // with a clear message instead of a cryptic "unknown encoder" error.
+  if (isWebm && videoCodec === 'vp9') {
+    const capsKnown = !!(settings.encoders &&
+      typeof settings.encoders === 'object' &&
+      Object.keys(settings.encoders).length > 0);
+    if (capsKnown && !settings.encoders.vpx9) {
+      throw new Error(
+        'WebM export requires the VP9 encoder (libvpx-vp9), which this FFmpeg build does not ship. ' +
+        'Update ClipSend to a build with the latest bundled FFmpeg, or pick MP4 or AV1 instead.'
+      );
+    }
+    codecWarnings.push({
+      id: 'webm-vp9',
+      title: 'WebM uses VP9 instead of H.264',
+      body: 'WebM cannot contain H.264, so the video will be encoded with VP9 on the CPU. Hardware acceleration does not apply to VP9 exports.'
+    });
+  }
+
   const encoder = pickEncoder({
     hwAccel: settings.hwAccel,
     videoCodec,
@@ -235,6 +266,9 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     // but if we want to show it, we use a neutral object type. For now, we omit it
     // as the UI displays the resolution in the plan summary anyway.
   }
+
+  // Merge any codec-remap warnings back in now that resolution is decided.
+  warnings = warnings.concat(codecWarnings);
 
   // ------ Audio Track Validation ------
   let hasAudio = false;
@@ -386,13 +420,18 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     selectedAudioTrackIndex,
     width,
     height,
-    needsScale,      frameRate: mediaInfo.frameRate,
-      encoder,
-      crop: settings.crop,
-      maxQuality: settings.maxQuality,
-      codec: videoCodec,
-      speed
-    });
+    needsScale,
+    frameRate: mediaInfo.frameRate,
+    encoder,
+    crop: settings.crop,
+    maxQuality: settings.maxQuality,
+    // The 2-pass path used to omit outputFormat, which made buildPassArgs
+    // default to the mp4 container — invisible while mp4 was the only 2-pass
+    // format, but wrong for WebM (opus audio + no faststart).
+    outputFormat: settings.outputFormat,
+    codec: videoCodec,
+    speed
+  });
 
   const pass2Args = buildPassArgs({
     pass: 2,
@@ -409,6 +448,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     encoder,
     crop: settings.crop,
     maxQuality: settings.maxQuality,
+    outputFormat: settings.outputFormat,
     codec: videoCodec,
     speed
   });
@@ -435,6 +475,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     encoder,
     codec: videoCodec,
     container: containerForFormat(settings.outputFormat),
+    outputFormat: settings.outputFormat,
     playbackSpeed: speed
   };
 }
@@ -687,6 +728,12 @@ function buildPassArgs(opts) {
       args.push('-c:a', audioCodecFor(container));
       const audioBitrateArg = audioBitrateKbps + 'k';
       args.push('-b:a', audioBitrateArg);
+      // The native opus encoder (WebM audio) is marked experimental and
+      // refuses to open without this — the slim build deliberately avoids
+      // linking libopus, so WebM always goes through the in-tree encoder.
+      if (container === 'webm') {
+        args.push('-strict', '-2');
+      }
       // Tempo-change the audio to match setpts (atempo preserves pitch).
       // GIF extraction maps no audio stream, so the filter chain must stay
       // video-only there.
@@ -694,8 +741,9 @@ function buildPassArgs(opts) {
         args.push('-af', atempoFilter(speed));
       }
     }
-    // MP4 (both H.264 and AV1) benefits from the faststart relocation so
-    // video starts playing before the whole file downloads.
+    // MP4 (H.264/AV1) benefits from the faststart relocation so video starts
+    // playing before the whole file downloads; WebM/Matroska doesn't need it
+    // (the cues live near the stream data).
     if (container === 'mp4') {
       args.push('-movflags', '+faststart');
     }

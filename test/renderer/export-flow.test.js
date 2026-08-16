@@ -40,6 +40,17 @@ describe('formatPlanDisplay', () => {
     expect(d.resText).toBe('854x480');
   });
 
+  test('webm shows the same size-based display as mp4', () => {
+    const d = formatPlanDisplay(PLAN, { isMp3: false, outputFormat: 'webm', mode: 'size-limit' });
+    expect(d).toEqual({
+      vbrLabel: 'Video:',
+      vbrText: '365 kbps',
+      sizeText: '9.36 MB',
+      resText: '854x480',
+      resVisible: true
+    });
+  });
+
   test('auto mode shows CRF and variable size', () => {
     const d = formatPlanDisplay(PLAN, { isMp3: false, outputFormat: 'mp4', mode: 'auto' });
     expect(d.vbrText).toBe('CRF 19');

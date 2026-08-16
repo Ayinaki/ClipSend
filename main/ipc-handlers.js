@@ -6,12 +6,13 @@ const { calculatePlan } = require('./export-planner');
 const { updateTaskbarProgress, clearTaskbarProgress, setTaskbarError, notifyExportComplete } = require('./taskbar');
 const { Encoder } = require('./encoder');
 const { Merger } = require('./merger');
-const { pickEncoder, isHardwareEncoder, resolveCpuEncoder, detectAvailableEncoders } = require('./encoder-profiles');
+const { pickEncoder, isHardwareEncoder, resolveCpuEncoder, detectAvailableEncoders, codecForFormat } = require('./encoder-profiles');
 const { extractWaveform } = require('./waveform-service');
 const gifExporter = require('./gif-exporter');
 const { renderFilenameTemplate, buildTemplateVars } = require('./filename-template');
 const Store = require('electron-store');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 // Default filename templates, kept in sync with the placeholders shown in the
@@ -353,9 +354,10 @@ function registerIpcHandlers() {
       const parsedInput = path.parse(inputFilePath);
       const isGif = plan.outputFormat === 'gif';
       const isMp3 = plan.outputFormat === 'mp3';
-      // The container always follows the format picker: mp4 for video
-      // (H.264 or AV1), gif/mp3 for their own formats.
-      const ext = isGif ? '.gif' : isMp3 ? '.mp3' : '.mp4';
+      const isWebm = plan.outputFormat === 'webm';
+      // The container always follows the format picker: mp4/webm for video
+      // (H.264/AV1 and VP9/AV1 respectively), gif/mp3 for their own formats.
+      const ext = isGif ? '.gif' : isMp3 ? '.mp3' : isWebm ? '.webm' : '.mp4';
       // User-configurable filename template (Settings -> Filename Templates).
       // The plan carries codec/resolution/size, so all tokens are available
       // at naming time — even when the save dialog is bypassed by a default
@@ -441,11 +443,13 @@ function registerIpcHandlers() {
 
   // The renderer passes the trim-mode source name so the trim filename
   // template applies to the merged multi-segment output too ({name} is the
-  // source clip, not "Merged Video").
+  // source clip, not "Merged Video"), plus the picked format so the
+  // extension matches (segments are pre-encoded in the final container).
   ipcMain.handle('merge:resolveDestination', async (event, vars = {}) => {
     const template = store.get('filenameTemplateTrim') || DEFAULT_TEMPLATE_TRIM;
     const base = renderFilenameTemplate(template, buildTemplateVars(vars));
-    const defaultName = `${base}.mp4`;
+    const fmt = vars.format === 'webm' ? 'webm' : vars.format === 'gif' ? 'gif' : vars.format === 'mp3' ? 'mp3' : 'mp4';
+    const defaultName = `${base}.${fmt}`;
     const defaultExportDir = store.get('defaultExportDirectory');
 
     if (defaultExportDir && fs.existsSync(defaultExportDir)) {
@@ -467,36 +471,42 @@ function registerIpcHandlers() {
 
     // Video codec: an explicit options.codec wins (the trim-mode multi-segment
     // path pre-encodes each segment in the final codec and only needs a pure
-    // concat), otherwise the persisted setting applies.
+    // concat), otherwise the persisted setting applies. WebM cannot carry
+    // H.264, so an H.264 request is remapped to VP9 for the final encode.
     const videoCodec = options.codec || store.get('videoCodec') || 'h264';
-    const wantsAv1 = videoCodec === 'av1' && !options.skipConvert;
 
-    // Shared export settings: format (mp4/gif/mp3), non-native resolution,
-    // and an explicit target size. The fast lossless merge path is preserved
-    // unless one of these asks for a post-conversion. AV1 still forces a
-    // post-conversion, but the container always follows the format picker —
-    // AV1 is muxed into MP4 (AAC audio), which Discord plays natively.
-    const postFormat = options.format === 'gif' || options.format === 'mp3' ? options.format : 'mp4';
+    // Shared export settings: format (mp4/webm/gif/mp3), non-native
+    // resolution, and an explicit target size. The fast lossless merge path
+    // is preserved unless one of these asks for a post-conversion. AV1 still
+    // forces a post-conversion, but the container always follows the format
+    // picker — AV1 muxes into MP4 (AAC) or WebM (Opus) as chosen.
+    const postFormat = options.format === 'gif' || options.format === 'mp3' || options.format === 'webm'
+      ? options.format
+      : 'mp4';
+    const postCodec = codecForFormat(postFormat, videoCodec);
+    const wantsAv1 = postCodec === 'av1' && !options.skipConvert;
     const postResolution = options.resolution && options.resolution !== 'native' ? options.resolution : null;
     const postTargetSizeMB = options.targetSizeMB && options.targetSizeMB > 0 ? options.targetSizeMB : null;
 
     // Resolve the concrete encoders for the merge re-encode paths. The
     // intermediate merged MP4 always uses the H.264 family (fast, container-
-    // consistent); when AV1 is selected the final MP4 is produced by the
-    // post-convert step with the codec-aware encoder.
+    // consistent); the final container is produced by the post-convert step
+    // with the codec-aware encoder (VP9 for WebM+H.264, AV1 when selected).
     const hwAccel = store.get('hwAccel') || 'auto';
     const caps = (await getEncoderCapabilities()) || {};
-    const encoder = pickEncoder({ hwAccel, videoCodec, encoders: caps });
+    const encoder = pickEncoder({ hwAccel, videoCodec: postCodec, encoders: caps });
     const mergeEncoder = pickEncoder({ hwAccel, videoCodec: 'h264', encoders: caps });
+    const convertLabel = wantsAv1 ? `AV1 (${postFormat.toUpperCase()})` : postFormat.toUpperCase();
 
-    const convertMerged = (enc) => merger.postConvertMerged(outputPath, {
+    const convertMerged = (enc) => merger.postConvertMerged(mergeOutputPath, {
       format: postFormat,
       resolution: postResolution,
       targetSizeMB: postTargetSizeMB,
       totalDurationSec: options.totalDurationSec || 0,
-      codec: videoCodec,
+      codec: postCodec,
       encoder: enc,
-      onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${wantsAv1 ? 'AV1 (MP4)' : postFormat.toUpperCase()}...`)
+      finalPath: outputPath,
+      onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${convertLabel}...`)
     });
 
     const applyPostConvert = async (result) => {
@@ -505,7 +515,7 @@ function registerIpcHandlers() {
           const converted = await convertMerged(encoder);
           result.filePath = converted.path;
           result.finalSizeMB = converted.sizeMB;
-          result.strategy = `${result.strategy} + ${wantsAv1 ? 'AV1 (MP4)' : postFormat.toUpperCase()} convert`;
+          result.strategy = `${result.strategy} + ${convertLabel} convert`;
         } catch (err) {
           // Cancelled mid-conversion: the merged file still exists, so surface
           // the merge as done rather than reporting a failure.
@@ -516,10 +526,10 @@ function registerIpcHandlers() {
           // — resolveCpuEncoder picks the one this FFmpeg actually ships
           // (libaom-av1 in the bundled build, or libsvtav1 if present).
           if (isHardwareEncoderFailure(encoder, err && err.ffmpegStderr)) {
-            const converted = await convertMerged(resolveCpuEncoder(videoCodec, caps));
+            const converted = await convertMerged(resolveCpuEncoder(postCodec, caps));
             result.filePath = converted.path;
             result.finalSizeMB = converted.sizeMB;
-            result.strategy = `${result.strategy} + ${wantsAv1 ? 'AV1 (MP4)' : postFormat.toUpperCase()} convert (CPU)`;
+            result.strategy = `${result.strategy} + ${convertLabel} convert (CPU)`;
             return result;
           }
           throw err;
@@ -532,7 +542,7 @@ function registerIpcHandlers() {
       const mergeTemplate = store.get('filenameTemplateMerge') || DEFAULT_TEMPLATE_MERGE;
       const mergeVars = buildTemplateVars({
         name: options.name || 'Merged Video',
-        codec: videoCodec,
+        codec: postCodec,
         res: options.resolution && options.resolution !== 'native' ? options.resolution : null,
         sizeMB: options.targetSizeMB || null
       });
@@ -547,24 +557,73 @@ function registerIpcHandlers() {
       }
     }
 
+    // When a post-conversion re-encodes into a non-MP4 container, the merge
+    // itself must write an intermediate MP4 first: the concat output muxer is
+    // chosen by the output extension, and the webm/gif/mp3 muxers reject
+    // H.264/AAC streams (the merge always runs H.264 for speed). The
+    // intermediate is converted to the final container below. The multi-
+    // segment trim flow (skipConvert) pre-encodes segments in the final
+    // codec/container already, so no post-conversion is scheduled there.
+    const needsPostConvert = !options.skipConvert &&
+      (wantsAv1 || postFormat !== 'mp4' || postResolution || postTargetSizeMB);
+    let mergeOutputPath = outputPath;
+    let mergeTempFile = null;
+    if (needsPostConvert && postFormat !== 'mp4') {
+      mergeTempFile = path.join(os.tmpdir(), `clipsend-merge-${Date.now()}.mp4`);
+      mergeOutputPath = mergeTempFile;
+    }
+
+    // On success postConvertMerged renames the intermediate into place; on
+    // failure it may still exist, so drop it. One exception: a CANCEL mid-
+    // conversion surfaces the merge as done — the merged content is complete
+    // and deleting it would leave the modal pointing at nothing. Keep it, but
+    // as an honest MP4 next to the destination: the intermediate is always
+    // H.264/AAC, and renaming it to the picked .webm/.gif/.mp3 name would
+    // mislabel the file.
+    const cleanupMergeTemp = async (result) => {
+      if (!mergeTempFile || !fs.existsSync(mergeTempFile)) return result;
+      if (result && result.filePath === mergeTempFile) {
+        try {
+          const dir = path.dirname(outputPath);
+          const base = path.basename(outputPath, path.extname(outputPath));
+          const preservedPath = await getUniqueFilePath(path.join(dir, `${base}.mp4`));
+          fs.renameSync(mergeTempFile, preservedPath);
+          result.filePath = preservedPath;
+          result.strategy = `${result.strategy || 'Merge'} + conversion cancelled (saved as MP4)`;
+        } catch (e) { /* ignore */ }
+      } else {
+        try { fs.unlinkSync(mergeTempFile); } catch (e) { /* ignore */ }
+      }
+      return result;
+    };
+
+    // skipConvert (multi-segment trim flow): segments are already in the
+    // final codec, so the merge re-encodes (concat-filter fallback) with that
+    // codec's encoder and reports it as the merge codec. Otherwise the
+    // intermediate MP4 stays H.264 and the post-convert step applies the codec.
+    const mergeEncoderFor = options.skipConvert ? encoder : mergeEncoder;
+    const mergeCodec = options.skipConvert ? postCodec : 'h264';
+
     try {
-      const result = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder: mergeEncoder, trims, codec: 'h264' });
-      const final = await applyPostConvert(result);
+      const result = await merger.runMerge(filePaths, mergeOutputPath, sendMergeProgress, { encoder: mergeEncoderFor, trims, codec: mergeCodec });
+      const final = await cleanupMergeTemp(await applyPostConvert(result));
       finishExport(win, final, 'Merged video');
       return final;
     } catch (error) {
       // If a hardware encoder failed during merge re-encode, retry with CPU
-      if (isHardwareEncoderFailure(mergeEncoder, error && error.ffmpegStderr)) {
+      if (isHardwareEncoderFailure(mergeEncoderFor, error && error.ffmpegStderr)) {
         try {
-          const retryResult = await merger.runMerge(filePaths, outputPath, sendMergeProgress, { encoder: 'libx264', trims, codec: 'h264' });
-          const retryFinal = await applyPostConvert(retryResult);
+          const retryResult = await merger.runMerge(filePaths, mergeOutputPath, sendMergeProgress, { encoder: options.skipConvert ? resolveCpuEncoder(postCodec, caps) : 'libx264', trims, codec: mergeCodec });
+          const retryFinal = await cleanupMergeTemp(await applyPostConvert(retryResult));
           finishExport(win, retryFinal, 'Merged video');
           return retryFinal;
         } catch (retryError) {
+          await cleanupMergeTemp(null);
           setTaskbarError(win);
           return { success: false, error: retryError.message, details: retryError.details };
         }
       }
+      await cleanupMergeTemp(null);
       setTaskbarError(win);
       return { success: false, error: error.message, details: error.details };
     }
@@ -597,6 +656,7 @@ function registerIpcHandlers() {
       svtav1: false,
       libaom: false,
       libx264: false,
+      vpx9: false,
       atempo: false
     };
   });
