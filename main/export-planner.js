@@ -292,8 +292,10 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     videoBitrateKbps *= SVT_SAFETY_FACTOR;
     // The pre-discount budget already passed ABSOLUTE_MIN above, but the
     // discount can push a 50-54 kbps plan below the declared floor — refuse
-    // rather than silently encode below it.
-    if (videoBitrateKbps < ABSOLUTE_MIN_VIDEO_BITRATE_KBPS) {
+    // rather than silently encode below it. Round to match what
+    // buildVideoCodecArgs actually encodes (Math.round), so a 49.5 kbps
+    // budget that lands on the valid 50 kbps minimum is not rejected.
+    if (Math.round(videoBitrateKbps) < ABSOLUTE_MIN_VIDEO_BITRATE_KBPS) {
       throw new Error(
         `Computed video bitrate (${Math.round(videoBitrateKbps)} kbps) is below the ` +
         `minimum threshold of ${ABSOLUTE_MIN_VIDEO_BITRATE_KBPS} kbps. ` +
