@@ -8,7 +8,7 @@
  * @param {object} plan - Plan from calculatePlan (width, height, bitrates, etc.)
  * @param {object} options
  * @param {boolean} options.isMp3 - Audio-only export (bitrate/size only, no res)
- * @param {string} [options.outputFormat] - 'mp4' | 'gif' | 'mp3'
+ * @param {string} [options.outputFormat] - 'mp4' | 'webm' | 'gif' | 'mp3'
  * @param {string} [options.mode] - 'size-limit' | 'auto' | 'custom'
  * @returns {{ vbrLabel: string, vbrText: string, sizeText: string, resText: string, resVisible: boolean }}
  */
@@ -62,7 +62,7 @@ export function isTrimPastVideoEnd(trimIn, videoDuration, duration) {
  * @param {object} plan - Calculated plan
  * @param {object} context
  * @param {boolean} context.isVFR - Source media is variable frame rate
- * @param {string} [context.outputFormat] - 'mp4' | 'gif' | 'mp3'
+ * @param {string} [context.outputFormat] - 'mp4' | 'webm' | 'gif' | 'mp3'
  * @param {number} [context.trimDuration] - Trim duration in seconds
  * @param {number} [context.targetSizeMB] - Target size limit in MB
  * @param {number} [context.trimIn] - Trim In point in seconds

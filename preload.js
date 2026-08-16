@@ -17,7 +17,9 @@ contextBridge.exposeInMainWorld('clipSend', {
 
   // Merge Export
   checkMergeCompat: (filePaths) => ipcRenderer.invoke('merge:checkCompat', { filePaths }),
-  resolveMergeDestination: () => ipcRenderer.invoke('merge:resolveDestination'),
+  // Forwards the renderer's vars ({name}, {codec}, {res}, {sizeMB}, {format}) so
+  // the trim filename template renders for merged multi-segment exports too.
+  resolveMergeDestination: (vars) => ipcRenderer.invoke('merge:resolveDestination', vars),
   startMerge: (filePaths, outputPath, trims, options) => ipcRenderer.invoke('merge:export', { filePaths, outputPath, trims, options }),
   cancelMerge: () => ipcRenderer.invoke('merge:cancel'),
   onMergeProgress: (callback) => {

@@ -7,7 +7,12 @@
  *   - nvenc  NVIDIA NVENC   (h264_nvenc / av1_nvenc)
  *   - qsv    Intel Quick Sync Video (h264_qsv / av1_qsv)
  *   - amf    AMD Advanced Media Framework (h264_amf / av1_amf)
- *   - cpu    libx264 (H.264) / libsvtav1 (AV1)
+ *   - cpu    libx264 (H.264) / libsvtav1 (AV1) / libvpx-vp9 (VP9, WebM)
+ *
+ * WebM gets its own codec story: the container cannot carry H.264, so a
+ * WebM export with the H.264 setting is remapped to VP9 (libvpx-vp9,
+ * software-only in this app) via codecForFormat(). AV1 is kept as-is —
+ * AV1-in-WebM is valid and keeps the hardware AV1 encoders usable.
  *
  * Detection is presence-based: `ffmpeg -encoders` lists what the bundled
  * binary can decode/encode. Whether the hardware actually initializes is
@@ -30,7 +35,9 @@ const HW_VENDORS = ['nvenc', 'qsv', 'amf'];
 
 /** Nominal CPU encoder for a video codec (used when availability is unknown). */
 function cpuEncoderFor(videoCodec) {
-  return videoCodec === 'av1' ? 'libsvtav1' : 'libx264';
+  if (videoCodec === 'av1') return 'libsvtav1';
+  if (videoCodec === 'vp9') return 'libvpx-vp9';
+  return 'libx264';
 }
 
 /**
@@ -42,6 +49,11 @@ function resolveCpuEncoder(codec, encoders) {
     if (encoders && encoders.svtav1) return 'libsvtav1';
     if (encoders && encoders.libaom) return 'libaom-av1';
     return 'libsvtav1';
+  }
+  if (codec === 'vp9') {
+    // VP9 has no hardware variant in this app; only libvpx-vp9 exists.
+    // (Availability is gated at plan time via the vpx9 capability flag.)
+    return 'libvpx-vp9';
   }
   return 'libx264';
 }
@@ -64,8 +76,12 @@ function isHardwareEncoder(encoderName) {
  * @param {boolean} [opts.hasNvenc] - legacy flag (pre-capabilities-map callers)
  */
 function pickEncoder({ hwAccel = 'auto', videoCodec = 'h264', encoders = {}, hasNvenc = false } = {}) {
-  const codec = videoCodec === 'av1' ? 'av1' : 'h264';
+  const codec = videoCodec === 'av1' ? 'av1' : videoCodec === 'vp9' ? 'vp9' : 'h264';
   const cpu = resolveCpuEncoder(codec, encoders);
+
+  // VP9 is software-only here (no nvenc/qsv/amf VP9 profiles), so any
+  // hardware preference is irrelevant — always the CPU encoder.
+  if (codec === 'vp9') return cpu;
 
   // Legacy callers passed hasNvenc instead of the capabilities map.
   const noCaps = !encoders || typeof encoders !== 'object' || Object.keys(encoders).length === 0;
@@ -124,6 +140,17 @@ const PROFILES = {
     qualityArgs: (cpuUsed, crf) => ['-cpu-used', cpuUsed, '-crf', String(crf), '-b:v', '0'],
     bitrateArgs: (cpuUsed, vbit, bufsize) =>
       ['-cpu-used', cpuUsed, '-b:v', `${vbit}k`, '-maxrate', `${vbit}k`, '-bufsize', `${bufsize}k`]
+  },
+  'libvpx-vp9': {
+    supportsTwoPass: true,
+    // VP9 tunes via -cpu-used (0-5, lower = slower + better) with -deadline
+    // good for the speed tier. -row-mt 1 lets the encoder use multiple
+    // threads (otherwise VP9 is single-threaded and painfully slow).
+    presets: { quality: '2', balanced: '4' },
+    qualityArgs: (cpuUsed, crf) =>
+      ['-deadline', 'good', '-cpu-used', cpuUsed, '-row-mt', '1', '-crf', String(crf), '-b:v', '0'],
+    bitrateArgs: (cpuUsed, vbit, bufsize) =>
+      ['-deadline', 'good', '-cpu-used', cpuUsed, '-row-mt', '1', '-b:v', `${vbit}k`, '-maxrate', `${vbit}k`, '-bufsize', `${bufsize}k`]
   },
   h264_nvenc: hwNvencProfile(),
   av1_nvenc: hwNvencProfile(),
@@ -204,24 +231,41 @@ function buildVideoCodecArgs({ encoder, crfValue, videoBitrateKbps, maxQuality =
 }
 
 /**
- * Audio encoder for a container. The app's format picker (mp4/gif/mp3)
- * always muxes video into MP4 — including AV1, which Discord plays fine in
- * MP4 with AAC audio — so opus is only ever used if a WebM container is
- * requested explicitly (kept for completeness/future use).
+ * Audio encoder for a container. MP4 (H.264 or AV1) uses AAC; WebM uses the
+ * native FFmpeg Opus encoder — NOT libopus, because the slim bundled build
+ * links no external audio libs beyond libmp3lame, and the in-tree opus
+ * encoder (a port of the libopus reference encoder) is byte-for-byte
+ * equivalent at a fraction of the build complexity. FFmpeg still marks it
+ * experimental, so the planner/merger append `-strict -2` for WebM encodes.
  */
 function audioCodecFor(container) {
-  return container === 'webm' ? 'libopus' : 'aac';
+  return container === 'webm' ? 'opus' : 'aac';
 }
 
 /**
- * Output container for an export format. Video (H.264 or AV1) always lands
- * in the format the user picked — mp4 — rather than being forced to WebM;
- * gif/mp3 keep their own containers.
+ * Output container for an export format. Video (H.264/VP9/AV1) lands in the
+ * format the user picked (mp4 or webm); gif/mp3 keep their own containers.
  */
 function containerForFormat(outputFormat) {
   if (outputFormat === 'gif') return 'gif';
   if (outputFormat === 'mp3') return 'mp3';
+  if (outputFormat === 'webm') return 'webm';
   return 'mp4';
+}
+
+/**
+ * Resolve the video codec an export actually uses, given the format picker
+ * and the user's codec setting. WebM cannot carry H.264, so an H.264
+ * request under WebM becomes VP9 (the canonical WebM codec); AV1 is valid
+ * in WebM and passes through unchanged.
+ *
+ * @param {string} outputFormat - 'mp4' | 'webm' | 'gif' | 'mp3'
+ * @param {string} requestedCodec - 'h264' | 'av1'
+ * @returns {string} 'h264' | 'av1' | 'vp9'
+ */
+function codecForFormat(outputFormat, requestedCodec) {
+  if (outputFormat === 'webm' && requestedCodec !== 'av1') return 'vp9';
+  return requestedCodec === 'av1' ? 'av1' : 'h264';
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +292,10 @@ function parseEncoderCapabilities(stdout) {
     amf: { h264: has('h264_amf'), av1: has('av1_amf') },
     svtav1: has('libsvtav1'),
     libaom: has('libaom-av1'),
-    libx264: has('libx264')
+    libx264: has('libx264'),
+    // VP9 encode comes from libvpx; the slim build ships it as of the
+    // WebM feature (see scripts/build-ffmpeg.sh, BUILD_VPX).
+    vpx9: has('libvpx-vp9')
   };
 }
 
@@ -303,6 +350,7 @@ module.exports = {
   resolveCpuEncoder,
   audioCodecFor,
   containerForFormat,
+  codecForFormat,
   parseEncoderCapabilities,
   parseFilterCapabilities,
   detectAvailableEncoders

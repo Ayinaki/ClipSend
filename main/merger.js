@@ -629,18 +629,23 @@ class Merger {
    * than the default MP4 + native + no-size-cap output. Returns the final path
    * and size; the intermediate MP4 is removed.
    */
-  async postConvertMerged(inputPath, { format = 'mp4', resolution = null, targetSizeMB = null, totalDurationSec = 0, codec = 'h264', encoder = null, onProgress } = {}) {
+  async postConvertMerged(inputPath, { format = 'mp4', resolution = null, targetSizeMB = null, totalDurationSec = 0, codec = 'h264', encoder = null, finalPath = null, onProgress } = {}) {
     const isAv1 = codec === 'av1';
-    // The container always follows the format picker — AV1 is muxed into MP4
-    // (AAC audio), not WebM, since the app's format select is mp4/gif/mp3.
-    const ext = format === 'gif' ? 'gif' : format === 'mp3' ? 'mp3' : 'mp4';
+    const isVp9 = codec === 'vp9';
+    // The container follows the format picker: mp4/webm for video (WebM+H.264
+    // requests arrive here already remapped to VP9 by ipc-handlers via
+    // codecForFormat), gif/mp3 for their own containers.
+    const ext = format === 'gif' ? 'gif' : format === 'mp3' ? 'mp3' : format === 'webm' ? 'webm' : 'mp4';
     const dir = path.dirname(inputPath);
     const base = path.basename(inputPath, path.extname(inputPath));
-    const finalPath = path.join(dir, `${base}.${ext}`);
-    // In-place MP4 conversion needs a temp file (can't read and write the same path).
-    const convertPath = finalPath === inputPath
-      ? path.join(dir, `${base}.convert.mp4`)
-      : finalPath;
+    // When the merge wrote an intermediate MP4 (non-MP4 formats), the caller
+    // passes the real destination so the converted file lands under the name
+    // the user picked, not the temp file's base name.
+    const targetPath = finalPath || path.join(dir, `${base}.${ext}`);
+    // In-place conversion needs a temp file (can't read and write the same path).
+    const convertPath = targetPath === inputPath
+      ? path.join(dir, `${base}.convert.${ext}`)
+      : targetPath;
 
     // Optional scale filter for a non-native resolution.
     let scaleFilter = null;
@@ -685,15 +690,15 @@ class Merger {
         totalDurationSec, onProgress
       );
     } else {
-      // MP4 re-encode for non-native resolution, an explicit target size,
-      // or an AV1 codec switch (still muxed into MP4).
+      // Video re-encode for non-native resolution, an explicit target size,
+      // an AV1/VP9 codec switch, or a WebM container.
       const args = ['-y', '-i', inputPath];
       if (scaleFilter) args.push('-vf', scaleFilter);
 
       // ipc-handlers always passes a resolved encoder (hardware or CPU);
       // default to a CPU encoder per codec when absent. Previously the h264
       // branch hardcoded libx264, silently dropping hardware acceleration.
-      const enc = encoder || (isAv1 ? 'libaom-av1' : 'libx264');
+      const enc = encoder || (isAv1 ? 'libaom-av1' : isVp9 ? 'libvpx-vp9' : 'libx264');
       let videoBitrateKbps = null;
       if (targetSizeMB && totalDurationSec > 0) {
         // Same safety-margin + muxing-overhead math as the trim planner
@@ -727,17 +732,19 @@ class Merger {
             );
             await this._runProcess(pass1Args, totalDurationSec, null, dir);
 
-            // Pass 2: real encode with audio + faststart.
+            // Pass 2: real encode with audio + faststart (MP4 only).
             const pass2Args = ['-y', '-i', inputPath];
             if (scaleFilter) pass2Args.push('-vf', scaleFilter);
             pass2Args.push(
               ...buildVideoCodecArgs({ encoder: enc, videoBitrateKbps, maxQuality: false, pass: 2 }),
               '-pix_fmt', 'yuv420p',
-              '-c:a', audioCodecFor('mp4'), '-b:a', '192k',
-              '-movflags', '+faststart',
-              '-passlogfile', passLogName,
-              convertPath
+              '-c:a', audioCodecFor(ext), '-b:a', '192k'
             );
+            // Native opus (WebM audio) is marked experimental; -strict -2 is
+            // required or the encoder refuses to open.
+            if (ext === 'webm') pass2Args.push('-strict', '-2');
+            if (ext === 'mp4') pass2Args.push('-movflags', '+faststart');
+            pass2Args.push('-passlogfile', passLogName, convertPath);
             await this._runProcess(pass2Args, totalDurationSec, onProgress, dir);
           } finally {
             try { await fs.promises.unlink(path.join(dir, `${passLogName}-0.log`)); } catch (e) { /* ignore */ }
@@ -747,43 +754,49 @@ class Merger {
           args.push(...buildVideoCodecArgs({ encoder: enc, videoBitrateKbps, maxQuality: false, pass: 0 }));
           args.push(
             '-pix_fmt', 'yuv420p',
-            '-c:a', audioCodecFor('mp4'), '-b:a', '192k'
+            '-c:a', audioCodecFor(ext), '-b:a', '192k'
           );
-          // MP4 (both H.264 and AV1) benefits from faststart for fast playback.
-          args.push('-movflags', '+faststart');
+          // Native opus (WebM audio) is marked experimental; -strict -2 is
+          // required or the encoder refuses to open.
+          if (ext === 'webm') args.push('-strict', '-2');
+          // MP4 (H.264/AV1) benefits from faststart for fast playback.
+          if (ext === 'mp4') args.push('-movflags', '+faststart');
           args.push(convertPath);
           await this._runProcess(args, totalDurationSec, onProgress);
         }
       } else {
         args.push(...buildVideoCodecArgs({
           encoder: enc,
-          crfValue: isAv1 ? 35 : 23,
+          crfValue: isAv1 ? 35 : isVp9 ? 32 : 23,
           maxQuality: false,
           preset: enc === 'libx264' ? 'medium' : undefined,
           pass: 0
         }));
         args.push(
           '-pix_fmt', 'yuv420p',
-          '-c:a', audioCodecFor('mp4'), '-b:a', '192k'
+          '-c:a', audioCodecFor(ext), '-b:a', '192k'
         );
-        // MP4 (both H.264 and AV1) benefits from faststart for fast playback.
-        args.push('-movflags', '+faststart');
+        // Native opus (WebM audio) is marked experimental; -strict -2 is
+        // required or the encoder refuses to open.
+        if (ext === 'webm') args.push('-strict', '-2');
+        // MP4 (H.264/AV1) benefits from faststart for fast playback.
+        if (ext === 'mp4') args.push('-movflags', '+faststart');
         args.push(convertPath);
         await this._runProcess(args, totalDurationSec, onProgress);
       }
     }
 
-    // Finalize: swap the converted file into place and drop the intermediate MP4.
-    if (convertPath !== finalPath) {
+    // Finalize: swap the converted file into place and drop the intermediate.
+    if (convertPath !== targetPath) {
       try {
         if (fs.promises?.unlink) await fs.promises.unlink(inputPath);
         else if (fs.unlinkSync) fs.unlinkSync(inputPath);
       } catch (e) {
         /* ignore */
       }
-      if (fs.promises?.rename) await fs.promises.rename(convertPath, finalPath);
-      else fs.renameSync(convertPath, finalPath);
-    } else if (finalPath !== inputPath) {
+      if (fs.promises?.rename) await fs.promises.rename(convertPath, targetPath);
+      else fs.renameSync(convertPath, targetPath);
+    } else if (targetPath !== inputPath) {
       try {
         if (fs.promises?.unlink) await fs.promises.unlink(inputPath);
         else if (fs.unlinkSync) fs.unlinkSync(inputPath);
@@ -792,9 +805,9 @@ class Merger {
       }
     }
 
-    const stats = await fs.promises.stat(finalPath);
+    const stats = await fs.promises.stat(targetPath);
     return {
-      path: finalPath,
+      path: targetPath,
       sizeMB: parseFloat((stats.size / (1024 * 1024)).toFixed(2))
     };
   }

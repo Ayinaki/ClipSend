@@ -529,6 +529,13 @@ describe('calculatePlan — codec & hardware encoder selection', () => {
     expect(plan.pass1Args).toContain('-cpu-used');
   });
 
+  test('mp4 exports never get the -strict experimental flag', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'cpu', encoders: { libx264: true }
+    }));
+    expect(plan.pass2Args).not.toContain('-strict');
+  });
+
   test('AV1 + NVENC resolves to av1_nvenc single-pass when available', () => {
     const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
       videoCodec: 'av1', hwAccel: 'nvenc', encoders: CAPS_ALL
@@ -609,6 +616,96 @@ describe('calculatePlan — codec & hardware encoder selection', () => {
     });
     expect(plan.singlePassArgs).toContain('-qp_i');
     expect(plan.singlePassArgs).toContain('-qp_p');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calculatePlan — WebM format (VP9/AV1 + Opus)
+// ---------------------------------------------------------------------------
+
+describe('calculatePlan — WebM format', () => {
+  const CAPS_VPX = {
+    nvenc: { h264: true, av1: true },
+    qsv: { h264: true, av1: false },
+    amf: { h264: false, av1: false },
+    svtav1: true,
+    libx264: true,
+    vpx9: true
+  };
+
+  test('WebM + H.264 setting remaps to VP9 (2-pass libvpx-vp9, opus, no faststart)', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      outputFormat: 'webm', hwAccel: 'cpu', encoders: CAPS_VPX
+    }));
+    expect(plan.codec).toBe('vp9');
+    expect(plan.encoder).toBe('libvpx-vp9');
+    expect(plan.container).toBe('webm');
+    expect(plan.outputFormat).toBe('webm');
+    // 2-pass size targeting (VP9 is a CPU encoder)
+    expect(plan.isSinglePass).toBeFalsy();
+    expect(plan.pass1Args).toContain('libvpx-vp9');
+    expect(plan.pass2Args).toContain('libvpx-vp9');
+    expect(plan.pass1Args).toContain('-pass');
+    expect(plan.pass2Args[plan.pass2Args.indexOf('-pass') + 1]).toBe('2');
+    // WebM audio is opus (native encoder needs -strict -2, no faststart)
+    expect(plan.pass2Args).toContain('opus');
+    expect(plan.pass2Args).toContain('-strict');
+    expect(plan.pass2Args[plan.pass2Args.indexOf('-strict') + 1]).toBe('-2');
+    expect(plan.pass2Args).not.toContain('aac');
+    expect(plan.pass2Args).not.toContain('+faststart');
+    // The H.264 -> VP9 remap is surfaced to the user
+    expect(plan.warnings.some(w => w.id === 'webm-vp9')).toBe(true);
+  });
+
+  test('WebM + H.264 ignores the hardware preference (VP9 is CPU-only)', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      outputFormat: 'webm', hwAccel: 'nvenc', encoders: CAPS_VPX
+    }));
+    expect(plan.encoder).toBe('libvpx-vp9');
+    expect(plan.isSinglePass).toBeFalsy(); // 2-pass, not single-pass VBR
+  });
+
+  test('WebM + H.264 auto mode uses CRF single-pass with -b:v 0', () => {
+    const plan = calculatePlan(media1080p, 0, 30, {
+      mode: 'auto', crfValue: 19, outputFormat: 'webm', hwAccel: 'cpu', encoders: CAPS_VPX
+    });
+    expect(plan.encoder).toBe('libvpx-vp9');
+    expect(plan.isSinglePass).toBe(true);
+    expect(plan.singlePassArgs).toContain('-crf');
+    expect(plan.singlePassArgs).toContain('-b:v');
+    expect(plan.singlePassArgs).toContain('opus');
+    expect(plan.singlePassArgs).toContain('-strict');
+    expect(plan.singlePassArgs).not.toContain('+faststart');
+  });
+
+  test('WebM + AV1 setting keeps AV1 with opus audio in the webm container', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      outputFormat: 'webm', videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_VPX
+    }));
+    expect(plan.codec).toBe('av1');
+    expect(plan.encoder).toBe('libsvtav1');
+    expect(plan.container).toBe('webm');
+    expect(plan.pass2Args).toContain('opus');
+    expect(plan.pass2Args).toContain('-strict');
+    expect(plan.pass2Args).not.toContain('aac');
+    expect(plan.pass2Args).not.toContain('+faststart');
+    // No VP9 remap warning when AV1 is kept
+    expect(plan.warnings.some(w => w.id === 'webm-vp9')).toBe(false);
+  });
+
+  test('WebM + H.264 throws a clear error when the build lacks libvpx', () => {
+    const noVpx = { ...CAPS_VPX, vpx9: false };
+    expect(() => calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      outputFormat: 'webm', hwAccel: 'cpu', encoders: noVpx
+    }))).toThrow(/libvpx-vp9/);
+  });
+
+  test('WebM + AV1 does not gate on vpx9 availability', () => {
+    const noVpx = { ...CAPS_VPX, vpx9: false };
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      outputFormat: 'webm', videoCodec: 'av1', hwAccel: 'cpu', encoders: noVpx
+    }));
+    expect(plan.codec).toBe('av1');
   });
 });
 
