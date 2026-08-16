@@ -1,5 +1,15 @@
 window.changelogData = [
   {
+    "version": "v2.2.3: WebM Export & AV1 Size Fixes",
+    "date": "August 2026",
+    "changes": [
+      "Feature: New WebM output format for Trim and Merge exports. WebM cannot hold H.264, so the H.264 codec setting exports VP9 with Opus audio, and the AV1 setting keeps the hardware AV1 encoders in a WebM container.",
+      "Fix: Size-capped AV1 exports no longer fail. SVT-AV1 rejected the max bitrate flag in two-pass mode, and its rate control ran hot on short, detailed clips, pushing the output past the size limit.",
+      "Fix: WebM exports work in installed builds. VP9 encoding was missing from the bundled FFmpeg due to a cross-compile issue.",
+      "Fix: Merged WebM exports re-encode with the destination codec when clips don't match, and cancelling a post-export conversion keeps the intermediate file under an honest .mp4 name."
+    ]
+  },
+  {
     "version": "v2.2.2: Update Notes & Light Theme Polish",
     "date": "August 2026",
     "changes": [
