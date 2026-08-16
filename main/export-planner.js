@@ -741,12 +741,12 @@ function buildPassArgs(opts) {
         args.push('-af', atempoFilter(speed));
       }
     }
-      // MP4 (H.264/VP9/AV1) benefits from the faststart relocation so video
-      // starts playing before the whole file downloads; WebM/Matroska doesn't
-      // need it (the cues live near the stream data).
-      if (container === 'mp4') {
-        args.push('-movflags', '+faststart');
-      }
+    // MP4 (H.264/AV1) benefits from the faststart relocation so video starts
+    // playing before the whole file downloads; WebM/Matroska doesn't need it
+    // (the cues live near the stream data).
+    if (container === 'mp4') {
+      args.push('-movflags', '+faststart');
+    }
     // NOTE: output path is appended by the Encoder module at call time
   }
 
