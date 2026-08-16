@@ -129,8 +129,11 @@ const PROFILES = {
     // SVT-AV1 preset 0-13, lower = slower + better quality per bit.
     presets: { quality: '3', balanced: '6' },
     qualityArgs: (preset, crf) => ['-preset', preset, '-crf', String(crf)],
+    // No -maxrate: SVT-AV1 v4.2.0 rejects it in 2-pass mode ("Max Bitrate
+    // only supported with CRF mode"), and the planner only uses this in
+    // 2-pass (SVT is a CPU encoder, so size mode is always two-pass).
     bitrateArgs: (preset, vbit, bufsize) =>
-      ['-preset', preset, '-b:v', `${vbit}k`, '-maxrate', `${vbit}k`, '-bufsize', `${bufsize}k`]
+      ['-preset', preset, '-b:v', `${vbit}k`, '-bufsize', `${bufsize}k`]
   },
   'libaom-av1': {
     supportsTwoPass: true,

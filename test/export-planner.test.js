@@ -517,7 +517,49 @@ describe('calculatePlan — codec & hardware encoder selection', () => {
     expect(plan.pass1Args).toContain('-pass');
     expect(plan.pass1Args[plan.pass1Args.indexOf('-pass') + 1]).toBe('1');
     expect(plan.pass2Args[plan.pass2Args.indexOf('-pass') + 1]).toBe('2');
-    expect(plan.pass1Args).toContain('-maxrate');
+    // SVT-AV1 v4.2.0 rejects -maxrate in 2-pass ("Max Bitrate only supported
+    // with CRF mode"), so size-mode SVT must not carry it.
+    expect(plan.pass1Args).not.toContain('-maxrate');
+    expect(plan.pass2Args).not.toContain('-maxrate');
+  });
+
+  test('SVT-AV1 size-limit gets a discounted bitrate budget', () => {
+    // SVT's 2-pass rate control runs ~10% hot on short high-detail clips,
+    // so its budget is discounted (SVT_SAFETY_FACTOR) to stay under the cap.
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('libsvtav1');
+    const baseline = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'h264', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.videoBitrateKbps).toBeLessThan(baseline.videoBitrateKbps);
+    expect(plan.estimatedSizeMB).toBeLessThanOrEqual(10);
+  });
+
+  test('SVT discount cannot push a plan below the absolute minimum bitrate', () => {
+    // The pre-discount budget passes the ABSOLUTE_MIN check, but the 0.92
+    // factor must not let the final budget slip under the declared floor.
+    // 60s at 0.4 MB ≈ 52 kbps undiscounted → ~48 kbps after the discount.
+    expect(() => calculatePlan(media1080p, 0, 60, sizeLimitSettings(0.4, {
+      audioBitrateKbps: 0, videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }))).toThrow(/minimum threshold/);
+  });
+
+  test('SVT discount does not distort the resolution decision', () => {
+    // The discount applies only to the encode budget, not the resolution
+    // decision: a plan whose full budget clears the quality floor must keep
+    // the native resolution even when the discounted bitrate dips below it
+    // (SVT's hot runs actually deliver ~the full budget on overshoot clips).
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(13, {
+      videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('libsvtav1');
+    expect(plan.videoBitrateKbps).toBeLessThan(1500); // discounted below 1080p floor
+    expect(plan.width).toBe(1920);
+    expect(plan.height).toBe(1080);
+    expect(plan.downscaled).toBe(false);
+    expect(plan.estimatedSizeMB).toBeLessThanOrEqual(13);
   });
 
   test('AV1 + CPU falls back to libaom-av1 when svtav1 is not shipped', () => {

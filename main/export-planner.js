@@ -48,6 +48,19 @@ const QUALITY_FLOORS = [
 const SAFETY_MARGIN = 0.95;
 
 /**
+ * Extra bitrate discount for SVT-AV1 2-pass exports.
+ *
+ * Measured against real encodes (Aug 2026, SVT-AV1 v4.2.0): on short
+ * (<=10s) high-detail clips in the 3-10 Mbps range, SVT's 2-pass rate
+ * control runs ~10% hot (delivers 1.10x the requested bitrate), blowing
+ * through the generic safety margin above. On long clips and normal
+ * content it is accurate to ~1%. Rather than fatten the generic margin
+ * (which would shrink every libx264/VP9 export), discount only SVT's
+ * budget so size-capped AV1 exports stay under the platform limit.
+ */
+const SVT_SAFETY_FACTOR = 0.92;
+
+/**
  * Muxing overhead reserve — fraction of the safe budget set aside for
  * MP4 container headers, moov atom, and faststart relocation.
  * 1.5% is a conservative estimate that covers most files.
@@ -265,6 +278,30 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     // Manual resolution doesn't strictly need a warning since the user requested it,
     // but if we want to show it, we use a neutral object type. For now, we omit it
     // as the UI displays the resolution in the plan summary anyway.
+  }
+
+  // SVT-AV1 2-pass runs hot on short high-detail clips (see SVT_SAFETY_FACTOR):
+  // discount its bitrate budget so the output stays under the platform cap.
+  // Applied AFTER the resolution decision on purpose — the resolution is
+  // chosen from the full budget the user's target size affords (SVT's hot
+  // runs actually deliver ~the full budget on the clips it overshoots), and
+  // discounting earlier would push plans just above a quality floor into an
+  // unnecessary downscale. Hardware/VP9/libx264 encoders are accurate and
+  // keep the full budget.
+  if (settings.mode === 'size-limit' && encoder === 'libsvtav1') {
+    videoBitrateKbps *= SVT_SAFETY_FACTOR;
+    // The pre-discount budget already passed ABSOLUTE_MIN above, but the
+    // discount can push a 50-54 kbps plan below the declared floor — refuse
+    // rather than silently encode below it. Round to match what
+    // buildVideoCodecArgs actually encodes (Math.round), so a 49.5 kbps
+    // budget that lands on the valid 50 kbps minimum is not rejected.
+    if (Math.round(videoBitrateKbps) < ABSOLUTE_MIN_VIDEO_BITRATE_KBPS) {
+      throw new Error(
+        `Computed video bitrate (${Math.round(videoBitrateKbps)} kbps) is below the ` +
+        `minimum threshold of ${ABSOLUTE_MIN_VIDEO_BITRATE_KBPS} kbps. ` +
+        `The clip is too long for the selected target size.`
+      );
+    }
   }
 
   // Merge any codec-remap warnings back in now that resolution is decided.
