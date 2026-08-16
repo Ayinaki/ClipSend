@@ -537,6 +537,15 @@ describe('calculatePlan — codec & hardware encoder selection', () => {
     expect(plan.estimatedSizeMB).toBeLessThanOrEqual(10);
   });
 
+  test('SVT discount cannot push a plan below the absolute minimum bitrate', () => {
+    // The pre-discount budget passes the ABSOLUTE_MIN check, but the 0.92
+    // factor must not let the final budget slip under the declared floor.
+    // 60s at 0.4 MB ≈ 52 kbps undiscounted → ~48 kbps after the discount.
+    expect(() => calculatePlan(media1080p, 0, 60, sizeLimitSettings(0.4, {
+      audioBitrateKbps: 0, videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }))).toThrow(/minimum threshold/);
+  });
+
   test('SVT discount does not distort the resolution decision', () => {
     // The discount applies only to the encode budget, not the resolution
     // decision: a plan whose full budget clears the quality floor must keep

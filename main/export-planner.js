@@ -290,6 +290,16 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
   // keep the full budget.
   if (settings.mode === 'size-limit' && encoder === 'libsvtav1') {
     videoBitrateKbps *= SVT_SAFETY_FACTOR;
+    // The pre-discount budget already passed ABSOLUTE_MIN above, but the
+    // discount can push a 50-54 kbps plan below the declared floor — refuse
+    // rather than silently encode below it.
+    if (videoBitrateKbps < ABSOLUTE_MIN_VIDEO_BITRATE_KBPS) {
+      throw new Error(
+        `Computed video bitrate (${Math.round(videoBitrateKbps)} kbps) is below the ` +
+        `minimum threshold of ${ABSOLUTE_MIN_VIDEO_BITRATE_KBPS} kbps. ` +
+        `The clip is too long for the selected target size.`
+      );
+    }
   }
 
   // Merge any codec-remap warnings back in now that resolution is decided.
