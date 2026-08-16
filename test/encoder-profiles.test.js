@@ -110,6 +110,15 @@ describe('buildVideoCodecArgs', () => {
     expect(args).toContain('-crf');
   });
 
+  test('libsvtav1 size mode omits -maxrate (rejected in 2-pass by v4.2.0)', () => {
+    const args = buildVideoCodecArgs({ encoder: 'libsvtav1', videoBitrateKbps: 1000, pass: 2 });
+    expect(args).toContain('-b:v');
+    expect(args).toContain('-bufsize');
+    expect(args).not.toContain('-maxrate');
+    expect(args).toContain('-pass');
+    expect(args[args.indexOf('-pass') + 1]).toBe('2');
+  });
+
   test('libaom-av1 quality mode uses -cpu-used and -crf with -b:v 0', () => {
     const args = buildVideoCodecArgs({ encoder: 'libaom-av1', crfValue: 30 });
     expect(args).toContain('libaom-av1');

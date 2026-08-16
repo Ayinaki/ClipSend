@@ -48,6 +48,19 @@ const QUALITY_FLOORS = [
 const SAFETY_MARGIN = 0.95;
 
 /**
+ * Extra bitrate discount for SVT-AV1 2-pass exports.
+ *
+ * Measured against real encodes (Aug 2026, SVT-AV1 v4.2.0): on short
+ * (<=10s) high-detail clips in the 3-10 Mbps range, SVT's 2-pass rate
+ * control runs ~10% hot (delivers 1.10x the requested bitrate), blowing
+ * through the generic safety margin above. On long clips and normal
+ * content it is accurate to ~1%. Rather than fatten the generic margin
+ * (which would shrink every libx264/VP9 export), discount only SVT's
+ * budget so size-capped AV1 exports stay under the platform limit.
+ */
+const SVT_SAFETY_FACTOR = 0.92;
+
+/**
  * Muxing overhead reserve — fraction of the safe budget set aside for
  * MP4 container headers, moov atom, and faststart relocation.
  * 1.5% is a conservative estimate that covers most files.
@@ -204,6 +217,13 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
         clipDuration,
         audioBitrateKbps
       );
+      // SVT-AV1 2-pass runs hot on short high-detail clips (see
+      // SVT_SAFETY_FACTOR); discount its budget so the output stays
+      // under the cap. Hardware/VP9/libx264 encoders are accurate and
+      // keep the full budget.
+      if (encoder === 'libsvtav1') {
+        videoBitrateKbps *= SVT_SAFETY_FACTOR;
+      }
     } else {
       // custom mode — user supplies video bitrate directly
       videoBitrateKbps = settings.customBitrateKbps;

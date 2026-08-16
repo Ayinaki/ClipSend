@@ -517,7 +517,24 @@ describe('calculatePlan — codec & hardware encoder selection', () => {
     expect(plan.pass1Args).toContain('-pass');
     expect(plan.pass1Args[plan.pass1Args.indexOf('-pass') + 1]).toBe('1');
     expect(plan.pass2Args[plan.pass2Args.indexOf('-pass') + 1]).toBe('2');
-    expect(plan.pass1Args).toContain('-maxrate');
+    // SVT-AV1 v4.2.0 rejects -maxrate in 2-pass ("Max Bitrate only supported
+    // with CRF mode"), so size-mode SVT must not carry it.
+    expect(plan.pass1Args).not.toContain('-maxrate');
+    expect(plan.pass2Args).not.toContain('-maxrate');
+  });
+
+  test('SVT-AV1 size-limit gets a discounted bitrate budget', () => {
+    // SVT's 2-pass rate control runs ~10% hot on short high-detail clips,
+    // so its budget is discounted (SVT_SAFETY_FACTOR) to stay under the cap.
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('libsvtav1');
+    const baseline = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'h264', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.videoBitrateKbps).toBeLessThan(baseline.videoBitrateKbps);
+    expect(plan.estimatedSizeMB).toBeLessThanOrEqual(10);
   });
 
   test('AV1 + CPU falls back to libaom-av1 when svtav1 is not shipped', () => {
