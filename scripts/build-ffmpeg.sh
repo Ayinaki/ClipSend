@@ -58,7 +58,11 @@ WORK="$ROOT/.ffbuild"
 PREFIX="$WORK/prefix"
 OUT="$ROOT/artifacts"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
-CROSS=x86_64-w64-mingw32-
+# libvpx's configure.sh reads its toolchain from the CROSS env var (the other
+# deps take an explicit flag), so this must be exported - not just set - or
+# libvpx silently builds ELF objects with the host gcc and ffmpeg's configure
+# disables the VP9 encoder.
+export CROSS=x86_64-w64-mingw32-
 
 BUILD_X264="${BUILD_X264:-1}"
 BUILD_AOM="${BUILD_AOM:-1}"
@@ -219,17 +223,52 @@ fi
 if [ "$BUILD_VPX" = "1" ]; then
   log "Building libvpx (VP8/VP9)"
   # Pin to a release tag (CHANGELOG "v1.14.1 \"Venetian Duck\""). libvpx has
-  # its own configure (not autotools); the mingw cross target builds a static
-  # libvpx.a that ffmpeg links. Tools/tests/examples are all dropped.
+  # its own configure (not autotools); unlike the other deps it reads its
+  # toolchain from the CROSS env var rather than an explicit flag, so pass it
+  # directly. The mingw cross target builds a static libvpx.a that ffmpeg
+  # links; tools/tests/examples are all dropped.
   fetch libvpx https://github.com/webmproject/libvpx.git v1.14.1
   (
     cd "$WORK/libvpx"
-    ./configure --target=x86_64-win64-gcc --prefix="$PREFIX" \
+    CROSS="$CROSS" ./configure --target=x86_64-win64-gcc --prefix="$PREFIX" \
       --enable-static --disable-shared \
       --disable-examples --disable-docs --disable-tools --disable-unit-tests \
       --disable-webm-io --disable-libyuv
     make -j"$JOBS" && make install
   )
+
+  # Self-report the exact query ffmpeg's configure will run for libvpx (mirrors
+  # the SvtAv1Enc diagnostic above), then prove the archive actually links for
+  # the Windows target - without CROSS above, libvpx silently builds ELF
+  # objects with the host gcc and ffmpeg's configure disables libvpx_vp9_encoder.
+  log "Verifying vpx pkg-config query"
+  ls -la "$PREFIX/lib/pkgconfig/" | grep -i vpx || true
+  cat "$PREFIX/lib/pkgconfig/vpx.pc" 2>/dev/null || true
+  if pkg-config --exists --print-errors "vpx >= 1.4.0"; then
+    echo "vpx pkg-config check: OK (version $(pkg-config --modversion vpx))"
+    echo "cflags: $(pkg-config --cflags --static vpx 2>&1)"
+    echo "libs:   $(pkg-config --libs --static vpx 2>&1)"
+  else
+    echo "vpx pkg-config check: FAILED (exit $?)"
+  fi
+
+  log "Verifying libvpx links for the Windows target"
+  cat > "$WORK/vpx-check.c" <<'EOF'
+#include <vpx/vpx_encoder.h>
+#include <vpx/vp8cx.h>
+#include <stdint.h>
+long check_vpx_codec_vp9_cx(void) { return (long) vpx_codec_vp9_cx; }
+long check_VPX_IMG_FMT_HIGHBITDEPTH(void) { return (long) VPX_IMG_FMT_HIGHBITDEPTH; }
+int main(void) { int ret = 0;
+  ret |= ((intptr_t)check_vpx_codec_vp9_cx) & 0xFFFF;
+  ret |= ((intptr_t)check_VPX_IMG_FMT_HIGHBITDEPTH) & 0xFFFF;
+  return ret; }
+EOF
+  x86_64-w64-mingw32-gcc -I"$PREFIX/include" -static-libgcc \
+    "$WORK/vpx-check.c" -o "$WORK/vpx-check.exe" \
+    -L"$PREFIX/lib" -lvpx -lm -lpthread -lstdc++ -static \
+    || die "libvpx archive is not linkable for the Windows target (see error above)"
+  echo "libvpx link check: OK"
 fi
 
 if [ "$BUILD_VPL" = "1" ]; then
@@ -338,6 +377,13 @@ log "Configuring FFmpeg (minimal)"
     grep -n -A 6 -i "pkg-config\|SvtAv1Enc\|libaom\|libx264\|libmp3lame\|libvpx\|libdav1d\|ERROR" ffbuild/config.log | head -120 || true
     exit 1
   fi
+
+  # Configure succeeded, but --disable-everything silently drops any component
+  # whose check failed (e.g. the libvpx encoders). Surface those checks so a
+  # disabled libvpx_vp9 is diagnosable from the CI log rather than only by the
+  # post-build assertion.
+  echo "---- ffbuild/config.log: libvpx / vpx checks ----"
+  grep -n -i -B 1 -A 8 "libvpx\|vpx_codec\|vpx >= \|vpx/vpx" ffbuild/config.log | head -100 || true
 
   make -j"$JOBS"
 )
