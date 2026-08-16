@@ -522,9 +522,15 @@ class Merger {
 
     const filterComplex = filterParts.join('; ');
 
-    // The concat-filter fallback writes the intermediate MP4 (the final
-    // container/codec is applied by postConvertMerged for AV1 exports), so
-    // audio follows the h264 path unless explicitly told otherwise.
+    // The concat-filter fallback normally writes an intermediate MP4 (the
+    // final container/codec is applied by postConvertMerged when a conversion
+    // is scheduled), so audio follows the mp4 path. The multi-segment trim
+    // flow (skipConvert) instead pre-encodes segments in the final codec and
+    // skips post-conversion, so its destination can be .webm — derive the
+    // container from the output extension so the re-encode lands in the muxer
+    // the output will actually use (VP9/Opus segments must not become H.264
+    // into a .webm file). The video encoder itself is passed in codec-appropriate.
+    const container = path.extname(outputPath).toLowerCase() === '.webm' ? 'webm' : 'mp4';
     const videoCodecArgs = buildVideoCodecArgs({
       encoder,
       crfValue: 18,
@@ -540,9 +546,12 @@ class Merger {
       '-map', '[outv]',
       '-map', '[outa]',
       ...videoCodecArgs,
-      '-c:a', audioCodecFor('mp4'),
+      '-c:a', audioCodecFor(container),
       '-b:a', '192k',
-      '-movflags', '+faststart',
+      // Native opus (WebM audio) is marked experimental; -strict -2 is
+      // required or the encoder refuses to open.
+      ...(container === 'webm' ? ['-strict', '-2'] : []),
+      ...(container === 'mp4' ? ['-movflags', '+faststart'] : []),
       outputPath
     ];
 

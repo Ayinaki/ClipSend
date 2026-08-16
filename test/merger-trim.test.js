@@ -160,6 +160,69 @@ describe('Merger.runMerge with trims', () => {
     expect(fs.promises.unlink).toHaveBeenCalledWith(tempOut);
   });
 
+  // The concat-filter fallback derives its container from the output
+  // extension so the re-encode lands in the muxer the output will use
+  // (multi-segment trim exports pre-encode VP9/Opus segments into .webm and
+  // merge with skipConvert — H.264 into a .webm destination would be
+  // rejected by the muxer).
+  test('concat-filter fallback to a .webm output uses vp9/opus and no faststart', async () => {
+    const clips = [
+      { width: 1280, height: 720, fps: 30, audioCodec: 'opus', duration: 5 },
+      { width: 1280, height: 720, fps: 30, audioCodec: 'opus', duration: 5 }
+    ];
+    const runPromise = merger._runConcatFilter(
+      ['C:\\a.webm', 'C:\\b.webm'],
+      clips,
+      'C:\\out.webm',
+      10,
+      onProgress,
+      'libvpx-vp9',
+      'vp9'
+    );
+
+    await flush();
+    const args = mockSpawn.mock.calls[0][1];
+    expect(args[args.length - 1]).toBe('C:\\out.webm');
+    expect(args).toContain('libvpx-vp9');
+    expect(args).toContain('-c:a');
+    expect(args[args.indexOf('-c:a') + 1]).toBe('opus');
+    expect(args).toContain('-strict');
+    expect(args[args.indexOf('-strict') + 1]).toBe('-2');
+    expect(args).not.toContain('+faststart');
+
+    completeProcess(processes[0]);
+    await flush();
+    await runPromise;
+  });
+
+  test('concat-filter fallback to a .mp4 output keeps aac + faststart', async () => {
+    const clips = [
+      { width: 1280, height: 720, fps: 30, audioCodec: 'aac', duration: 5 },
+      { width: 1280, height: 720, fps: 30, audioCodec: 'aac', duration: 5 }
+    ];
+    const runPromise = merger._runConcatFilter(
+      ['C:\\a.mp4', 'C:\\b.mp4'],
+      clips,
+      'C:\\out.mp4',
+      10,
+      onProgress,
+      'libx264',
+      'h264'
+    );
+
+    await flush();
+    const args = mockSpawn.mock.calls[0][1];
+    expect(args[args.length - 1]).toBe('C:\\out.mp4');
+    expect(args).toContain('-c:a');
+    expect(args[args.indexOf('-c:a') + 1]).toBe('aac');
+    expect(args).toContain('+faststart');
+    expect(args).not.toContain('-strict');
+
+    completeProcess(processes[0]);
+    await flush();
+    await runPromise;
+  });
+
   test('skips the trim pass entirely when nothing is trimmed', async () => {
     const runPromise = merger.runMerge(
       ['C:\\x.mp4', 'C:\\y.mp4'],
