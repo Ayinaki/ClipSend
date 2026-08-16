@@ -537,6 +537,22 @@ describe('calculatePlan — codec & hardware encoder selection', () => {
     expect(plan.estimatedSizeMB).toBeLessThanOrEqual(10);
   });
 
+  test('SVT discount does not distort the resolution decision', () => {
+    // The discount applies only to the encode budget, not the resolution
+    // decision: a plan whose full budget clears the quality floor must keep
+    // the native resolution even when the discounted bitrate dips below it
+    // (SVT's hot runs actually deliver ~the full budget on overshoot clips).
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(13, {
+      videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('libsvtav1');
+    expect(plan.videoBitrateKbps).toBeLessThan(1500); // discounted below 1080p floor
+    expect(plan.width).toBe(1920);
+    expect(plan.height).toBe(1080);
+    expect(plan.downscaled).toBe(false);
+    expect(plan.estimatedSizeMB).toBeLessThanOrEqual(13);
+  });
+
   test('AV1 + CPU falls back to libaom-av1 when svtav1 is not shipped', () => {
     const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
       videoCodec: 'av1', hwAccel: 'cpu', encoders: { libaom: true, libx264: true }

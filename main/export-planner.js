@@ -217,13 +217,6 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
         clipDuration,
         audioBitrateKbps
       );
-      // SVT-AV1 2-pass runs hot on short high-detail clips (see
-      // SVT_SAFETY_FACTOR); discount its budget so the output stays
-      // under the cap. Hardware/VP9/libx264 encoders are accurate and
-      // keep the full budget.
-      if (encoder === 'libsvtav1') {
-        videoBitrateKbps *= SVT_SAFETY_FACTOR;
-      }
     } else {
       // custom mode — user supplies video bitrate directly
       videoBitrateKbps = settings.customBitrateKbps;
@@ -285,6 +278,18 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     // Manual resolution doesn't strictly need a warning since the user requested it,
     // but if we want to show it, we use a neutral object type. For now, we omit it
     // as the UI displays the resolution in the plan summary anyway.
+  }
+
+  // SVT-AV1 2-pass runs hot on short high-detail clips (see SVT_SAFETY_FACTOR):
+  // discount its bitrate budget so the output stays under the platform cap.
+  // Applied AFTER the resolution decision on purpose — the resolution is
+  // chosen from the full budget the user's target size affords (SVT's hot
+  // runs actually deliver ~the full budget on the clips it overshoots), and
+  // discounting earlier would push plans just above a quality floor into an
+  // unnecessary downscale. Hardware/VP9/libx264 encoders are accurate and
+  // keep the full budget.
+  if (settings.mode === 'size-limit' && encoder === 'libsvtav1') {
+    videoBitrateKbps *= SVT_SAFETY_FACTOR;
   }
 
   // Merge any codec-remap warnings back in now that resolution is decided.
