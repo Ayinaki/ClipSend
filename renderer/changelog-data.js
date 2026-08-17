@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v2.2.4: Multi-Trim WebM Fix",
+    "date": "August 2026",
+    "changes": [
+      "Fix: Multi-trim exports to WebM no longer fail. Merging multiple trimmed segments crashed before the merge started, so the export never completed. Segments now carry the destination format and codec through to the merge, and the final file matches what you picked."
+    ]
+  },
+  {
     "version": "v2.2.3: WebM Export & AV1 Size Fixes",
     "date": "August 2026",
     "changes": [
