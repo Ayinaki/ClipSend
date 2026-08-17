@@ -50,13 +50,10 @@ The export system relies heavily on FFmpeg, governed by a multi-step planning an
 - **FFmpeg Execution:** `Encoder` and `Merger` classes wrap the native Node.js `child_process.spawn`, parsing stderr text streams in real-time to extract timecode progress updates. 
 - **Two-Pass Path Workaround:** FFmpeg/x264 on Windows suffers from a long-standing bug where it fails to interpret backslashes correctly in the pass logfile path. ClipSend bypasses this by setting the Node child process `cwd` to the target output directory and using a relative filename (`ffmpeg2pass-0.log`) for the pass logs.
 
-## Code Signing & Privacy
+## Privacy & Updates
 
-ClipSend's Windows installer is code-signed for release builds.
+ClipSend's installer is unsigned, so Windows SmartScreen may show an "unrecognized publisher" warning when you install or update. Click More info, then Run anyway. The auto-updater works without a signing certificate.
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- [Code Signing Policy](CODE_SIGNING.md)
 - [Privacy Policy](PRIVACY.md)
 
 ## Known Limitations / Future Work

@@ -159,8 +159,8 @@ output directory — absolute Windows backslash paths break x264's pass 2. Prese
   blockmap to a GitHub Release (electron-updater source).
 
 Releases: bump `version` in `package.json` (and the changelog in
-`renderer/changelog-data.js`), tag `vX.Y.Z`. Installer signing is handled via SignPath —
-see `CODE_SIGNING.md`.
+`renderer/changelog-data.js`), tag `vX.Y.Z`. Installers are unsigned and the
+auto-updater works without a signing certificate.
 
 ## Feedback service
 
