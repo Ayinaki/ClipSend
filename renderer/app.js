@@ -648,10 +648,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       };
 
+      // Hoisted so the merge phase below can read the last segment's plan:
+      // declared inside the loop it is out of scope after it, and referencing
+      // it there throws "segPlan is not defined" (this broke every multi-trim
+      // merged export, WebM and MP4 alike). All segments are pre-encoded with
+      // the same settings, so the final segment's plan represents the whole
+      // set's format and codec.
+      let segPlan = null;
+
       for (let i = 0; i < segments.length; i++) {
         exportProgressState.segmentIndex = i;
         const seg = segments[i];
-        let segPlan = { ...basePlan, trimIn: seg.in, trimOut: seg.out, encoder: encoderName };
+        segPlan = { ...basePlan, trimIn: seg.in, trimOut: seg.out, encoder: encoderName };
         
         // Re-plan per segment for multi-trim, and also on a hardware-encoder
         // CPU fallback: the original plan's args still point at the failed
