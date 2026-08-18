@@ -535,7 +535,11 @@ function registerIpcHandlers() {
           attemptFinal = `${outputPath.slice(0, -outputExt.length)}.attempt${i}${outputExt}`;
         }
         try {
-          converted = await merger.postConvertMerged(attemptInput, {
+          // converted is only assigned AFTER the attempt is fully promoted, so
+          // a failed encode or a failed rename leaves it pointing at the last
+          // good conversion (whose file is still at outputPath) — never at an
+          // attempt temp that cleanup is about to delete.
+          const attemptResult = await merger.postConvertMerged(attemptInput, {
             format: postFormat,
             resolution: postResolution,
             targetSizeMB: targets[i],
@@ -547,8 +551,9 @@ function registerIpcHandlers() {
           });
           if (isWebmRetry) {
             await fs.promises.rename(attemptFinal, outputPath);
-            converted.path = outputPath;
+            attemptResult.path = outputPath;
           }
+          converted = attemptResult;
           // Fits the target, or the last attempt, or no target to chase.
           if (!postTargetSizeMB || converted.sizeMB <= postTargetSizeMB || i === targets.length - 1) break;
         } catch (err) {
