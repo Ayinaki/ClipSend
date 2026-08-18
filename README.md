@@ -1,7 +1,7 @@
 # ClipSend
 
 ## App Overview
-ClipSend is a lightweight, responsive desktop application designed for quickly preparing and sharing video clips. Built with Electron, it focuses on rapid video trimming, multi-clip merging, and highly optimized hardware-accelerated exports tailored for sharing directly into chat applications like Discord and Slack.
+ClipSend is a Windows desktop app for cutting video down to size: trim a single clip, merge several into one, and export to fit Discord's 20 MB free tier, 50 MB Nitro Basic, or 500 MB Nitro. Exports are GPU-accelerated where possible (NVENC, QSV, AMF), fall back to the CPU otherwise, and use H.264 or AV1.
 
 <p align="center">
   <img src="docs/screenshots/trim-dark.png" alt="ClipSend Trim mode with the export plan in the title bar" width="70%">
@@ -16,37 +16,37 @@ ClipSend is a lightweight, responsive desktop application designed for quickly p
 ## Features
 
 ### Trim Mode
-Trim Mode allows users to load a single video file, set precise in and out points, and quickly export a compressed, trimmed clip.
+Trim Mode loads one video, lets you set in and out points, and exports a compressed clip of just that section.
 - **File Loading:** Supports both native file dialog selection and dragging/dropping a file directly onto the window.
 - **Timeline:** A custom `<canvas>`-based interactive timeline with visual waveform/thumbnail support, draggable in/out trim handles, and a playhead synchronized with the `<video>` element.
-- **Audio Controls:** Extracts and allows selection of specific audio tracks from multi-track videos, as well as a mute toggle and volume slider that persist across sessions.
-- **Export Estimation:** A "Calculate Plan" function computes expected target file size and bitrate based on the chosen preset, displaying a clean estimation panel prior to export.
-- **Copy to Clipboard:** Upon successful Trim Mode export, a "Copy to Clipboard" button is available. This uses native Windows `CF_HDROP` clipboard formatting (via PowerShell's `Set-Clipboard`) to copy the *actual exported file* to the clipboard, allowing instant pasting into Discord, Slack, or Windows Explorer as an attachment.
-- **Transport Bar:** Unified flat styling for playback controls (Play/Pause, Step Frame, Jump to Marker, Set Marker), utilizing Segoe MDL2 icon fonts.
+- **Audio Controls:** Pick a specific audio track from a multi-track video, or mute it and adjust volume. The choices persist across sessions.
+- **Export Estimation:** Calculate Plan works out the expected file size and bitrate for the chosen preset before you start the encode.
+- **Copy to Clipboard:** After a Trim Mode export, a Copy to Clipboard button puts the exported file itself on the clipboard (native Windows `CF_HDROP` via PowerShell's `Set-Clipboard`), so you can paste it straight into Discord, Slack, or Windows Explorer.
+- **Transport Bar:** Unified flat styling for the playback controls (Play/Pause, Step Frame, Jump to Marker, Set Marker), using Segoe MDL2 icon fonts.
 
 ### Merge Mode
-Merge Mode allows users to select multiple video clips, arrange them in sequence, and stitch them together into a single continuous video.
-- **Multi-clip Loading:** Supports adding multiple clips simultaneously via the "Add Clips" dialog or by drag-and-dropping multiple files onto the stage or the Clip List sidebar.
-- **Clip List Panel:** A visual sidebar showing all loaded clips, allowing users to reorder clips intuitively via native HTML5 Drag and Drop.
-- **Proportional Timeline:** The timeline scrubber visually represents the stitched video, drawing segments proportional to each clip's duration. Extremely short clips are enforced a minimum visual width (in pixels) to ensure they remain clickable and discoverable, with a non-linear mapping system keeping the playhead accurate.
-- **Per-Clip Trimming:** Each clip in the merge timeline can be trimmed independently — drag the amber trim handles on a block, or select a clip and use the Set In / Set Out / Jump transport buttons. Trimmed-away regions are dimmed, blocks scale to their trimmed length, and the preview player honors the trims during playback and scrubbing.
-- **Continuous Playback:** Smoothly swaps the video source during playback as the playhead crosses clip boundaries. Volume and mute states persist seamlessly across clip transitions.
+Merge Mode takes several clips, arranges them in order, and stitches them into one video.
+- **Multi-clip Loading:** Add several clips at once through the Add Clips dialog, or drop multiple files onto the stage or the Clip List sidebar.
+- **Clip List Panel:** A visual sidebar of all loaded clips. Reorder clips with native HTML5 drag and drop.
+- **Proportional Timeline:** The timeline scrubber draws segments proportional to each clip's duration. Very short clips get a minimum visual width so they stay clickable, with a non-linear mapping that keeps the playhead accurate.
+- **Per-Clip Trimming:** Trim each clip in the merge timeline independently. Drag the amber handles on a block, or select a clip and use the Set In / Set Out / Jump transport buttons. Cut-away regions are dimmed, blocks scale to their trimmed length, and the preview player honors the trims during playback and scrubbing.
+- **Continuous Playback:** The video source swaps as the playhead crosses clip boundaries. Volume and mute states carry over from clip to clip.
 
 ### Mode Switching
-- ClipSend allows switching back and forth between Trim Mode and Merge Mode without losing any state.
+- Switch between Trim Mode and Merge Mode without losing any state.
 - **Implementation Detail:** When returning to Trim Mode, the UI forces a `window.resize` event dispatch. This is required because HTML5 `<canvas>` elements lose their dimensional context and render blank after being hidden via `display: none`; the resize event triggers a safe re-measure and repaint of the timeline using the preserved in-memory state.
 
 ### Drag-and-Drop System
 ClipSend supports dragging and dropping files from the OS directly into the app.
-- **Path Resolution:** Because the app runs with modern Electron security settings (`contextIsolation: true`), the `.path` property on standard DOM `File` objects is stripped for security reasons. ClipSend uses the Electron 32+ `webUtils.getPathForFile(file)` API, exposed securely via `preload.js`, to resolve the actual absolute file path of dropped files without compromising context isolation.
+- **Path Resolution:** Under `contextIsolation: true`, the `.path` property on DOM `File` objects is stripped. ClipSend uses the Electron 32+ `webUtils.getPathForFile(file)` API, exposed through `preload.js`, to get the real absolute path of a dropped file.
 
 ### Export Pipeline
-The export system relies heavily on FFmpeg, governed by a multi-step planning and execution pipeline.
-- **Planning (`export-planner.js`):** Calculates the exact video bitrate needed to hit the target file size (e.g. 8MB or 25MB for Discord), applying a 5% safety margin and accounting for audio track size and 1.5% muxing overhead. Generates the exact FFmpeg argument array.
-- **Hardware Acceleration (`encoder-profiles.js`, `encoder.js` & `merger.js`):** Supports NVIDIA NVENC (`h264_nvenc`), Intel QSV (`h264_qsv`), and AMD AMF (`h264_amf`) — all detected automatically from the bundled FFmpeg and selectable in Settings. The pipeline adjusts rate-control per encoder (e.g. `-rc vbr`/`-maxrate` for size-targeted hardware exports instead of the 2-pass ABR used by CPU encoders).
-- **AV1 Exports:** A Video Codec setting switches exports from H.264 to AV1 — roughly double the quality at the same byte budget, great for Discord. AV1 muxes into the format you pick (MP4 with AAC audio, or WebM with Opus). AV1 uses SVT-AV1 (2-pass for size targets) on CPU, or the GPU's AV1 encoder (`av1_nvenc` / `av1_qsv` / `av1_amf`) when available.
+Every export runs on the bundled FFmpeg. A planning step first works out the encode (bitrate, resolution, encoder, exact arguments), then the encode runs and reports progress.
+- **Planning (`export-planner.js`):** Works out the video bitrate that lands under the chosen size cap. It keeps a safety margin below the limit (tighter for short clips, where keyframe overhead eats a bigger share), sets aside 1.5% for the container, subtracts the audio bitrate, and produces the exact FFmpeg arguments.
+- **Hardware Acceleration (`encoder-profiles.js`, `encoder.js` & `merger.js`):** NVIDIA NVENC (`h264_nvenc`), Intel QSV (`h264_qsv`), and AMD AMF (`h264_amf`) are detected from the bundled FFmpeg and selectable in Settings. Rate control is adjusted per encoder (`-rc vbr`/`-maxrate` for size-targeted hardware exports instead of the 2-pass ABR used by CPU encoders).
+- **AV1 Exports:** A Video Codec setting switches exports from H.264 to AV1, roughly double the quality at the same file size. AV1 muxes into the format you pick (MP4 with AAC audio, or WebM with Opus), using SVT-AV1 (2-pass for size targets) on CPU or the GPU's AV1 encoder (`av1_nvenc` / `av1_qsv` / `av1_amf`) when available.
 - **WebM Exports:** The format picker includes WebM for web-friendly sharing (Slack, HTML5 embeds, browsers). WebM cannot contain H.264, so picking WebM with the H.264 codec setting exports VP9 (`libvpx-vp9`, software, 2-pass for size targets) with Opus audio; the AV1 setting exports AV1-in-WebM and keeps the hardware AV1 encoders. VP9 has no hardware encoder in this app, so WebM+H.264 exports run on the CPU (a plan warning calls this out).
-- **Merge Fallback (`merger.js`):** When exporting merged clips, the pipeline attempts a lossless fast path (`concat` demuxer with `-c copy`) if all clips share identical video/audio codecs, resolutions, and framerates. If they differ, it falls back to a complex re-encode using the `concat` filter to normalize all clips to the first clip's parameters, automatically utilizing NVENC if configured.
+- **Merge Fallback (`merger.js`):** When exporting merged clips, the pipeline tries a lossless fast path (`concat` demuxer with `-c copy`) if all clips share the same codecs, resolution, and framerate. If they differ, it falls back to a re-encode with the `concat` filter, normalizing every clip to the first clip's parameters and using NVENC when configured.
 - **Merge Trimming (`merger.js`):** When any clip has a trim range, that clip is first re-encoded to a uniform temporary file (accurate `-ss`/`-t` trim, h264/aac, NVENC or CPU) before the concat step, so the merged output contains exactly the selected sections. Untouched clips keep the original files, and all temp files are cleaned up automatically. Progress is weighted across the trim + concat phases.
 
 <p align="center">
@@ -63,7 +63,7 @@ ClipSend follows your Windows theme, with a dark and a light variant for every s
 
 ## Architecture Notes
 - **Process Communication:** The application maintains strict isolation. The UI (`renderer/`) communicates with the Node.js backend (`main/`) exclusively via asynchronous IPC invocations defined in `preload.js` and handled in `ipc-handlers.js`.
-- **FFmpeg Execution:** `Encoder` and `Merger` classes wrap the native Node.js `child_process.spawn`, parsing stderr text streams in real-time to extract timecode progress updates. 
+- **FFmpeg Execution:** `Encoder` and `Merger` classes wrap the native Node.js `child_process.spawn`, parsing stderr text streams in real-time to extract timecode progress updates.
 - **Two-Pass Path Workaround:** FFmpeg/x264 on Windows suffers from a long-standing bug where it fails to interpret backslashes correctly in the pass logfile path. ClipSend bypasses this by setting the Node child process `cwd` to the target output directory and using a relative filename (`ffmpeg2pass-0.log`) for the pass logs.
 
 ## Privacy & Updates
