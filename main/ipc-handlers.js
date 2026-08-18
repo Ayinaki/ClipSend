@@ -512,17 +512,27 @@ function registerIpcHandlers() {
     // attempt re-encodes the previous attempt's output at a lower bitrate.
     // GIF/MP3 conversions are not bitrate-driven, so they never retry.
     const sizeRetryable = !!postTargetSizeMB && (postFormat === 'mp4' || postFormat === 'webm');
+    // WebM conversions need two temp-file accommodations that mp4 does not:
+    // the conversion input (the disposable intermediate is deleted on success,
+    // so retries convert from a fresh copy), and the conversion output (WebM
+    // writes straight to the destination with no separate temp, so a failed
+    // or cancelled retry would overwrite the previous good conversion with a
+    // partial file — each attempt targets a sibling temp renamed into place
+    // only on success, same as the trim encoder's retry loop).
+    const isWebmRetry = sizeRetryable && postFormat === 'webm';
+    const outputExt = path.extname(outputPath);
     const runConvertWithSizeRetry = async (enc) => {
-      const needsPreservedInput = sizeRetryable && postFormat === 'webm';
       const targets = sizeRetryable
         ? sizeRetryTargets(postTargetSizeMB, MAX_SIZE_RETRIES, SIZE_RETRY_FACTOR)
         : [postTargetSizeMB];
       let converted = null;
       for (let i = 0; i < targets.length; i++) {
         let attemptInput = mergeOutputPath;
-        if (needsPreservedInput) {
+        let attemptFinal = outputPath;
+        if (isWebmRetry) {
           attemptInput = path.join(os.tmpdir(), `clipsend-merge-src-${Date.now()}-${i}.mp4`);
           await fs.promises.copyFile(mergeOutputPath, attemptInput);
+          attemptFinal = `${outputPath.slice(0, -outputExt.length)}.attempt${i}${outputExt}`;
         }
         try {
           converted = await merger.postConvertMerged(attemptInput, {
@@ -532,20 +542,29 @@ function registerIpcHandlers() {
             totalDurationSec: options.totalDurationSec || 0,
             codec: postCodec,
             encoder: enc,
-            finalPath: outputPath,
+            finalPath: attemptFinal,
             onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${convertLabel}...`)
           });
+          if (isWebmRetry) {
+            await fs.promises.rename(attemptFinal, outputPath);
+            converted.path = outputPath;
+          }
           // Fits the target, or the last attempt, or no target to chase.
           if (!postTargetSizeMB || converted.sizeMB <= postTargetSizeMB || i === targets.length - 1) break;
         } catch (err) {
-          // First-attempt failures propagate (cancel, hardware init, real
-          // errors) exactly as before; a failed retry keeps the previous
-          // conversion instead of losing it.
+          // A cancel anywhere aborts the loop so the caller's cancel handling
+          // runs; the last good conversion is still safe at outputPath because
+          // attempts never wrote there directly.
+          if (/cancell/i.test(String(err.message))) throw err;
+          // First-attempt failures propagate (hardware init, real errors)
+          // exactly as before; a failed retry keeps the previous conversion
+          // instead of losing it.
           if (i === 0) throw err;
           break;
         } finally {
-          if (needsPreservedInput) {
+          if (isWebmRetry) {
             try { await fs.promises.unlink(attemptInput); } catch (e) { /* ignore */ }
+            try { await fs.promises.unlink(attemptFinal); } catch (e) { /* ignore */ }
           }
         }
       }
