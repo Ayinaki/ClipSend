@@ -2,7 +2,7 @@ const { ipcMain, BrowserWindow, app, shell } = require('electron');
 const { spawn } = require('child_process');
 const { openFileDialog, openMultipleFilesDialog, showSaveDialog, pickDirectoryDialog } = require('./file-manager');
 const { probeFile, extractThumbnail, getCreatedThumbnails } = require('./probe-service');
-const { calculatePlan } = require('./export-planner');
+const { calculatePlan, MAX_SIZE_RETRIES, SIZE_RETRY_FACTOR, sizeRetryTargets } = require('./export-planner');
 const { updateTaskbarProgress, clearTaskbarProgress, setTaskbarError, notifyExportComplete } = require('./taskbar');
 const { Encoder } = require('./encoder');
 const { Merger } = require('./merger');
@@ -399,7 +399,11 @@ function registerIpcHandlers() {
         finishExport(win, result, 'GIF', { notify: !isTempSegment });
         return result;
       } else {
-        const result = await encoder.runEncode(plan, outputPath, throttledSend);
+        // Size-capped video exports get a post-encode size check + bitrate
+        // retry loop (see Encoder.runEncodeWithSizeRetry). Intermediate
+        // multi-segment files (clipsend-seg-*) carry no targetSizeMB, so they
+        // naturally skip it.
+        const result = await encoder.runEncodeWithSizeRetry(plan, outputPath, throttledSend);
         finishExport(win, result, plan.outputFormat === 'mp3' ? 'MP3' : 'Trimmed clip', { notify: !isTempSegment });
         return result;
       }
@@ -498,24 +502,92 @@ function registerIpcHandlers() {
     const mergeEncoder = pickEncoder({ hwAccel, videoCodec: 'h264', encoders: caps });
     const convertLabel = wantsAv1 ? `AV1 (${postFormat.toUpperCase()})` : postFormat.toUpperCase();
 
-    const convertMerged = (enc) => merger.postConvertMerged(mergeOutputPath, {
-      format: postFormat,
-      resolution: postResolution,
-      targetSizeMB: postTargetSizeMB,
-      totalDurationSec: options.totalDurationSec || 0,
-      codec: postCodec,
-      encoder: enc,
-      finalPath: outputPath,
-      onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${convertLabel}...`)
-    });
+    // Convert the merged file to the final container/codec/size, retrying
+    // with discounted size targets when the first conversion overshoots (the
+    // same bitrate retry as the trim encoder, but for the merge post-convert
+    // step). postConvertMerged deletes its input on success, so when the
+    // input is a disposable intermediate (webm merges write one) each attempt
+    // converts from a fresh copy of the original merge output — otherwise a
+    // retry would find no input. The mp4 in-place case needs no copy: each
+    // attempt re-encodes the previous attempt's output at a lower bitrate.
+    // GIF/MP3 conversions are not bitrate-driven, so they never retry.
+    const sizeRetryable = !!postTargetSizeMB && (postFormat === 'mp4' || postFormat === 'webm');
+    // WebM conversions need two temp-file accommodations that mp4 does not:
+    // the conversion input (the disposable intermediate is deleted on success,
+    // so retries convert from a fresh copy), and the conversion output (WebM
+    // writes straight to the destination with no separate temp, so a failed
+    // or cancelled retry would overwrite the previous good conversion with a
+    // partial file — each attempt targets a sibling temp renamed into place
+    // only on success, same as the trim encoder's retry loop).
+    const isWebmRetry = sizeRetryable && postFormat === 'webm';
+    const outputExt = path.extname(outputPath);
+    const runConvertWithSizeRetry = async (enc) => {
+      const targets = sizeRetryable
+        ? sizeRetryTargets(postTargetSizeMB, MAX_SIZE_RETRIES, SIZE_RETRY_FACTOR)
+        : [postTargetSizeMB];
+      let converted = null;
+      for (let i = 0; i < targets.length; i++) {
+        let attemptInput = mergeOutputPath;
+        let attemptFinal = outputPath;
+        if (isWebmRetry) {
+          attemptInput = path.join(os.tmpdir(), `clipsend-merge-src-${Date.now()}-${i}.mp4`);
+          await fs.promises.copyFile(mergeOutputPath, attemptInput);
+          attemptFinal = `${outputPath.slice(0, -outputExt.length)}.attempt${i}${outputExt}`;
+        }
+        try {
+          // converted is only assigned AFTER the attempt is fully promoted, so
+          // a failed encode or a failed rename leaves it pointing at the last
+          // good conversion (whose file is still at outputPath) — never at an
+          // attempt temp that cleanup is about to delete.
+          const attemptResult = await merger.postConvertMerged(attemptInput, {
+            format: postFormat,
+            resolution: postResolution,
+            targetSizeMB: targets[i],
+            totalDurationSec: options.totalDurationSec || 0,
+            codec: postCodec,
+            encoder: enc,
+            finalPath: attemptFinal,
+            onProgress: (pct) => sendMergeProgress(Math.round(pct), `Converting to ${convertLabel}...`)
+          });
+          if (isWebmRetry) {
+            await fs.promises.rename(attemptFinal, outputPath);
+            attemptResult.path = outputPath;
+          }
+          converted = attemptResult;
+          // Fits the target, or the last attempt, or no target to chase.
+          if (!postTargetSizeMB || converted.sizeMB <= postTargetSizeMB || i === targets.length - 1) break;
+        } catch (err) {
+          // A cancel anywhere aborts the loop so the caller's cancel handling
+          // runs; the last good conversion is still safe at outputPath because
+          // attempts never wrote there directly.
+          if (/cancell/i.test(String(err.message))) throw err;
+          // First-attempt failures propagate (hardware init, real errors)
+          // exactly as before; a failed retry keeps the previous conversion
+          // instead of losing it.
+          if (i === 0) throw err;
+          break;
+        } finally {
+          if (isWebmRetry) {
+            try { await fs.promises.unlink(attemptInput); } catch (e) { /* ignore */ }
+            try { await fs.promises.unlink(attemptFinal); } catch (e) { /* ignore */ }
+          }
+        }
+      }
+      return converted;
+    };
 
     const applyPostConvert = async (result) => {
       if (result.success && (wantsAv1 || postFormat !== 'mp4' || postResolution || postTargetSizeMB)) {
-        try {
-          const converted = await convertMerged(encoder);
+        const attach = (converted, strategySuffix) => {
           result.filePath = converted.path;
           result.finalSizeMB = converted.sizeMB;
-          result.strategy = `${result.strategy} + ${convertLabel} convert`;
+          result.strategy = `${result.strategy} + ${convertLabel} convert${strategySuffix}`;
+          if (sizeRetryable && converted.sizeMB > postTargetSizeMB) {
+            result.warning = `The merged export finished at ${converted.sizeMB} MB, over the ${postTargetSizeMB} MB target. ClipSend re-encoded it at a lower bitrate, but it still could not fit. Try trimming the clips or choosing a smaller target.`;
+          }
+        };
+        try {
+          attach(await runConvertWithSizeRetry(encoder), '');
         } catch (err) {
           // Cancelled mid-conversion: the merged file still exists, so surface
           // the merge as done rather than reporting a failure.
@@ -526,10 +598,7 @@ function registerIpcHandlers() {
           // — resolveCpuEncoder picks the one this FFmpeg actually ships
           // (libaom-av1 in the bundled build, or libsvtav1 if present).
           if (isHardwareEncoderFailure(encoder, err && err.ffmpegStderr)) {
-            const converted = await convertMerged(resolveCpuEncoder(postCodec, caps));
-            result.filePath = converted.path;
-            result.finalSizeMB = converted.sizeMB;
-            result.strategy = `${result.strategy} + ${convertLabel} convert (CPU)`;
+            attach(await runConvertWithSizeRetry(resolveCpuEncoder(postCodec, caps)), ' (CPU)');
             return result;
           }
           throw err;

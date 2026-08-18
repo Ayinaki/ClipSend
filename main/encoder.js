@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { buildDiscountedPlan, MAX_SIZE_RETRIES, SIZE_RETRY_FACTOR } = require('./export-planner');
 
 let ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg.exe');
 if (ffmpegPath.includes('app.asar')) {
@@ -10,6 +11,7 @@ if (ffmpegPath.includes('app.asar')) {
 const MAX_STDERR_BYTES = 16384; // 16KB rolling window
 const TIME_BUFFER_MAX = 2048;   // 2KB progress regex buffer
 const TIME_REGEX = /time=(\d+):(\d{2}):(\d{2}\.\d{2})/g;
+
 
 /**
  * Translate a failed ffmpeg run into a human-readable message plus a raw
@@ -58,6 +60,81 @@ class Encoder {
   constructor() {
     this.currentProcess = null;
     this.cancelled = false;
+  }
+
+  /**
+   * Run the encode, then check the produced file against the plan's size
+   * target. If it overshot and a discount can still help, re-encode with a
+   * progressively lower bitrate (up to MAX_SIZE_RETRIES attempts total),
+   * keeping the smallest file produced. If the last attempt still cannot
+   * fit, the result carries a `warning` instead of failing the export.
+   *
+   * Only size-limit video plans participate: quality/CRF mode has no target,
+   * GIF has its own descension loop, MP3 size is not video-bitrate-driven,
+   * and intermediate multi-segment files carry no targetSizeMB at all.
+   *
+   * @param {Object} plan The export plan containing pass1Args and pass2Args.
+   * @param {string} outputPath The final destination file path.
+   * @param {Function} onProgress Callback for progress: (percent, statusString) => void
+   * @returns {Promise<Object>} Success result with filePath and finalSizeMB
+   */
+  async runEncodeWithSizeRetry(plan, outputPath, onProgress) {
+    const targetMB = plan && plan.targetSizeMB;
+    const isSizeCapped = targetMB != null && targetMB > 0
+      && plan.crfValue === undefined
+      && plan.outputFormat !== 'gif'
+      && plan.outputFormat !== 'mp3';
+
+    let result = await this.runEncode(plan, outputPath, onProgress);
+    if (!result || !result.success || !isSizeCapped || result.finalSizeMB <= targetMB) {
+      return result;
+    }
+
+    let currentPlan = plan;
+    let best = result;
+    for (let attempt = 2; attempt <= MAX_SIZE_RETRIES; attempt++) {
+      // A cancel landed between attempts (no process running to kill, and
+      // runEncode resets this.cancelled on entry) — honor it now.
+      if (this.cancelled) return { success: false, cancelled: true };
+
+      const discounted = buildDiscountedPlan(currentPlan, SIZE_RETRY_FACTOR);
+      if (!discounted) break;
+      currentPlan = discounted;
+
+      // Encode each retry to a temp sibling so a failed or cancelled attempt
+      // can never destroy the best file produced so far; promote it only
+      // once the encode actually succeeded.
+      const attemptPath = `${outputPath}.retry${attempt}`;
+      if (onProgress) {
+        onProgress(-attempt, `Retry ${attempt}/${MAX_SIZE_RETRIES}: lowering bitrate to fit ${targetMB} MB...`);
+      }
+
+      try {
+        const retryResult = await this.runEncode(discounted, attemptPath, onProgress);
+        if (!retryResult || !retryResult.success) {
+          // Cancelled or failed: keep the previous best. runEncode already
+          // removed the partial attempt file.
+          if (retryResult && retryResult.cancelled) return retryResult;
+          break;
+        }
+        if (fs.promises?.rename) await fs.promises.rename(attemptPath, outputPath);
+        else fs.renameSync(attemptPath, outputPath);
+        retryResult.filePath = outputPath;
+        best = retryResult;
+        if (best.finalSizeMB <= targetMB) break;
+      } catch (err) {
+        try {
+          if (fs.promises?.unlink) await fs.promises.unlink(attemptPath);
+          else if (fs.unlinkSync) fs.unlinkSync(attemptPath);
+        } catch (e) { /* ignore */ }
+        break;
+      }
+    }
+
+    if (best.finalSizeMB > targetMB) {
+      best.warning = `The export finished at ${best.finalSizeMB} MB, over the ${targetMB} MB target. ClipSend re-encoded it at a lower bitrate, but it still could not fit. Try trimming more or choosing a smaller target.`;
+    }
+    return best;
   }
 
   /**
