@@ -3,6 +3,10 @@
 ## App Overview
 ClipSend is a lightweight, responsive desktop application designed for quickly preparing and sharing video clips. Built with Electron, it focuses on rapid video trimming, multi-clip merging, and highly optimized hardware-accelerated exports tailored for sharing directly into chat applications like Discord and Slack.
 
+<p align="center">
+  <img src="docs/screenshots/trim-dark.png" alt="ClipSend Trim mode with the export plan in the title bar" width="70%">
+</p>
+
 ## Tech Stack
 - **Framework:** Electron (Target Platform: Windows)
 - **Frontend UI:** Vanilla JavaScript, HTML5 Canvas (for timeline rendering), and pure CSS
@@ -44,6 +48,18 @@ The export system relies heavily on FFmpeg, governed by a multi-step planning an
 - **WebM Exports:** The format picker includes WebM for web-friendly sharing (Slack, HTML5 embeds, browsers). WebM cannot contain H.264, so picking WebM with the H.264 codec setting exports VP9 (`libvpx-vp9`, software, 2-pass for size targets) with Opus audio; the AV1 setting exports AV1-in-WebM and keeps the hardware AV1 encoders. VP9 has no hardware encoder in this app, so WebM+H.264 exports run on the CPU (a plan warning calls this out).
 - **Merge Fallback (`merger.js`):** When exporting merged clips, the pipeline attempts a lossless fast path (`concat` demuxer with `-c copy`) if all clips share identical video/audio codecs, resolutions, and framerates. If they differ, it falls back to a complex re-encode using the `concat` filter to normalize all clips to the first clip's parameters, automatically utilizing NVENC if configured.
 - **Merge Trimming (`merger.js`):** When any clip has a trim range, that clip is first re-encoded to a uniform temporary file (accurate `-ss`/`-t` trim, h264/aac, NVENC or CPU) before the concat step, so the merged output contains exactly the selected sections. Untouched clips keep the original files, and all temp files are cleaned up automatically. Progress is weighted across the trim + concat phases.
+
+<p align="center">
+  <img src="docs/screenshots/merge-dark.png" alt="ClipSend Merge mode with per-clip trims" width="70%">
+</p>
+
+## Themes
+
+ClipSend follows your Windows theme, with a dark and a light variant for every screen.
+
+<p align="center">
+  <img src="docs/screenshots/trim-light.png" alt="ClipSend in light theme" width="70%">
+</p>
 
 ## Architecture Notes
 - **Process Communication:** The application maintains strict isolation. The UI (`renderer/`) communicates with the Node.js backend (`main/`) exclusively via asynchronous IPC invocations defined in `preload.js` and handled in `ipc-handlers.js`.
