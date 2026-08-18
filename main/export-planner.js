@@ -790,15 +790,113 @@ function buildPassArgs(opts) {
   return args;
 }
 
+/**
+ * Produce a re-encode plan for a file that overshot its size target.
+ *
+ * The original plan's FFmpeg args embed the video bitrate as literal
+ * `-b:v <N>k` tokens (plus `-maxrate`/`-bufsize` where the encoder profile
+ * uses VBV constraints). Re-running the full planning pipeline needs
+ * mediaInfo + settings that are no longer around once an export is running,
+ * so instead scale those tokens in place and update the plan's derived
+ * fields. This is the video analogue of the GIF exporter's descension loop:
+ * each retry re-encodes at a lower bitrate until the file fits.
+ *
+ * Returns null when a discount cannot help: quality/CRF mode has no size
+ * target, gif/mp3 sizes are not driven by the video bitrate, and a bitrate
+ * already at the 64 kbps floor has nothing left to give up.
+ *
+ * @param {Object} plan - a plan from calculatePlan (video formats only)
+ * @param {number} factor - bitrate multiplier per retry, e.g. 0.85
+ * @returns {Object|null} discounted plan, or null when not applicable
+ */
+function buildDiscountedPlan(plan, factor) {
+  if (!plan || plan.crfValue !== undefined || !plan.videoBitrateKbps) return null;
+  const fmt = plan.outputFormat;
+  if (fmt === 'gif' || fmt === 'mp3') return null;
+
+  const newBitrate = Math.max(64, Math.round(plan.videoBitrateKbps * factor));
+  if (!(newBitrate < plan.videoBitrateKbps)) return null; // floor hit, no progress
+
+  // Every PROFILES.bitrateArgs shape puts the video bitrate in its own
+  // argument right after the flag (-b:v / -maxrate / -bufsize). Audio
+  // (-b:a) is deliberately not touched. libsvtav1 has no -maxrate (it
+  // rejects it in 2-pass), which is fine — the walk simply finds none.
+  const scaleValueToken = (token) => {
+    const m = /^(\d+)k$/.exec(token);
+    if (!m) return token;
+    return `${Math.max(64, Math.round(parseInt(m[1], 10) * factor))}k`;
+  };
+  const scaleArgs = (args) => {
+    const scaled = args.slice();
+    for (let i = 0; i < scaled.length; i++) {
+      if (scaled[i] === '-b:v' || scaled[i] === '-maxrate' || scaled[i] === '-bufsize') {
+        if (scaled[i + 1] !== undefined) {
+          scaled[i + 1] = scaleValueToken(scaled[i + 1]);
+          i++; // skip the value token just rewritten
+        }
+      }
+    }
+    return scaled;
+  };
+
+  const discounted = { ...plan };
+  discounted.videoBitrateKbps = newBitrate;
+  discounted.totalBitrateKbps = newBitrate + (plan.audioBitrateKbps || 0);
+  // Estimated size scales with the bitrate ratio; the muxing overhead stays
+  // proportionally the same, so this stays honest.
+  discounted.estimatedSizeMB = parseFloat(
+    ((plan.estimatedSizeMB || 0) * (newBitrate / plan.videoBitrateKbps)).toFixed(2)
+  );
+
+  if (plan.isSinglePass) {
+    discounted.singlePassArgs = scaleArgs(plan.singlePassArgs);
+  } else {
+    discounted.pass1Args = scaleArgs(plan.pass1Args);
+    discounted.pass2Args = scaleArgs(plan.pass2Args);
+  }
+  return discounted;
+}
+
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
+// Size-retry parameters shared by the trim encoder and the merge post-convert
+// step: total encode attempts a size-capped video export gets when it
+// overshoots, and how much the target is cut per retry. Mirrors the GIF
+// exporter's descension loop (fps -> scale -> quality), but for bitrate.
+const MAX_SIZE_RETRIES = 3;
+const SIZE_RETRY_FACTOR = 0.85;
+
+/**
+ * The sequence of size targets a retry loop should attempt, largest first:
+ * the original target, then the discounted targets, floored at 1 MB. Stops
+ * early when a discount can no longer shrink the target.
+ */
+function sizeRetryTargets(targetMB, maxRetries = MAX_SIZE_RETRIES, factor = SIZE_RETRY_FACTOR) {
+  const targets = [targetMB];
+  for (let i = 1; i < maxRetries; i++) {
+    const next = Math.max(1, targets[i - 1] * factor);
+    if (next >= targets[i - 1]) break;
+    targets.push(next);
+  }
+  return targets;
+}
+
 module.exports = {
   calculatePlan,
+  // Used at runtime by the encoder/merge retry loops (not just tests), so
+  // they live at top level alongside calculatePlan — keep them here when
+  // adding runtime consumers.
+  MAX_SIZE_RETRIES,
+  SIZE_RETRY_FACTOR,
+  buildDiscountedPlan,
+  sizeRetryTargets,
   // Exported for testing internals
   _internals: {
     computeSizeLimitBitrate,
+    buildDiscountedPlan,
+    sizeRetryTargets,
     resolveResolution,
     computeSeekTimes,
     buildPassArgs,

@@ -3,6 +3,8 @@ const { SIZE_PRESETS, getPresetById, getDefaultPreset } = require('../main/prese
 
 const {
   computeSizeLimitBitrate,
+  buildDiscountedPlan,
+  sizeRetryTargets,
   resolveResolution,
   computeSeekTimes,
   QUALITY_FLOORS,
@@ -919,5 +921,142 @@ describe('calculatePlan — edge cases', () => {
       expect(plan.videoBitrateKbps).toBeGreaterThan(0);
       expect(plan.estimatedSizeMB).toBeLessThanOrEqual(preset.sizeMB);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDiscountedPlan (internal) — post-encode size-retry re-planning
+// ---------------------------------------------------------------------------
+
+describe('buildDiscountedPlan', () => {
+  const CAPS_ALL = {
+    nvenc: { h264: true, av1: true },
+    qsv: { h264: true, av1: true },
+    amf: { h264: true, av1: true },
+    svtav1: true,
+    libx264: true
+  };
+
+  function argAfter(args, flag) {
+    const i = args.indexOf(flag);
+    return i === -1 ? undefined : args[i + 1];
+  }
+
+  test('2-pass libx264 plan: bitrate and derived fields scale down', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      hwAccel: 'cpu', encoders: { libx264: true }
+    }));
+    // 2-pass plans carry pass1/pass2 args (isSinglePass is only set on the
+    // single-pass branch, so buildDiscountedPlan's falsy check routes here).
+    expect(plan.isSinglePass).toBeUndefined();
+    expect(plan.pass1Args).toBeDefined();
+    expect(plan.pass2Args).toBeDefined();
+
+    const d = buildDiscountedPlan(plan, 0.85);
+    expect(d).not.toBeNull();
+    expect(d).not.toBe(plan); // a fresh plan, never a mutation of the input
+
+    expect(d.videoBitrateKbps).toBe(Math.max(64, Math.round(plan.videoBitrateKbps * 0.85)));
+    expect(d.totalBitrateKbps).toBe(d.videoBitrateKbps + plan.audioBitrateKbps);
+    expect(d.estimatedSizeMB).toBeCloseTo(
+      plan.estimatedSizeMB * (d.videoBitrateKbps / plan.videoBitrateKbps), 1
+    );
+
+    // Both passes carry the discounted bitrate; audio stays untouched.
+    expect(argAfter(d.pass1Args, '-b:v')).toBe(`${d.videoBitrateKbps}k`);
+    expect(argAfter(d.pass2Args, '-b:v')).toBe(`${d.videoBitrateKbps}k`);
+    expect(argAfter(d.pass2Args, '-b:a')).toBe('128k');
+
+    // The original plan is never mutated.
+    expect(argAfter(plan.pass2Args, '-b:v')).toBe(`${plan.videoBitrateKbps}k`);
+  });
+
+  test('hardware single-pass plan: -b:v, -maxrate and -bufsize all scale', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'h264', hwAccel: 'nvenc', encoders: CAPS_ALL
+    }));
+    expect(plan.isSinglePass).toBe(true);
+
+    const d = buildDiscountedPlan(plan, 0.85);
+    expect(d).not.toBeNull();
+    expect(d.videoBitrateKbps).toBeLessThan(plan.videoBitrateKbps);
+    expect(argAfter(d.singlePassArgs, '-b:v')).toBe(`${d.videoBitrateKbps}k`);
+    expect(argAfter(d.singlePassArgs, '-maxrate')).toBe(`${d.videoBitrateKbps}k`);
+    expect(argAfter(d.singlePassArgs, '-bufsize')).toBe(`${Math.round(d.videoBitrateKbps * 1.5)}k`);
+    expect(argAfter(d.singlePassArgs, '-b:a')).toBe('128k');
+  });
+
+  test('libsvtav1 plan (no -maxrate in 2-pass) still scales -b:v', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      videoCodec: 'av1', hwAccel: 'cpu', encoders: CAPS_ALL
+    }));
+    expect(plan.encoder).toBe('libsvtav1');
+    expect(plan.pass1Args).not.toContain('-maxrate');
+
+    const d = buildDiscountedPlan(plan, 0.85);
+    expect(d).not.toBeNull();
+    expect(argAfter(d.pass2Args, '-b:v')).toBe(`${d.videoBitrateKbps}k`);
+  });
+
+  test('returns null for quality/CRF plans (no size target)', () => {
+    const plan = calculatePlan(media1080p, 0, 30, {
+      mode: 'auto', crfValue: 19, videoCodec: 'h264', hwAccel: 'cpu', encoders: CAPS_ALL
+    });
+    expect(plan.crfValue).not.toBeUndefined();
+    expect(buildDiscountedPlan(plan, 0.85)).toBeNull();
+  });
+
+  test('returns null for gif and mp3 formats', () => {
+    expect(buildDiscountedPlan({ outputFormat: 'gif', videoBitrateKbps: 500, crfValue: undefined, singlePassArgs: [] }, 0.85)).toBeNull();
+    expect(buildDiscountedPlan({ outputFormat: 'mp3', videoBitrateKbps: 0, crfValue: undefined, singlePassArgs: [] }, 0.85)).toBeNull();
+  });
+
+  test('clamps at the 64 kbps floor and stops when nothing is left to give', () => {
+    const nearFloor = {
+      outputFormat: 'mp4', videoBitrateKbps: 70, audioBitrateKbps: 128, estimatedSizeMB: 1.5,
+      crfValue: undefined,
+      pass1Args: ['-b:v', '70k', '-maxrate', '70k', '-bufsize', '105k'],
+      pass2Args: ['-b:v', '70k', '-maxrate', '70k', '-bufsize', '105k', '-b:a', '128k']
+    };
+    const d = buildDiscountedPlan(nearFloor, 0.85);
+    expect(d.videoBitrateKbps).toBe(64);
+    expect(argAfter(d.pass2Args, '-b:v')).toBe('64k');
+    expect(argAfter(d.pass2Args, '-maxrate')).toBe('64k');
+    expect(argAfter(d.pass2Args, '-b:a')).toBe('128k');
+
+    // Already at the floor: another discount gains nothing.
+    const atFloor = { ...nearFloor, videoBitrateKbps: 64, pass1Args: ['-b:v', '64k'], pass2Args: ['-b:v', '64k'] };
+    expect(buildDiscountedPlan(atFloor, 0.85)).toBeNull();
+  });
+
+  test('VP9/WebM plan scales like any other 2-pass CPU plan', () => {
+    const plan = calculatePlan(media1080p, 0, 60, sizeLimitSettings(10, {
+      outputFormat: 'webm', videoCodec: 'vp9', hwAccel: 'cpu', encoders: { libx264: true, vpx9: true }
+    }));
+    expect(plan.encoder).toBe('libvpx-vp9');
+
+    const d = buildDiscountedPlan(plan, 0.85);
+    expect(d).not.toBeNull();
+    expect(argAfter(d.pass2Args, '-b:v')).toBe(`${d.videoBitrateKbps}k`);
+    expect(d.pass2Args).toContain('-strict'); // opus stays experimental
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sizeRetryTargets (internal) — merge post-convert retry target sequence
+// ---------------------------------------------------------------------------
+
+describe('sizeRetryTargets', () => {
+  test('produces a descending sequence up to the retry cap', () => {
+    expect(sizeRetryTargets(20, 3, 0.85)).toEqual([20, 17, 14.45]);
+  });
+
+  test('stops early at the 1 MB floor', () => {
+    expect(sizeRetryTargets(1.2, 3, 0.85)).toEqual([1.2, 1.02, 1]);
+    expect(sizeRetryTargets(1, 3, 0.85)).toEqual([1]);
+  });
+
+  test('honors a maxRetries of 1 (no retries)', () => {
+    expect(sizeRetryTargets(20, 1, 0.85)).toEqual([20]);
   });
 });

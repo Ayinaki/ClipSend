@@ -820,7 +820,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (mergeResult.success) {
-          showExportModal(mergeResult.filePath, mergeResult.finalSizeMB, mergeResult.strategy || null, true);
+          showExportModal(mergeResult.filePath, mergeResult.finalSizeMB, mergeResult.strategy || null, true, finalWarnings);
         } else {
           const mergeErr = new Error(mergeResult.error);
           if (mergeResult.details) mergeErr.details = mergeResult.details;
@@ -830,7 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Single clip or Separate Clips
         // If Separate Clips, finalFilePath is just the LAST clip.
         // We can just show the modal for the directory or the last clip.
-        showExportModal(finalFilePath, totalFinalSizeMB, null, true);
+        showExportModal(finalFilePath, totalFinalSizeMB, null, true, finalWarnings);
       }
       
       progressUI.hide();
@@ -916,10 +916,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function showExportModal(filePath, sizeMB, mergeStrategy = null, withCopyButton = false) {
+  function showExportModal(filePath, sizeMB, mergeStrategy = null, withCopyButton = false, warnings = []) {
     currentExportFilePath = filePath;
     if (exportSavedTo) exportSavedTo.textContent = `Saved to: ${filePath}`;
     if (exportFinalSize) exportFinalSize.textContent = `Final size: ${sizeMB} MB`;
+    const warningsEl = document.getElementById('export-warnings');
+    if (warningsEl) {
+      if (warnings && warnings.length > 0) {
+        // Warnings are one-line strings, plain text (never HTML) — e.g. a
+        // size-cap miss from the retry loop or the GIF best-effort export.
+        warningsEl.textContent = '';
+        for (const w of warnings) {
+          const line = document.createElement('div');
+          line.textContent = String(w);
+          warningsEl.appendChild(line);
+        }
+        warningsEl.style.display = 'flex';
+      } else {
+        warningsEl.style.display = 'none';
+      }
+    }
     const strategyEl = document.getElementById('export-strategy');
     if (strategyEl) {
       if (mergeStrategy && typeof mergeStrategy === 'string') {
@@ -2721,8 +2737,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (result.success) {
         // The shared export modal hides its Copy button unless asked — merged
         // files paste into Discord/Slack/Explorer just like trim exports, so
-        // offer the same copy affordance here.
-        showExportModal(result.filePath, result.finalSizeMB, result.strategy, true);
+        // offer the same copy affordance here. A best-effort size-cap miss
+        // (merge retry loop) surfaces as a modal warning.
+        showExportModal(result.filePath, result.finalSizeMB, result.strategy, true, result.warning ? [result.warning] : []);
       } else if (result.cancelled) {
         // Suppress
       } else {
