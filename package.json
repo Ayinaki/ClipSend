@@ -1,7 +1,7 @@
 {
   "name": "video-compressor",
   "version": "2.2.4",
-  "description": "",
+  "description": "Trim, merge, and shrink video clips so they fit Discord's upload limit.",
   "main": "main/main.js",
   "scripts": {
     "start": "npm run build:renderer && electron .",
@@ -40,7 +40,7 @@
       "en-US"
     ]
   },
-  "keywords": [],
+  "keywords": ["discord", "video", "trim", "compress", "ffmpeg", "electron"],
   "author": "Ayinaki",
   "license": "ISC",
   "type": "commonjs",
