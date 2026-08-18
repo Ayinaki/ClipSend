@@ -1,5 +1,4 @@
 const path = require('path');
-const { Notification } = require('electron');
 
 /**
  * Taskbar + notification helpers for exports.
@@ -73,6 +72,15 @@ function setTaskbarError(win, clearAfterMs = 5000) {
  * (the in-app Export Complete modal is visible, so a toast would be noise).
  */
 function notifyExportComplete({ win, filePath, finalSizeMB, label }) {
+  // electron is required lazily, inside the try, so this module still loads
+  // under plain Node in tests: require('electron') throws on a runner whose
+  // binary is missing (it tries to self-download). Same pattern as updater.js.
+  let Notification = null;
+  try {
+    ({ Notification } = require('electron'));
+  } catch (e) {
+    // Not running under Electron; notifications are unavailable.
+  }
   if (!Notification || !Notification.isSupported || !Notification.isSupported()) return;
   if (win && !win.isDestroyed() && win.isFocused && win.isFocused()) return;
   try {
