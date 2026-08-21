@@ -1,6 +1,6 @@
 {
   "name": "video-compressor",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "description": "Trim, merge, and shrink video clips so they fit Discord's upload limit.",
   "main": "main/main.js",
   "scripts": {
