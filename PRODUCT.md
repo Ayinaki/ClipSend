@@ -40,7 +40,7 @@ One-step trim-to-size: the app does the bitrate math, resolution decisions, and 
 
 ## Brand Commitments
 
-- Name: ClipSend (repo `Ayinaki/ClipSend`; npm package name `video-compressor`, current version 2.2.4).
+- Name: ClipSend (repo `Ayinaki/ClipSend`; npm package name `video-compressor`, current version 2.2.5).
 - Voice: plain, human, maintainer's voice. Project policy (AGENTS.md and the README writing pass) bans AI-slop copy: no em dashes, no stock AI vocabulary, no hype, no fabricated numbers.
 - Free and open source: ISC license, Copyright (c) 2026 Ayinaki.
 - Privacy is a selling point and a commitment: local processing only, nothing uploaded, stated in PRIVACY.md.
