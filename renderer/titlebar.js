@@ -65,7 +65,7 @@ export function createProgressUI(elements) {
   function setPercent(percent, status) {
     if (!fill || !text) return;
     if (percent < 0) {
-      fill.style.width = '100%';
+      fill.style.transform = 'scaleX(1)';
       fill.style.opacity = '0.5';
       fill.style.animation = 'pulse 1.5s infinite';
       text.textContent = status || 'Processing...';
@@ -73,7 +73,8 @@ export function createProgressUI(elements) {
       fill.style.opacity = '1';
       fill.style.animation = 'none';
       const rounded = Math.round(percent);
-      fill.style.width = `${rounded}%`;
+      // scaleX instead of width: transform is compositor-only, width reflows.
+      fill.style.transform = `scaleX(${rounded / 100})`;
       text.textContent = status ? `${status} (${rounded}%)` : `${rounded}%`;
     }
   }

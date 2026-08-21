@@ -164,13 +164,15 @@ describe('progress UI', () => {
     cancelBtn: els.cancelBtn
   });
 
-  test('setPercent renders percent text and fill width', () => {
+  test('setPercent renders percent text and fill scale', () => {
     const progressUI = makeProgressUI();
     progressUI.show();
     progressUI.setPercent(42, null);
 
     expect(els.progressContainer.style.display).toBe('flex');
-    expect(els.progressFill.style.width).toBe('42%');
+    // The fill animates via compositor-only scaleX (width would reflow) with
+    // transform-origin: left in CSS, so the transform encodes the percent.
+    expect(els.progressFill.style.transform).toBe('scaleX(0.42)');
     expect(els.progressText.textContent).toBe('42%');
   });
 
@@ -185,7 +187,7 @@ describe('progress UI', () => {
     const progressUI = makeProgressUI();
     progressUI.setPercent(-1, 'Processing');
 
-    expect(els.progressFill.style.width).toBe('100%');
+    expect(els.progressFill.style.transform).toBe('scaleX(1)');
     expect(els.progressFill.style.animation).toBe('pulse 1.5s infinite');
     expect(els.progressText.textContent).toBe('Processing');
   });

@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-18T00:00:00.000Z",
+  "title": "Design System: ClipSend",
+  "extensions": {
+    "colorMeta": {
+      "signal-teal": { "role": "primary", "displayName": "Signal Teal", "canonical": "#2ba87e", "tonalRamp": ["oklch(0.20 0.05 162)", "oklch(0.30 0.07 162)", "oklch(0.40 0.085 162)", "oklch(0.50 0.095 162)", "oklch(0.62 0.10 162)", "oklch(0.70 0.09 162)", "oklch(0.80 0.07 162)", "oklch(0.90 0.045 162)"] },
+      "signal-teal-hover": { "role": "primary", "displayName": "Signal Teal Hover", "canonical": "#23946d", "tonalRamp": ["oklch(0.18 0.045 162)", "oklch(0.28 0.065 162)", "oklch(0.38 0.08 162)", "oklch(0.48 0.09 162)", "oklch(0.57 0.09 162)", "oklch(0.67 0.08 162)", "oklch(0.78 0.06 162)", "oklch(0.89 0.04 162)"] },
+      "deep-teal": { "role": "primary", "displayName": "Deep Teal", "canonical": "#00796b", "tonalRamp": ["oklch(0.20 0.04 170)", "oklch(0.28 0.055 170)", "oklch(0.36 0.07 170)", "oklch(0.47 0.085 170)", "oklch(0.56 0.09 170)", "oklch(0.66 0.08 170)", "oklch(0.77 0.06 170)", "oklch(0.88 0.04 170)"] },
+      "deep-teal-hover": { "role": "primary", "displayName": "Deep Teal Hover", "canonical": "#00685c", "tonalRamp": ["oklch(0.18 0.035 170)", "oklch(0.26 0.05 170)", "oklch(0.34 0.065 170)", "oklch(0.42 0.075 170)", "oklch(0.51 0.08 170)", "oklch(0.61 0.07 170)", "oklch(0.72 0.055 170)", "oklch(0.85 0.035 170)"] },
+      "mint-readout": { "role": "secondary", "displayName": "Mint Readout", "canonical": "#3ddc97", "tonalRamp": ["oklch(0.22 0.06 155)", "oklch(0.32 0.09 155)", "oklch(0.42 0.12 155)", "oklch(0.52 0.14 155)", "oklch(0.62 0.155 155)", "oklch(0.70 0.145 155)", "oklch(0.80 0.11 155)", "oklch(0.90 0.07 155)"] },
+      "caution-amber": { "role": "secondary", "displayName": "Caution Amber", "canonical": "#d9a441", "tonalRamp": ["oklch(0.25 0.05 78)", "oklch(0.35 0.08 78)", "oklch(0.45 0.105 78)", "oklch(0.55 0.12 78)", "oklch(0.65 0.125 78)", "oklch(0.72 0.11 78)", "oklch(0.82 0.085 78)", "oklch(0.91 0.05 78)"] },
+      "error-red": { "role": "secondary", "displayName": "Error Red", "canonical": "#ef5350", "tonalRamp": ["oklch(0.22 0.07 22)", "oklch(0.32 0.11 22)", "oklch(0.42 0.15 22)", "oklch(0.52 0.18 22)", "oklch(0.62 0.19 22)", "oklch(0.70 0.16 22)", "oklch(0.80 0.11 22)", "oklch(0.90 0.06 22)"] },
+      "graphite-void": { "role": "neutral", "displayName": "Graphite Void", "canonical": "#0a0a0a", "tonalRamp": ["oklch(0.10 0.005 250)", "oklch(0.18 0.005 250)", "oklch(0.26 0.005 250)", "oklch(0.34 0.005 250)", "oklch(0.43 0.005 250)", "oklch(0.53 0.005 250)", "oklch(0.68 0.005 250)", "oklch(0.84 0.005 250)"] },
+      "graphite-base": { "role": "neutral", "displayName": "Graphite Base", "canonical": "#0d0d0d", "tonalRamp": ["oklch(0.12 0.005 250)", "oklch(0.20 0.005 250)", "oklch(0.28 0.005 250)", "oklch(0.36 0.005 250)", "oklch(0.45 0.005 250)", "oklch(0.55 0.005 250)", "oklch(0.70 0.005 250)", "oklch(0.85 0.005 250)"] },
+      "graphite-raised": { "role": "neutral", "displayName": "Graphite Raised", "canonical": "#1a1a1a", "tonalRamp": ["oklch(0.16 0.005 250)", "oklch(0.24 0.005 250)", "oklch(0.32 0.005 250)", "oklch(0.40 0.005 250)", "oklch(0.49 0.005 250)", "oklch(0.59 0.005 250)", "oklch(0.72 0.005 250)", "oklch(0.86 0.005 250)"] },
+      "graphite-panel": { "role": "neutral", "displayName": "Graphite Panel", "canonical": "#141414", "tonalRamp": ["oklch(0.14 0.005 250)", "oklch(0.22 0.005 250)", "oklch(0.30 0.005 250)", "oklch(0.38 0.005 250)", "oklch(0.47 0.005 250)", "oklch(0.57 0.005 250)", "oklch(0.71 0.005 250)", "oklch(0.85 0.005 250)"] },
+      "graphite-tooltip": { "role": "neutral", "displayName": "Graphite Tooltip", "canonical": "#2a2a2a", "tonalRamp": ["oklch(0.20 0.005 250)", "oklch(0.28 0.005 250)", "oklch(0.36 0.005 250)", "oklch(0.44 0.005 250)", "oklch(0.52 0.005 250)", "oklch(0.62 0.005 250)", "oklch(0.74 0.005 250)", "oklch(0.87 0.005 250)"] },
+      "graphite-stage": { "role": "neutral", "displayName": "Graphite Stage", "canonical": "#050505", "tonalRamp": ["oklch(0.08 0.005 250)", "oklch(0.16 0.005 250)", "oklch(0.24 0.005 250)", "oklch(0.32 0.005 250)", "oklch(0.41 0.005 250)", "oklch(0.51 0.005 250)", "oklch(0.66 0.005 250)", "oklch(0.83 0.005 250)"] },
+      "text-primary": { "role": "neutral", "displayName": "Primary Text", "canonical": "#ffffff", "tonalRamp": ["oklch(0.20 0 0)", "oklch(0.30 0 0)", "oklch(0.40 0 0)", "oklch(0.50 0 0)", "oklch(0.60 0 0)", "oklch(0.70 0 0)", "oklch(0.80 0 0)", "oklch(0.90 0 0)"] },
+      "text-secondary": { "role": "neutral", "displayName": "Secondary Text", "canonical": "#bbbbbb", "tonalRamp": ["oklch(0.20 0 0)", "oklch(0.30 0 0)", "oklch(0.40 0 0)", "oklch(0.50 0 0)", "oklch(0.60 0 0)", "oklch(0.70 0 0)", "oklch(0.80 0 0)", "oklch(0.90 0 0)"] },
+      "text-tertiary": { "role": "neutral", "displayName": "Tertiary Text", "canonical": "#888888", "tonalRamp": ["oklch(0.20 0 0)", "oklch(0.30 0 0)", "oklch(0.40 0 0)", "oklch(0.50 0 0)", "oklch(0.60 0 0)", "oklch(0.70 0 0)", "oklch(0.80 0 0)", "oklch(0.90 0 0)"] },
+      "text-muted": { "role": "neutral", "displayName": "Muted Text", "canonical": "#888888", "note": "Dark theme value; 4.9:1 on #1a1a1a. Light theme uses #757575 (4.61:1 on white).", "tonalRamp": ["oklch(0.20 0 0)", "oklch(0.30 0 0)", "oklch(0.40 0 0)", "oklch(0.50 0 0)", "oklch(0.60 0 0)", "oklch(0.70 0 0)", "oklch(0.80 0 0)", "oklch(0.90 0 0)"] },
+      "text-muted-light": { "role": "neutral", "displayName": "Muted Text (Light)", "canonical": "#717171", "note": "4.88:1 on #ffffff, 4.68:1 on #fafafa; #888 failed at 3.54:1.", "tonalRamp": ["oklch(0.20 0 0)", "oklch(0.30 0 0)", "oklch(0.40 0 0)", "oklch(0.50 0 0)", "oklch(0.60 0 0)", "oklch(0.70 0 0)", "oklch(0.80 0 0)", "oklch(0.90 0 0)"] },
+      "text-tertiary-light": { "role": "neutral", "displayName": "Tertiary Text (Light)", "canonical": "#717171", "note": "4.88:1 on #ffffff, 4.68:1 on #fafafa; #999 failed at 2.85:1.", "tonalRamp": ["oklch(0.20 0 0)", "oklch(0.30 0 0)", "oklch(0.40 0 0)", "oklch(0.50 0 0)", "oklch(0.60 0 0)", "oklch(0.70 0 0)", "oklch(0.80 0 0)", "oklch(0.90 0 0)"] },
+      "error-red-light": { "role": "secondary", "displayName": "Error Red (Light)", "canonical": "#d32f2f", "note": "4.98:1 on #ffffff; #ef5350 failed at 3.49:1.", "tonalRamp": ["oklch(0.22 0.07 22)", "oklch(0.32 0.11 22)", "oklch(0.42 0.15 22)", "oklch(0.52 0.18 22)", "oklch(0.62 0.19 22)", "oklch(0.70 0.16 22)", "oklch(0.80 0.11 22)", "oklch(0.90 0.06 22)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The largest text in the app: empty-state card headings (15px)." },
+      "body": { "displayName": "Body", "purpose": "Default UI and control text (12px); form inputs bump to 13px. Field labels, hints, and helper prose also sit at body size." },
+      "label": { "displayName": "Label", "purpose": "Uppercase micro-labels at the 11px floor: panel headers, settings section titles, shortcut groups." },
+      "mono": { "displayName": "Mono Readout", "purpose": "Numeric readouts only: timecode, trim values, speed select." },
+      "input": { "displayName": "Input", "purpose": "Form fields and text inputs, 13px." },
+      "icon": { "displayName": "Icon", "purpose": "Segoe MDL2 Assets glyphs, 10-14px; exempt from the text-size floor." }
+    },
+    "shadows": [
+      { "name": "float-menu", "value": "0 8px 14px rgba(0, 0, 0, 0.5)", "purpose": "Dropdown menus: the only shadow that must beat modals (z-index 2000)." },
+      { "name": "float-tooltip", "value": "0 6px 12px rgba(0, 0, 0, 0.55)", "purpose": "Tooltip bubble." },
+      { "name": "float-toast", "value": "0 6px 12px rgba(0, 0, 0, 0.55)", "purpose": "Toast notices, bottom-right." },
+      { "name": "float-modal", "value": "0 10px 14px rgba(0, 0, 0, 0.8)", "purpose": "Modals, the heaviest layer. Float blurs stay under 16px so thin-bordered floats don't read as an AI default." },
+      { "name": "pressed", "value": "inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 3px rgba(0, 0, 0, 0.4)", "purpose": "Active mode-toggle segment and play button inner highlight." }
+    ],
+    "motion": [
+      { "name": "state-transition", "value": "0.15s ease", "purpose": "Border-color, box-shadow, background-color state transitions." },
+      { "name": "modal-settle", "value": "0.22s cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Modal dialog scale-and-rise entrance." },
+      { "name": "backdrop-in", "value": "0.18s ease-out", "purpose": "Modal backdrop dim/blur fade." },
+      { "name": "tooltip-in", "value": "150ms cubic-bezier(0.2, 0.7, 0.3, 1)", "purpose": "Tooltip rise-and-settle entrance." },
+      { "name": "checkmark-pop", "value": "0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)", "purpose": "Checkbox checkmark pop-in." },
+      { "name": "toast-slide", "value": "0.2s ease", "purpose": "Toast slide up 8px on entry/exit." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single decisive action per surface (Start Export, Apply).",
+      "html": "<button class=\"ds-btn-primary\">Start Export</button>",
+      "css": ".ds-btn-primary { background: #00796b; color: #fff; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 4px; padding: 6px 12px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; outline: none; transition: background-color 0.15s ease; } .ds-btn-primary:hover { background: #00685c; } .ds-btn-primary:focus-visible { outline: 2px solid #2ba87e; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting actions next to the primary.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { background: #333333; color: #fff; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 4px; padding: 6px 12px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; outline: none; transition: background-color 0.15s ease; } .ds-btn-secondary:hover { background: #444444; } .ds-btn-secondary:focus-visible { outline: 2px solid #2ba87e; outline-offset: 2px; }"
+    },
+    {
+      "name": "Form Input",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Text/number field: sunken graphite-raised fill, accent ring on focus.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Output folder\">",
+      "css": ".ds-input { background: #1a1a1a; color: #fff; border: 1px solid #2a2a2a; border-radius: 4px; padding: 8px 10px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 13px; outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease; } .ds-input:focus { border-color: #2ba87e; box-shadow: 0 0 0 1px #2ba87e; } .ds-input::placeholder { color: #777; }"
+    },
+    {
+      "name": "Custom Dropdown",
+      "kind": "input",
+      "refersTo": "dropdown-menu",
+      "description": "Custom select: native arrow stripped, chevron added, floating menu over everything.",
+      "html": "<div class=\"ds-dropdown\"><button class=\"ds-dropdown-btn\">H.264 (NVENC)</button><div class=\"ds-dropdown-menu\"><button class=\"ds-dropdown-option\">H.264 (NVENC)</button><button class=\"ds-dropdown-option active\">AV1 (SVT)</button><button class=\"ds-dropdown-option\">H.264 (CPU)</button></div></div>",
+      "css": ".ds-dropdown { position: relative; display: inline-block; } .ds-dropdown-btn { appearance: none; position: relative; display: block; width: 180px; background: #1a1a1a; color: #fff; border: 1px solid #2a2a2a; border-radius: 4px; padding: 6px 30px 6px 10px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; text-align: left; cursor: pointer; outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: border-color 0.15s ease, box-shadow 0.15s ease; } .ds-dropdown-btn::after { content: ''; position: absolute; right: 10px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid #bbb; border-bottom: 1.5px solid #bbb; transform: translateY(-70%) rotate(45deg); } .ds-dropdown-btn:hover { border-color: #444; } .ds-dropdown-btn:focus, .ds-dropdown.open .ds-dropdown-btn { border-color: #2ba87e; box-shadow: 0 0 0 1px #2ba87e; } .ds-dropdown-menu { position: absolute; z-index: 2000; top: calc(100% + 4px); left: 0; min-width: 100%; box-sizing: border-box; background: #141414; border: 1px solid #444; border-radius: 4px; padding: 4px; box-shadow: 0 8px 14px rgba(0, 0, 0, 0.5); } .ds-dropdown-option { display: block; width: 100%; background: transparent; color: #fff; border: none; border-radius: 4px; padding: 6px 8px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; text-align: left; cursor: pointer; } .ds-dropdown-option:hover { background: #333; } .ds-dropdown-option.active { color: #2ba87e; font-weight: 600; }"
+    },
+    {
+      "name": "Checkbox",
+      "kind": "input",
+      "refersTo": "checkbox",
+      "description": "Custom 16px checkbox; checked fills Deep Teal with a popping white check.",
+      "html": "<label class=\"ds-checkbox\"><input type=\"checkbox\" class=\"ds-checkbox-input\"><span class=\"ds-checkbox-box\"></span>Mute audio</label>",
+      "css": ".ds-checkbox { display: flex; align-items: center; gap: 8px; cursor: pointer; color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 13px; user-select: none; } .ds-checkbox-input { position: absolute; opacity: 0; width: 0; height: 0; } .ds-checkbox-box { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 3px; position: relative; transition: all 0.2s ease; } .ds-checkbox:hover .ds-checkbox-box, .ds-checkbox-input:focus-visible ~ .ds-checkbox-box { border-color: #00796b; } .ds-checkbox-input:checked ~ .ds-checkbox-box { background: #00796b; border-color: #00796b; } .ds-checkbox-box::after { content: ''; position: absolute; display: none; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); margin-bottom: 2px; } .ds-checkbox-input:checked ~ .ds-checkbox-box::after { display: block; animation: ds-check-pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); } @keyframes ds-check-pop { 0% { transform: rotate(45deg) scale(0); opacity: 0; } 100% { transform: rotate(45deg) scale(1); opacity: 1; } }"
+    },
+    {
+      "name": "Mode Toggle",
+      "kind": "nav",
+      "refersTo": "button-primary",
+      "description": "Segmented Trim/Merge switcher: active segment fills Deep Teal, reads pressed into the track.",
+      "html": "<div class=\"ds-mode-toggle\"><button class=\"ds-mode-btn active\">Trim</button><button class=\"ds-mode-btn\">Merge</button></div>",
+      "css": ".ds-mode-toggle { display: inline-flex; background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 6px; padding: 2px; } .ds-mode-btn { flex: 1; background: transparent; border: none; color: #bbb; padding: 6px 14px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; font-weight: 500; border-radius: 4px; cursor: pointer; transition: all 0.2s; } .ds-mode-btn:hover { color: #fff; } .ds-mode-btn.active { background: #00796b; color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 3px rgba(0, 0, 0, 0.4); }"
+    },
+    {
+      "name": "Sidebar Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Collapsible settings panel: graphite-panel fill, micro-label header, no shadow.",
+      "html": "<section class=\"ds-panel\"><header class=\"ds-panel-header\">Export Settings</header><div class=\"ds-panel-body\"><p class=\"ds-panel-text\">Size target</p></div></section>",
+      "css": ".ds-panel { background: #141414; border: 1px solid #2a2a2a; border-radius: 4px; display: flex; flex-direction: column; padding: 10px; } .ds-panel-header { padding: 0 0 8px 0; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #777; } .ds-panel-body { display: flex; flex-direction: column; gap: 8px; } .ds-panel-text { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; color: #ccc; }"
+    },
+    {
+      "name": "Tooltip",
+      "kind": "custom",
+      "refersTo": "tooltip",
+      "description": "Floating 11px hint with pointer arrow; dark graphite-tooltip fill.",
+      "html": "<div class=\"ds-tooltip\">Start Export</div>",
+      "css": ".ds-tooltip { position: relative; display: inline-block; background: #2a2a2a; border: 1px solid #444; color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.2px; line-height: 1; padding: 6px 10px; border-radius: 6px; white-space: nowrap; box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55); } .ds-tooltip::before { content: ''; position: absolute; top: -5px; left: 50%; transform: translateX(-50%) rotate(45deg); width: 8px; height: 8px; background: #2a2a2a; border-left: 1px solid #444; border-top: 1px solid #444; }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "Transient notice, bottom-right; a 3px left edge carries the status color.",
+      "html": "<div class=\"ds-toast ds-toast-success\">Export complete</div>",
+      "css": ".ds-toast { max-width: 320px; background: #1a1a1a; border: 1px solid #2a2a2a; border-left: 3px solid #2ba87e; border-radius: 6px; padding: 9px 14px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; color: #fff; box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55); } .ds-toast-success { border-left-color: #00796b; } .ds-toast-error { border-left-color: #ef5350; }"
+    },
+    {
+      "name": "Drop Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "The signature empty state: centered card inviting a drag-and-drop, with a solid surface that survives the always-dark video area.",
+      "html": "<div class=\"ds-drop-card\"><svg class=\"ds-drop-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#2ba87e\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z\"/><polyline points=\"14 2 14 8 20 8\"/><polygon fill=\"#2ba87e\" stroke=\"none\" points=\"10 13 15 16 10 19\"/></svg><h2>Drop a video here</h2><p>Or browse for a file to start trimming</p><button class=\"ds-btn-primary\">Browse files</button></div>",
+      "css": ".ds-drop-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 28px 32px; border: 1px solid #2a2a2a; border-radius: 4px; background: #1a1a1a; max-width: 460px; box-sizing: border-box; } .ds-drop-icon { display: block; width: 340px; height: auto; } .ds-drop-card h2 { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 15px; font-weight: 600; color: #fff; } .ds-drop-card p { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; color: #777; line-height: 1.4; } .ds-btn-primary { background: #00796b; color: #fff; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 4px; padding: 6px 12px; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; outline: none; transition: background-color 0.15s ease; margin-top: 8px; } .ds-btn-primary:hover { background: #00685c; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Workbench",
+    "overview": "ClipSend looks like a tool that is always ready: near-black surfaces, a single calm teal that never shouts, small dense controls sized for speed over spectacle. The app is a workbench for video, not a media player, and it reads that way at a glance. The video itself is the brightest thing in the room; the chrome stays quiet and lets the content work.\n\nThe palette is deliberately restrained. One accent hue (teal) does all the signaling: focus rings, active states, readouts, warnings kept to a single amber. Depth comes from tonal steps, not decoration, and shadows appear only on floating layers. Density is tight but never cramped; 12px controls with 8-10px gaps keep a full export workflow inside one screen. In the light theme every surface and text token flips, but the teals are shared because they clear WCAG AA on both backgrounds, and the video letterbox stays dark in both themes (media areas read as content, like a video editor).\n\nThe system is Windows-native first: Segoe UI, MDL2 icon glyphs, a frameless custom title bar, tray behavior. Minimal is the point, and the anti-reference is any glossy media-app skin, gradient-heavy chrome, or browser-default widget.",
+    "keyCharacteristics": [
+      "Near-black graphite surfaces with one calm teal accent",
+      "Small, dense, uppercase micro-labels; mono readouts for timecode",
+      "Flat by default; tonal layering for depth; shadows only on floating layers",
+      "Strict 4px radius lock on controls and panels",
+      "Windows-native conventions (Segoe UI, MDL2, frameless title bar)",
+      "Dark theme default, light variant; video letterbox always dark"
+    ],
+    "rules": [
+      { "name": "The One Teal Rule", "body": "One accent hue, used everywhere. Two working shades of it: bright Signal Teal for chrome and rings, deep Success Teal for filled surfaces where white text must pass AA. Never introduce a second accent hue.", "section": "colors" },
+      { "name": "The White-Text Rule", "body": "White text only on Deep Teal (or the fixed amber badge with dark text). On any other fill, use text-secondary or text-primary depending on the surface.", "section": "colors" },
+      { "name": "The Letterbox Rule", "body": "The video stage and timeline canvas stay dark in both themes. Media areas are content, like a video editor, not chrome.", "section": "colors" },
+      { "name": "The Mono Readout Rule", "body": "Monospace is reserved for numeric readouts and machine values (timecode, speed, trim points). If it is a number the user must read precisely, it is Consolas; if it is prose, it is Segoe UI.", "section": "typography" },
+      { "name": "The Micro-Label Rule", "body": "Small-print uppercase labels (11px minimum, 700, 1-1.2px tracking) mark sections and panels; 11px is the floor for any functional text. Decorative exceptions are limited to badge numerals (10px in a 14px pill) and MDL2 icon glyphs. Never scale labels up into body size; if a label needs to be bigger, it stops being a label.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Shadows appear only as a response to float (menus, tooltips, toasts, modals). No shadow on a resting button, card, or panel.", "section": "elevation" },
+      { "name": "The Inset Rule", "body": "Anything read-only and numeric (timecode strips, trim-info chips, segment indicators) sits in a sunken well (inset-bg on the surface) with a 1px soft border, so the machine's numbers read as embedded in the workbench, not floating on it.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use one teal hue for all signaling: Signal Teal for chrome, Deep Teal for filled actions. Stay inside the palette; the canvas colors are the only sanctioned additions and they stay monochrome white-on-graphite.",
+      "Do keep the 4px radius on controls and panels, 6px on chips and floating layers, 3px on micro-controls. The shape lock is the system's quiet signature.",
+      "Do put white text only on Deep Teal fills (5.3:1 AA) and reserve the bright accent for non-text chrome.",
+      "Do set numeric readouts in Consolas and section labels in 10px uppercase with tracking.",
+      "Do keep the video letterbox and timeline dark in both themes.",
+      "Do honor prefers-reduced-motion (collapse slide/settle animations) and prefers-reduced-transparency (drop the backdrop blur) and keep the 2px keyboard focus ring."
+    ],
+    "donts": [
+      "Don't add a second accent hue, gradients, glow, or drop shadows on resting surfaces. No neon, no lift, no decorative geometry.",
+      "Don't leave browser-default widgets visible: selects get the custom chevron, scrollbars are the thin styled thumbs, checkboxes are custom.",
+      "Don't use Mint Readout on light surfaces (it flips to Deep Teal in the light theme) or put the bright accent where white text must sit on it.",
+      "Don't scale the micro-labels up or the mono readouts down to prose; the hierarchy is by weight, case, and mono, not by growing type."
+    ]
+  }
+}

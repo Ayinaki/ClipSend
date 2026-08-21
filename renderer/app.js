@@ -2866,7 +2866,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.clipSend.onUpdateProgress((data) => {
       const pct = data.percent || 0;
       if (updateProgressPercent) updateProgressPercent.textContent = `${pct}%`;
-      if (updateProgressBarFill) updateProgressBarFill.style.width = `${pct}%`;
+      if (updateProgressBarFill) updateProgressBarFill.style.transform = `scaleX(${pct / 100})`;
       const mbDownloaded = (data.downloadedBytes / (1024 * 1024)).toFixed(1);
       const mbTotal = (data.totalBytes / (1024 * 1024)).toFixed(1);
       if (updateProgressStatus) {
@@ -2879,7 +2879,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.clipSend.onUpdateDownloaded(() => {
       if (updateProgressStatus) updateProgressStatus.textContent = 'Download complete! Launching installer to finish the update...';
       if (updateProgressPercent) updateProgressPercent.textContent = '100%';
-      if (updateProgressBarFill) updateProgressBarFill.style.width = '100%';
+      if (updateProgressBarFill) updateProgressBarFill.style.transform = 'scaleX(1)';
     });
   }
 
@@ -2906,7 +2906,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updateProgressStatus.style.color = ok ? 'var(--success-color)' : 'var(--error-color)';
       }
       if (updateProgressPercent) updateProgressPercent.textContent = ok ? '100%' : '0%';
-      if (updateProgressBarFill) updateProgressBarFill.style.width = ok ? '100%' : '0%';
+      // The fill is fixed-width and transform-scaled (like the live progress
+      // updates), so the installed-result state must drive the transform too.
+      if (updateProgressBarFill) updateProgressBarFill.style.transform = ok ? 'scaleX(1)' : 'scaleX(0)';
       if (updateProgressSection) updateProgressSection.style.display = 'flex';
       openModal(updateModal);
     });
