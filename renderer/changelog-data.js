@@ -1,5 +1,17 @@
 window.changelogData = [
   {
+    "version": "v2.2.5: Layout & Readability Polish",
+    "date": "August 2026",
+    "changes": [
+      "Fix: The multi-trim segment counter no longer pushes the In/Out/Dur readout over the playback controls. It moved to the timeline header, next to the clip info it belongs with.",
+      "Fix: The settings modal fits the window without a scrollbar, so every setting stays on screen.",
+      "Fix: A finished update install now shows a full progress bar instead of an empty one.",
+      "Fix: The character counter in the feedback form is readable in light mode.",
+      "Enhancement: Labels and helper text are larger, muted and error colors clear contrast requirements in both themes, and floating menus cast tighter shadows.",
+      "Enhancement: Progress bars update smoothly instead of causing layout jumps."
+    ]
+  },
+  {
     "version": "v2.2.4: Multi-Trim WebM Fix",
     "date": "August 2026",
     "changes": [
