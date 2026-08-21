@@ -954,10 +954,6 @@ select option:disabled {
 .mode-toggle .toggle-btn.active .toggle-icon {
   opacity: 1;
 }
-.modal-content {
-  box-shadow: 0 10px 14px rgba(0, 0, 0, 0.8);
-}
-
 /* Changelog Timeline */
 .timeline {
   position: relative;
@@ -2089,7 +2085,9 @@ select.speed-select:hover {
   background-color: var(--panel-bg);
   width: 500px;
   max-width: 90%;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  /* The modal is the heaviest float layer: stronger offset and darker
+     alpha than the menu/tooltip/toast shadows (all under 16px blur). */
+  box-shadow: 0 10px 14px rgba(0, 0, 0, 0.8);
   border: 1px solid var(--border-strong);
   /* The dialog settles into place: slight scale + rise as it appears. */
   animation: modal-dialog-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);

@@ -227,7 +227,7 @@ A strict 4px radius lock on controls and panels (buttons, inputs, selects, dropd
 - **Style:** graphite-raised fill, 1px soft border, 4px radius, 8px 10px padding; text 13px (12px for selects and dropdowns).
 - **Focus:** border flips to Signal Teal with a 1px ring (`box-shadow: 0 0 0 1px`). Transitions at 0.15-0.2s ease.
 - **Selects:** `appearance: none` kills the OS arrow; a per-theme data-URI chevron replaces it; the open popup is OS-drawn but inherits the app's color-scheme so it renders dark/light with the app.
-- **Custom dropdown (cs-dropdown):** the button mirrors the select exactly; the menu floats at z-index 2000 on graphite-panel with a 1px strong border, 4px radius, and the 0 8px 24px shadow. Options highlight with hover-fill; the selected option is marked with the accent.
+- **Custom dropdown (cs-dropdown):** the button mirrors the select exactly; the menu floats at z-index 2000 on graphite-panel with a 1px strong border, 4px radius, and the 0 8px 14px shadow. Options highlight with hover-fill; the selected option is marked with the accent.
 - **Disabled:** graphite fill, tertiary text, no pointer.
 
 ### Checkboxes
