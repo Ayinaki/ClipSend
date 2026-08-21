@@ -2866,7 +2866,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.clipSend.onUpdateProgress((data) => {
       const pct = data.percent || 0;
       if (updateProgressPercent) updateProgressPercent.textContent = `${pct}%`;
-      if (updateProgressBarFill) updateProgressBarFill.style.width = `${pct}%`;
+      if (updateProgressBarFill) updateProgressBarFill.style.transform = `scaleX(${pct / 100})`;
       const mbDownloaded = (data.downloadedBytes / (1024 * 1024)).toFixed(1);
       const mbTotal = (data.totalBytes / (1024 * 1024)).toFixed(1);
       if (updateProgressStatus) {
@@ -2879,7 +2879,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.clipSend.onUpdateDownloaded(() => {
       if (updateProgressStatus) updateProgressStatus.textContent = 'Download complete! Launching installer to finish the update...';
       if (updateProgressPercent) updateProgressPercent.textContent = '100%';
-      if (updateProgressBarFill) updateProgressBarFill.style.width = '100%';
+      if (updateProgressBarFill) updateProgressBarFill.style.transform = 'scaleX(1)';
     });
   }
 

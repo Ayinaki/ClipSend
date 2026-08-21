@@ -19,7 +19,7 @@
   --panel-bg: #1a1a1a;
   --panel-border: #2a2a2a;
   --text-color: #cccccc;
-  --text-muted: #777777;
+  --text-muted: #888888; /* #888 on #1a1a1a = 4.9:1 (AA) — #777 was 3.9:1 once muted text hit the 11px floor */
   /* One accent hue, used everywhere (color-consistency lock): a calm teal.
      Two working shades of the same hue: the brighter accent for chrome
      (rings, sliders, overlays, fills) and a deeper success shade for filled
@@ -28,6 +28,8 @@
      Contrast audit (see commit message):
        white on #00796b = 5.3:1 (AA)   white on #00685c = 6.7:1 (AA)
        #ef5350 error on dark = 5.2:1 (AA)   #999 on #1a1a1a = 6.1:1 (AA)
+       light theme: #757575 muted/tertiary on #ffffff = 4.61:1 (AA),
+       #d32f2f error on #ffffff = 4.98:1 (AA) — #888/#999/#ef5350 all failed there
   */
   --accent-color: #2ba87e;
   --accent-hover: #23946d;
@@ -61,6 +63,7 @@
   --hover-bg: #333333;
   --hover-bg-soft: rgba(255, 255, 255, 0.08);
   --disabled-bg: #333333;
+  --disabled-text: #9c9c9c; /* 4.6:1 on #333333 — tertiary (#888) was 3.6:1 */
   --scrollbar-thumb: #444444;
   --inset-bg: rgba(0, 0, 0, 0.35);
   --stage-bg: #050505;
@@ -89,9 +92,15 @@ html[data-font="opendyslexic"] {
   --panel-bg: #ffffff;
   --panel-border: #e0e0e0;
   --text-color: #3a3a3a;
-  --text-muted: #888888;
+  /* Light-theme muted/tertiary must clear AA on #ffffff AND the #fafafa
+     sidebar panels: #888 was 3.54:1, #999 was 2.85:1, #757575 was 4.4:1 on
+     #fafafa. #717171 = 4.88:1 on white, 4.68:1 on #fafafa. */
+  --text-muted: #717171;
   --timecode-color: #00796b;
   --warning-color: #9a6f00;
+  /* Error red darkens in light mode: #ef5350 is 3.49:1 on white, #d32f2f
+     is 4.98:1 (AA) while staying in the same red family. */
+  --error-color: #d32f2f;
   --bg-primary: #ececec;
   --bg-secondary: #ffffff;
   --bg-tertiary: #f4f4f4;
@@ -101,11 +110,12 @@ html[data-font="opendyslexic"] {
   --surface-3: #e8e8e8;
   --text-primary: #1c1c1c;
   --text-secondary: #555555;
-  --text-tertiary: #999999;
+  --text-tertiary: #717171; /* matches muted; section titles lean on weight+case */
   --border-strong: #c8c8c8;
   --hover-bg: #e2e2e2;
   --hover-bg-soft: rgba(0, 0, 0, 0.06);
   --disabled-bg: #e8e8e8;
+  --disabled-text: #646464; /* 4.83:1 on #e8e8e8 — tertiary (#717171) was 4.0:1 */
   --scrollbar-thumb: #c0c0c0;
   --inset-bg: rgba(0, 0, 0, 0.05);
   --stage-bg: #e6e6e6;
@@ -167,7 +177,7 @@ body {
   border: 1px solid transparent;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   margin-left: 8px;
   cursor: pointer;
@@ -218,7 +228,7 @@ body {
   border-radius: 4px;
   padding: 2px 10px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
   max-width: 100%;
   box-sizing: border-box;
@@ -253,7 +263,7 @@ body {
 .titlebar-export-btn {
   height: 20px;
   padding: 0 12px;
-  font-size: 10px;
+  font-size: 11px;
   border-radius: 3px;
   margin-left: 4px;
   -webkit-app-region: no-drag;
@@ -442,7 +452,7 @@ body {
 
 .panel-header {
   padding: 8px 10px 0 10px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -505,7 +515,7 @@ button:focus-visible {
 
 button:disabled {
   background-color: var(--disabled-bg);
-  color: var(--text-tertiary); /* WCAG exempts disabled controls; keeps them legible */
+  color: var(--disabled-text); /* WCAG exempts disabled controls; still kept readable */
   cursor: not-allowed;
   border-color: var(--panel-border);
 }
@@ -560,6 +570,13 @@ select,
 
 /* Chevron + right padding for real dropdowns only. The compound selectors
    out-specify .form-input (feedback modal) and .speed-select (transport bar)
+
+/* Feedback modal character counter. Moved out of an inline rgba(255,255,255,
+   0.3) so it survives the light theme (white-on-white was invisible there). */
+#feedback-char-count {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
    so the arrow is never lost to their padding rules. */
 select.track-select,
 select.speed-select,
@@ -583,7 +600,7 @@ select:focus {
 
 select:disabled {
   background-color: var(--disabled-bg);
-  color: var(--text-tertiary);
+  color: var(--disabled-text);
   border-color: var(--panel-border);
   cursor: not-allowed;
 }
@@ -595,7 +612,7 @@ select option {
   color: var(--text-primary);
 }
 select option:disabled {
-  color: var(--text-tertiary);
+  color: var(--disabled-text);
 }
 
 .form-input {
@@ -678,7 +695,7 @@ select option:disabled {
 }
 .cs-dropdown.disabled .cs-dropdown-btn {
   background-color: var(--disabled-bg);
-  color: var(--text-tertiary);
+  color: var(--disabled-text);
   border-color: var(--panel-border);
   cursor: not-allowed;
 }
@@ -735,7 +752,9 @@ select option:disabled {
   background-color: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 4px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  /* Blur stays under 16px: wide blurs on thin-bordered floats read as an
+     AI default; a 14px blur still lifts the menu off the page cleanly. */
+  box-shadow: 0 8px 14px rgba(0, 0, 0, 0.5);
   padding: 4px;
 }
 
@@ -769,7 +788,7 @@ select option:disabled {
   color: var(--timecode-color);
 }
 .cs-dropdown-option.disabled {
-  color: var(--text-tertiary);
+  color: var(--disabled-text);
   cursor: not-allowed;
 }
 .cs-dropdown-option.disabled:hover {
@@ -786,7 +805,7 @@ select option:disabled {
   gap: 4px;
 }
 .input-group label {
-  font-size: 11px;
+  font-size: 12px; /* form field labels are body-sized prose, not micro-labels */
   color: var(--text-muted);
 }
 
@@ -936,7 +955,7 @@ select option:disabled {
   opacity: 1;
 }
 .modal-content {
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 10px 14px rgba(0, 0, 0, 0.8);
 }
 
 /* Changelog Timeline */
@@ -1058,7 +1077,7 @@ select option:disabled {
   text-overflow: ellipsis;
 }
 .merge-clip-meta {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-secondary);
   /* Keep list items a consistent single line — the trim range must not wrap
      the item taller (which made the clip list grow a scrollbar and made the
@@ -1104,7 +1123,9 @@ select option:disabled {
   align-items: flex-end;
   overflow: hidden;
   box-sizing: border-box;
-  transition: width 0.2s ease, filter 0.2s, border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+  /* No width in the transition list: block widths follow clip durations and
+     animating a layout property forces reflow on every change. */
+  transition: filter 0.2s, border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
 }
 
 /* The block being dragged is ghosted so the insertion caret reads clearly. */
@@ -1217,7 +1238,7 @@ select option:disabled {
   background: rgba(0, 0, 0, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.25);
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   pointer-events: none;
   backdrop-filter: blur(2px);
@@ -1242,7 +1263,7 @@ select option:disabled {
 .merge-timeline-duration {
   width: 100%;
   background: rgba(0,0,0,0.6);
-  font-size: 10px;
+  font-size: 11px;
   text-align: center;
   padding: 4px 0;
   white-space: nowrap;
@@ -1379,7 +1400,7 @@ select option:disabled {
   width: auto;
   height: 18px;
   padding: 0 6px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
@@ -1419,7 +1440,7 @@ select option:disabled {
   margin: 0;
 }
 .merge-clip-indicator {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1432,7 +1453,7 @@ select option:disabled {
 }
 
 .merge-add-hint {
-  font-size: 10px;
+  font-size: 12px; /* helper prose reads at body size; only uppercase labels stay 11px */
   color: var(--text-muted);
   line-height: 1.45;
   opacity: 0.85;
@@ -1449,7 +1470,7 @@ select option:disabled {
   background: var(--surface-3);
   border: 1px solid var(--panel-border);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -1580,7 +1601,7 @@ select option:disabled {
 }
 .zoom-readout {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--timecode-color);
   min-width: 34px;
   text-align: center;
@@ -1790,7 +1811,7 @@ select.speed-select:hover {
   width: auto;
   height: 18px;
   padding: 0 6px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
@@ -1804,7 +1825,7 @@ select.speed-select:hover {
 }
 
 .trim-segment-indicator {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1831,7 +1852,7 @@ select.speed-select:hover {
   border-radius: 7px;
   background: #d9a441;
   color: #141414;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 14px;
   text-align: center;
@@ -1938,9 +1959,13 @@ select.speed-select:hover {
 
 .titlebar-progress-fill {
   height: 100%;
-  width: 0%;
+  width: 100%;
+  /* Progress is expressed as scaleX (set from JS), not width: animating a
+     layout property forces reflow, animating transform does not. */
+  transform: scaleX(0);
+  transform-origin: left;
   background-color: var(--success-color);
-  transition: width 0.2s ease-out;
+  transition: transform 0.2s ease-out;
 }
 
 .titlebar-cancel-btn {
@@ -1979,7 +2004,7 @@ select.speed-select:hover {
   padding: 6px 10px;
   border-radius: 6px;
   white-space: nowrap;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55);
   pointer-events: none;
   opacity: 0;
   transform: translateY(-4px) scale(0.94);
@@ -2084,7 +2109,10 @@ select.speed-select:hover {
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px 20px; /* tight vertical rhythm so the modal fits without scrolling */
+  /* 8px sits on the documented rhythm floor: the modal must fit the fixed
+     800px workbench without scrolling, and 8px still separates rows cleanly
+     once the column gap (20px) and section hairlines do the grouping. */
+  gap: 8px 20px;
   overflow-y: auto;
   min-height: 0;
   flex: 1; /* scrolls under a pinned footer (see .settings-grid-footer) */
@@ -2100,8 +2128,10 @@ select.speed-select:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
-  font-size: 10px;
+  /* The grid gap already separates sections; 2px is just enough air above
+     the hairline so the title never collides with the row above it. */
+  margin-top: 2px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.2px;
@@ -2219,7 +2249,7 @@ select.speed-select:hover {
   padding: 9px 14px;
   font-size: 12px;
   color: var(--text-primary);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55);
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -2435,7 +2465,7 @@ select.speed-select:hover {
   margin-bottom: 16px;
 }
 .shortcut-group-title {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
