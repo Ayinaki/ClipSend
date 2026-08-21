@@ -2906,7 +2906,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updateProgressStatus.style.color = ok ? 'var(--success-color)' : 'var(--error-color)';
       }
       if (updateProgressPercent) updateProgressPercent.textContent = ok ? '100%' : '0%';
-      if (updateProgressBarFill) updateProgressBarFill.style.width = ok ? '100%' : '0%';
+      // The fill is fixed-width and transform-scaled (like the live progress
+      // updates), so the installed-result state must drive the transform too.
+      if (updateProgressBarFill) updateProgressBarFill.style.transform = ok ? 'scaleX(1)' : 'scaleX(0)';
       if (updateProgressSection) updateProgressSection.style.display = 'flex';
       openModal(updateModal);
     });
