@@ -135,6 +135,9 @@ class GifExporter {
 
   _runFfmpeg(args, duration, onProgress) {
     return new Promise((resolve, reject) => {
+      if (!fs.existsSync(ffmpegPath)) {
+        return reject(new Error(`ffmpeg not found at ${ffmpegPath}. Ensure binaries are bundled.`));
+      }
       console.log('Spawning FFmpeg with args:', args);
       this.currentProcess = spawn(ffmpegPath, args);
       
@@ -178,6 +181,9 @@ class GifExporter {
 
   _runGifski(args) {
     return new Promise((resolve, reject) => {
+      if (!fs.existsSync(gifskiPath)) {
+        return reject(new Error(`gifski not found at ${gifskiPath}. Download gifski.exe from https://github.com/ImageOptim/gifski/releases and place it in the bin/ directory.`));
+      }
       console.log('Spawning Gifski with args:', args);
       this.currentProcess = spawn(gifskiPath, args);
       let stderrLog = '';
