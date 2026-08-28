@@ -1,5 +1,13 @@
 window.changelogData = [
   {
+    "version": "v2.2.6: GIF Export Reliability",
+    "date": "August 2026",
+    "changes": [
+      "Fix: GIF exports no longer crash with a missing gifski binary error. The exporter now checks for the binary before attempting to spawn it and shows a clear message instead of a raw system error.",
+      "Fix: The CI build pipeline no longer silently skips gifski when the download fails. A broken gifski download now fails the build, so releases always ship with the GIF encoder included."
+    ]
+  },
+  {
     "version": "v2.2.5: Layout & Readability Polish",
     "date": "August 2026",
     "changes": [
