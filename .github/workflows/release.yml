@@ -95,18 +95,15 @@ jobs:
 
           if (!(Test-Path "bin/gifski.exe")) {
             Write-Host "Downloading Gifski binary..."
-            try {
-              Invoke-WebRequest -Uri "https://gif.ski/gifski-1.32.0.zip" -OutFile "gifski_dl.zip" -TimeoutSec 120
-              Expand-Archive -Path "gifski_dl.zip" -DestinationPath "gifski_temp" -Force
-              $gifskiExe = Get-ChildItem -Path "gifski_temp" -Filter "gifski.exe" -Recurse | Select-Object -First 1
-              if ($gifskiExe) {
-                Copy-Item $gifskiExe.FullName -Destination "bin/gifski.exe" -Force
-                Write-Host "Gifski binary installed successfully to bin/gifski.exe."
-              }
-              Remove-Item -Recurse -Force "gifski_dl.zip", "gifski_temp" -ErrorAction SilentlyContinue
-            } catch {
-              Write-Host "Warning: Failed to download Gifski binary from gif.ski."
+            Invoke-WebRequest -Uri "https://gif.ski/gifski-1.32.0.zip" -OutFile "gifski_dl.zip" -TimeoutSec 120
+            Expand-Archive -Path "gifski_dl.zip" -DestinationPath "gifski_temp" -Force
+            $gifskiExe = Get-ChildItem -Path "gifski_temp" -Filter "gifski.exe" -Recurse | Select-Object -First 1
+            if (!$gifskiExe) {
+              throw "gifski.exe not found inside downloaded zip. Release cannot ship without gifski."
             }
+            Copy-Item $gifskiExe.FullName -Destination "bin/gifski.exe" -Force
+            Write-Host "Gifski binary installed successfully to bin/gifski.exe."
+            Remove-Item -Recurse -Force "gifski_dl.zip", "gifski_temp" -ErrorAction SilentlyContinue
           }
 
       - name: Verify FFmpeg can decode AV1 (libdav1d present)
