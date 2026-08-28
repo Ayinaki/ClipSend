@@ -67,4 +67,34 @@ describe('GifExporter spawn error handling', () => {
 
     await expect(promise).rejects.toThrow('spawn ENOENT');
   });
+
+  test('_runFfmpeg rejects with clear message when ffmpeg binary is missing', async () => {
+    fs.existsSync.mockReturnValue(false);
+
+    await expect(
+      gifExporter._runFfmpeg(['-y', '-i', 'in.mp4'], 10, jest.fn())
+    ).rejects.toThrow(/ffmpeg not found/);
+  });
+
+  test('_runGifski rejects with clear message when gifski binary is missing', async () => {
+    fs.existsSync.mockReturnValue(false);
+
+    await expect(
+      gifExporter._runGifski(['-o', 'out.gif'])
+    ).rejects.toThrow(/gifski not found/);
+  });
+
+  test('runEncode rejects with clear message when ffmpeg is missing', async () => {
+    fs.existsSync.mockReturnValue(false);
+    const plan = {
+      clipDuration: 10,
+      singlePassArgs: ['-i', 'in.mp4'],
+      targetSizeMB: 10,
+      width: 640
+    };
+
+    await expect(
+      gifExporter.runEncode(plan, 'out.gif', jest.fn())
+    ).rejects.toThrow(/ffmpeg not found/);
+  });
 });
