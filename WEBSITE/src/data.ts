@@ -60,13 +60,14 @@ export function planExport(opts: {
   const safetyPct = durationSec < 2 ? 0.85 : durationSec < 3.5 ? 0.88 : durationSec < 6 ? 0.92 : durationSec < 10 ? 0.94 : 0.95;
   const containerOverhead = 0.985; // 1.5% for container, matches MUXING_OVERHEAD
   const usableMB = targetMB * safetyPct * containerOverhead;
-  const totalKbps = (usableMB * 8192) / Math.max(durationSec, 0.5);
+  // MB -> bytes (1024^2) -> bits -> /1000 kbps, matching export-planner.js
+  const totalKbps = (usableMB * 8388.608) / Math.max(durationSec, 0.5);
   let videoKbps = Math.floor(totalKbps - audioKbps);
   // Cap at 25 Mbps like the desktop planner, to prevent rate-control overshoot
   const capped = videoKbps > 25000;
   if (capped) videoKbps = 25000;
   videoKbps = Math.max(150, videoKbps);
-  const estMB = ((videoKbps + audioKbps) * durationSec) / 8192 / containerOverhead;
+  const estMB = ((videoKbps + audioKbps) * durationSec) / 8388.608;
   const quality =
     videoKbps > 12000 ? "Lossless-ish" : videoKbps > 6000 ? "Excellent" : videoKbps > 2800 ? "Great" : videoKbps > 1200 ? "Good" : "Watchable";
   const av1Note = opts.codec === "av1" ? "≈2× quality of H.264 at this bitrate" : undefined;
@@ -101,8 +102,8 @@ export function buildFfmpegCommand(opts: {
       : opts.encoder === "nvenc" ? "h264_nvenc" : opts.encoder === "qsv" ? "h264_qsv" : "h264_amf"
     : vp9Fallback ? "libvpx-vp9" : opts.codec === "av1" ? "libsvtav1" : "libx264";
   // Args mirror encoder-profiles.js per resolved codec: hardware runs single-pass
-  // VBR; x264 and VP9 run 2-pass with -maxrate/-bufsize; SVT-AV1 rejects -maxrate
-  // in 2-pass mode.
+  // VBR; CPU encoders run 2-pass (x264 and VP9 with -maxrate/-bufsize; SVT-AV1
+  // rejects -maxrate in 2-pass mode).
   let vcArgs: string;
   if (isHw) {
     vcArgs = opts.encoder === "nvenc"
@@ -111,12 +112,20 @@ export function buildFfmpegCommand(opts: {
         ? `-preset medium -b:v ${k}k -maxrate ${k}k -bufsize ${k * 2}k`
         : `-quality balanced -rc vbr_peak -b:v ${k}k -maxrate ${k}k`;
   } else if (vcodec === "libvpx-vp9") {
-    vcArgs = `-deadline good -row-mt 1 -b:v ${k}k -maxrate ${k}k -bufsize ${k * 2}k -pass 2`;
+    vcArgs = `-deadline good -row-mt 1 -b:v ${k}k -maxrate ${k}k -bufsize ${k * 2}k`;
   } else {
-    vcArgs = `-b:v ${k}k -pass 2`;
+    vcArgs = `-b:v ${k}k`;
   }
   // WebM audio is the native opus encoder (experimental: -strict -2), matching
   // the slim bundled FFmpeg build. MP4 uses AAC.
   const acodecArgs = opts.format === "webm" ? "-c:a opus -strict -2" : "-c:a aac";
-  return `ffmpeg -ss ${opts.inSec.toFixed(2)} -i input.mp4 -t ${dur} -c:v ${vcodec} ${vcArgs} ${acodecArgs} -b:a ${opts.audioKbps}k output.${opts.format}`;
+  const input = `-ss ${opts.inSec.toFixed(2)} -i input.mp4 -t ${dur}`;
+  if (isHw) {
+    return `ffmpeg ${input} -c:v ${vcodec} ${vcArgs} ${acodecArgs} -b:a ${opts.audioKbps}k output.${opts.format}`;
+  }
+  // Two-pass needs both runs: pass 1 writes the stats file, pass 2 reads it.
+  return [
+    `ffmpeg ${input} -c:v ${vcodec} ${vcArgs} -pass 1 -an -f null NUL`,
+    `ffmpeg ${input} -c:v ${vcodec} ${vcArgs} -pass 2 ${acodecArgs} -b:a ${opts.audioKbps}k output.${opts.format}`,
+  ].join("\n");
 }
