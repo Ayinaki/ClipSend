@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-void: #0b0b0d;
+  --color-panel: #131316;
+  --color-panel2: #1a1a1f;
+  --color-edge: #232329;
+  --color-blurple: #5865f2;
+  --color-blurple-bright: #8b93ff;
+
+  --animate-marquee: marquee 28s linear infinite;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #0b0b0d;
+  color: #f4f4f5;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: #5865f2;
+  color: white;
+}
+
+/* scrollbar: neutral, quiet */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0b0b0d; }
+::-webkit-scrollbar-thumb { background: #2c2c33; border-radius: 8px; border: 2px solid #0b0b0d; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+.font-display { font-family: var(--font-display); }
+
+/* Former gradient text, now flat for a grounded, product-real feel */
+.text-gradient,
+.text-gradient-blurple {
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: #fff;
+}
+
+/* Grid overlay retired, kept as no-op so old classes don't break */
+.bg-grid {
+  background: none;
+  mask-image: none;
+}
+
+/* Noise overlay retired */
+.noise::after {
+  display: none;
+}
+
+/* Solid nav / panel surface (no frosted-glass wash) */
+.glass {
+  background: #0e0e10;
+}
+
+/* Neutral hairline card */
+.card-ring {
+  border: 1px solid #232329;
+}
+.card-ring:hover {
+  border-color: #34343c;
+}
+
+/* Flat, precise range inputs */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #a5b4fc var(--fill, 50%), #26262c var(--fill, 50%));
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #52525b;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  transition: transform 0.15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.12); }
+input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; border: 1px solid #52525b;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.timeline-handle {
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.marquee-track {
+  animation: marquee 30s linear infinite;
+}
+
+/* keyboard users get a visible, on-brand focus ring */
+:focus-visible {
+  outline: 2px solid #5865f2;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .marquee-track,
+  .animate-ping,
+  .animate-spin {
+    animation: none !important;
+  }
+}
