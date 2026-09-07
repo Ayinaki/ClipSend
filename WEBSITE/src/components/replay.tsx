@@ -96,7 +96,7 @@ export function ExportReplay() {
     { at: 0, kind: "cmd", text: `clipsend "${clip.name}" --target 20MB` },
     { at: 0.02, kind: "dim", text: `drop: ${clip.sizeMB.toFixed(1)} MB from windows explorer` },
     { at: 0.06, kind: "info", text: `ffprobe: ${clip.width}x${clip.height}, 60 fps, ${clip.duration.toFixed(2)}s, aac stereo` },
-    { at: 0.14, kind: "info", text: `plan: cap 20 MB, margin 4%, mux 1.5%, audio 128k` },
+    { at: 0.14, kind: "info", text: `plan: cap 20 MB, margin 5%, mux 1.5%, audio 128k` },
     { at: 0.18, kind: "good", text: `plan: video bitrate solved at ${plan.videoKbps.toLocaleString()}k` },
     { at: 0.24, kind: "info", text: `encoder: h264_nvenc init ok, single-pass vbr, maxrate ${plan.videoKbps.toLocaleString()}k` },
     { at: 0.34, kind: "dim", text: `frame= ${frameAt(0.2).toLocaleString()} fps= 214 q= 28.0 speed= 7.9x` },

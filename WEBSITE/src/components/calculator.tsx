@@ -73,6 +73,7 @@ export function Calculator() {
   if (hwAv1) warnings.push("Hardware AV1 needs an RTX 40-series, Intel Arc or 12th-gen+, or an RX 6000-series GPU. Older cards fall back to SVT-AV1 on their own.");
   if (encoder !== "cpu" && !isVp9Fallback) warnings.push("NVENC, QSV and AMF have no 2-pass mode, so they run single-pass VBR. CPU 2-pass hits the target most precisely.");
   if (duration < 10) warnings.push("Short clip: keyframe overhead eats a bigger share, so the planner keeps a wider safety margin.");
+  if (plan.capped) warnings.push("Large target on a short clip: the planner caps video at 25,000 kbps like the desktop app, so the output lands smaller than the cap.");
 
   return (
     <section id="calculator" className="scroll-mt-24 border-b border-[#1a1a1e] py-20 sm:py-24">
