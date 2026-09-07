@@ -39,8 +39,8 @@ export function Calculator() {
 
   const targetMB = useCustom ? customMB : tierMB;
   const plan = useMemo(
-    () => planExport({ durationSec: duration, targetMB, audioKbps, codec }),
-    [duration, targetMB, audioKbps, codec]
+    () => planExport({ durationSec: duration, targetMB, audioKbps, codec, encoder }),
+    [duration, targetMB, audioKbps, codec, encoder]
   );
 
   const isVp9Fallback = format === "webm" && codec === "h264";

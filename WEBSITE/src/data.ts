@@ -54,6 +54,8 @@ export function planExport(opts: {
   targetMB: number;
   audioKbps: number;
   codec: "h264" | "av1";
+  /** Resolved encoder; CPU AV1 goes through libsvtav1. Defaults to cpu for av1. */
+  encoder?: "nvenc" | "qsv" | "amf" | "cpu";
 }) {
   const { durationSec, targetMB, audioKbps } = opts;
   // Safety margin: matches export-planner.js (wider for short clips, keyframe overhead)
@@ -67,6 +69,12 @@ export function planExport(opts: {
   const capped = videoKbps > 25000;
   if (capped) videoKbps = 25000;
   videoKbps = Math.max(150, videoKbps);
+  // SVT-AV1 2-pass runs hot on short high-detail clips, so the desktop planner
+  // discounts its budget by 0.92 (SVT_SAFETY_FACTOR) after the cap. Hardware
+  // and libx264/VP9 keep the full budget.
+  if (opts.codec === "av1" && (opts.encoder ?? "cpu") === "cpu") {
+    videoKbps = Math.max(150, Math.floor(videoKbps * 0.92));
+  }
   const estMB = ((videoKbps + audioKbps) * durationSec) / 8388.608;
   const quality =
     videoKbps > 12000 ? "Lossless-ish" : videoKbps > 6000 ? "Excellent" : videoKbps > 2800 ? "Great" : videoKbps > 1200 ? "Good" : "Watchable";
