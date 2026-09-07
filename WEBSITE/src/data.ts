@@ -71,7 +71,7 @@ export function planExport(opts: {
   const quality =
     videoKbps > 12000 ? "Lossless-ish" : videoKbps > 6000 ? "Excellent" : videoKbps > 2800 ? "Great" : videoKbps > 1200 ? "Good" : "Watchable";
   const av1Note = opts.codec === "av1" ? "≈2× quality of H.264 at this bitrate" : undefined;
-  return { usableMB, totalKbps: Math.floor(totalKbps), videoKbps, estMB, quality, safetyPct, av1Note, capped };
+  return { usableMB, totalKbps: videoKbps + audioKbps, videoKbps, estMB, quality, safetyPct, av1Note, capped };
 }
 
 export function formatTime(sec: number) {
@@ -101,20 +101,23 @@ export function buildFfmpegCommand(opts: {
       ? opts.encoder === "nvenc" ? "av1_nvenc" : opts.encoder === "qsv" ? "av1_qsv" : "av1_amf"
       : opts.encoder === "nvenc" ? "h264_nvenc" : opts.encoder === "qsv" ? "h264_qsv" : "h264_amf"
     : vp9Fallback ? "libvpx-vp9" : opts.codec === "av1" ? "libsvtav1" : "libx264";
-  // Args mirror encoder-profiles.js per resolved codec: hardware runs single-pass
-  // VBR; CPU encoders run 2-pass (x264 and VP9 with -maxrate/-bufsize; SVT-AV1
-  // rejects -maxrate in 2-pass mode).
+  // Args mirror encoder-profiles.js per resolved codec, balanced presets and
+  // bufsize = 1.5x bitrate: hardware runs single-pass VBR; CPU encoders run
+  // 2-pass (SVT-AV1 rejects -maxrate in 2-pass mode, so no -maxrate there).
+  const bufsize = Math.round(k * 1.5);
   let vcArgs: string;
   if (isHw) {
     vcArgs = opts.encoder === "nvenc"
-      ? `-preset p5 -rc vbr -b:v ${k}k -maxrate ${k}k -bufsize ${k * 2}k`
+      ? `-preset p5 -rc vbr -b:v ${k}k -maxrate ${k}k -bufsize ${bufsize}k`
       : opts.encoder === "qsv"
-        ? `-preset medium -b:v ${k}k -maxrate ${k}k -bufsize ${k * 2}k`
+        ? `-preset medium -b:v ${k}k -maxrate ${k}k -bufsize ${bufsize}k`
         : `-quality balanced -rc vbr_peak -b:v ${k}k -maxrate ${k}k`;
   } else if (vcodec === "libvpx-vp9") {
-    vcArgs = `-deadline good -row-mt 1 -b:v ${k}k -maxrate ${k}k -bufsize ${k * 2}k`;
+    vcArgs = `-deadline good -cpu-used 4 -row-mt 1 -b:v ${k}k -maxrate ${k}k -bufsize ${bufsize}k`;
+  } else if (vcodec === "libsvtav1") {
+    vcArgs = `-preset 6 -b:v ${k}k -bufsize ${bufsize}k`;
   } else {
-    vcArgs = `-b:v ${k}k`;
+    vcArgs = `-preset slow -b:v ${k}k -maxrate ${k}k -bufsize ${bufsize}k`;
   }
   // WebM audio is the native opus encoder (experimental: -strict -2), matching
   // the slim bundled FFmpeg build. MP4 uses AAC.
