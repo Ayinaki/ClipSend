@@ -1,0 +1,58 @@
+name: Deploy website to GitHub Pages
+
+# Builds the React landing page in WEBSITE/ and publishes it to Pages.
+# Runs on pushes to main that touch the site, and manually from the Actions tab.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "WEBSITE/**"
+      - ".github/workflows/deploy-website.yml"
+  workflow_dispatch:
+
+# Grant the workflow permission to deploy to Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and don't cancel a half-finished deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: WEBSITE/package-lock.json
+
+      # Pages serves the site under /ClipSend/ because the repo name is ClipSend.
+      - name: Install and build
+        run: |
+          cd WEBSITE
+          npm ci
+          npm run build
+
+      - name: Upload artifact for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: WEBSITE/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
