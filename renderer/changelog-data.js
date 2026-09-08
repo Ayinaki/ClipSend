@@ -1,5 +1,12 @@
 window.changelogData = [
   {
+    "version": "v2.2.7: Merge Export Fix",
+    "date": "September 2026",
+    "changes": [
+      "Fix: Merge Mode exports no longer fail with a path error before the save dialog opens. Clicking Export Merged Video crashed every merge export with an internal error; the output destination is now resolved before it is first used, so the save dialog or default export folder works as expected."
+    ]
+  },
+  {
     "version": "v2.2.6: GIF Export Reliability",
     "date": "August 2026",
     "changes": [
