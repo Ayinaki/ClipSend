@@ -520,6 +520,29 @@ function registerIpcHandlers() {
     // partial file — each attempt targets a sibling temp renamed into place
     // only on success, same as the trim encoder's retry loop).
     const isWebmRetry = sizeRetryable && postFormat === 'webm';
+
+    // Resolve the output destination BEFORE anything reads outputPath
+    // (path.extname below): merge mode passes outputPath=undefined and picks
+    // the destination here, via save dialog or the default export dir.
+    if (!outputPath) {
+      const mergeTemplate = store.get('filenameTemplateMerge') || DEFAULT_TEMPLATE_MERGE;
+      const mergeVars = buildTemplateVars({
+        name: options.name || 'Merged Video',
+        codec: postCodec,
+        res: options.resolution && options.resolution !== 'native' ? options.resolution : null,
+        sizeMB: options.targetSizeMB || null
+      });
+      const defaultName = `${renderFilenameTemplate(mergeTemplate, mergeVars)}.${postFormat}`;
+      const defaultExportDir = store.get('defaultExportDirectory');
+      if (defaultExportDir && fs.existsSync(defaultExportDir)) {
+        const targetPath = path.join(defaultExportDir, defaultName);
+        outputPath = await getUniqueFilePath(targetPath);
+      } else {
+        outputPath = await showSaveDialog(defaultName);
+        if (!outputPath) return null; // Cancelled
+      }
+    }
+
     const outputExt = path.extname(outputPath);
     const runConvertWithSizeRetry = async (enc) => {
       const targets = sizeRetryable
@@ -606,25 +629,6 @@ function registerIpcHandlers() {
       }
       return result;
     };
-
-    if (!outputPath) {
-      const mergeTemplate = store.get('filenameTemplateMerge') || DEFAULT_TEMPLATE_MERGE;
-      const mergeVars = buildTemplateVars({
-        name: options.name || 'Merged Video',
-        codec: postCodec,
-        res: options.resolution && options.resolution !== 'native' ? options.resolution : null,
-        sizeMB: options.targetSizeMB || null
-      });
-      const defaultName = `${renderFilenameTemplate(mergeTemplate, mergeVars)}.${postFormat}`;
-      const defaultExportDir = store.get('defaultExportDirectory');
-      if (defaultExportDir && fs.existsSync(defaultExportDir)) {
-        const targetPath = path.join(defaultExportDir, defaultName);
-        outputPath = await getUniqueFilePath(targetPath);
-      } else {
-        outputPath = await showSaveDialog(defaultName);
-        if (!outputPath) return null; // Cancelled
-      }
-    }
 
     // When a post-conversion re-encodes into a non-MP4 container, the merge
     // itself must write an intermediate MP4 first: the concat output muxer is
