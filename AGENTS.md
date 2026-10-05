@@ -155,6 +155,12 @@ output directory — absolute Windows backslash paths break x264's pass 2. Prese
 - `renderer/changelog-data.js` breaks the renderer-ESM rule: a plain `<script src>` in
   `index.html` that sets `window.changelogData` (plus a `module.exports` guard). It is not
   esbuild-bundled; validate with `node --check`, never `require` it in Node (`window` undefined).
+- **Never attribute commits to Codebuff.** No `Co-Authored-By: Codebuff <noreply@codebuff.com>`
+  trailer and no "Generated with Codebuff" line: GitHub resolves that email to the
+  `codebuff-team` account and adds it to the repository contributor list, and undoing that
+  needs a history rewrite. `.githooks/commit-msg` strips those lines (wired by
+  `npm run setup:hooks`, which `prepare` also runs) and `.github/workflows/build.yml` fails
+  any change whose commits still carry them.
 - Untracked workspace dirs `.freebuff/`, `.agents/`, `skills-lock.json` are agent tooling,
   not app code — leave them alone.
 

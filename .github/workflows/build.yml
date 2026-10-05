@@ -19,7 +19,32 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          # Full history so the guard below can walk the commit range of a
+          # pull request or a push, not just the tip.
+          fetch-depth: 0
 
+      - name: Reject Codebuff attribution in commit messages
+        shell: bash
+        run: |
+          # GitHub resolves the coding harness's "Co-Authored-By: Codebuff
+          # <noreply@codebuff.com>" trailer to the `codebuff-team` account and
+          # counts it as a contributor. A rewrite removed the one historical
+          # occurrence; this backstop keeps another from landing, even on a
+          # machine where the .githooks/commit-msg guard is not installed.
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.sha }}"
+          if [ -z "$base" ]; then base="${{ github.event.before }}"; fi
+          # A brand-new branch reports an all-zero "before", so check the tip.
+          case "$base" in "" | 0000000000000000000000000000000000000000) range=(-1 "$head") ;; *) range=("$base..$head") ;; esac
+          # A force-push can leave "before" unreachable; fall back to the tip.
+          git log --format="%B" "${range[@]}" >/dev/null 2>&1 || range=(-1 "$head")
+          echo "Checking ${range[*]} for Codebuff attribution..."
+          if git log --format="%B" "${range[@]}" | grep -qiE 'Co-authored-by:.*(Codebuff|noreply@codebuff)|Generated with Codebuff'; then
+            echo "::error::A commit in this change credits Codebuff. GitHub counts its Co-Authored-By trailer as a co-author and adds codebuff-team to the repo contributors. Amend the commit message to drop it (the .githooks/commit-msg hook does this automatically)."
+            exit 1
+          fi
+          echo "OK: no Codebuff attribution in this change."
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
