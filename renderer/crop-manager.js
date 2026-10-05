@@ -9,8 +9,11 @@ class CropManager {
     
     this.recenterBtn = document.getElementById('crop-recenter-btn');
     
-    // Aspect-ratio preset pills (Free / 16:9 / 9:16 / 1:1 / 4:3).
-    this.pills = Array.from(document.querySelectorAll('.crop-preset-pill'));
+    // Aspect-ratio preset pills (Free / 16:9 / 9:16 / 1:1 / 4:3). Scoped to
+    // the crop pill group on purpose: the watermark panel reuses the
+    // .crop-preset-pill class for identical styling, and a document-wide query
+    // would make these handlers adopt (and reset) those pills too.
+    this.pills = Array.from(document.querySelectorAll('#crop-preset-pills .crop-preset-pill'));
     this.activePreset = 'none';
     this.lockedAspectRatio = null;
     this.cropNative = { x: 0, y: 0, w: 0, h: 0 };

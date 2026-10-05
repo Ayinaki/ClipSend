@@ -108,6 +108,9 @@ export function createProgressUI(elements) {
  * @param {{id?: string, title?: string, body: string} | string} w
  * @param {{showTitle?: boolean}} [opts] showTitle:false renders body only
  *   (used by the compact merge-sidebar cards).
+ *
+ * A warning may carry `action: { kind, label, seconds? }`; the button renders
+ * here and its click bubbles to the delegated listener in createWarningsUI.
  */
 export function buildWarningCard(w, { showTitle = true } = {}) {
   const obj = typeof w === 'object' && w !== null ? w : null;
@@ -139,12 +142,26 @@ export function buildWarningCard(w, { showTitle = true } = {}) {
   bodyDiv.textContent = obj ? obj.body : w;
   textDiv.appendChild(bodyDiv);
 
+  // Optional action button. Warnings that know their own fix (e.g. a refused
+  // size-capped plan, which reports how long the clip may be) render one button
+  // so the user can apply it. The kind/seconds ride on data-* attributes; the
+  // modal owns a single delegated click listener (createWarningsUI).
+  if (obj && obj.action && obj.action.label) {
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.className = 'warning-card-action';
+    actionBtn.textContent = obj.action.label;
+    actionBtn.dataset.actionKind = obj.action.kind || '';
+    if (obj.action.seconds != null) actionBtn.dataset.actionSeconds = String(obj.action.seconds);
+    textDiv.appendChild(actionBtn);
+  }
+
   div.appendChild(iconSpan);
   div.appendChild(textDiv);
   return div;
 }
 
-export function createWarningsUI(elements) {
+export function createWarningsUI(elements, { onAction } = {}) {
   const button = elements && elements.button;
   const modal = elements && elements.modal;
   const closeBtn = elements && elements.closeBtn;
@@ -197,6 +214,19 @@ export function createWarningsUI(elements) {
   if (modal) {
     modal.addEventListener('click', (e) => {
       if (e.target === modal) closeModal(modal);
+    });
+  }
+  // One delegated listener for every action button the modal will ever render
+  // (render() rewrites content.innerHTML, so per-card listeners would be lost).
+  if (content && onAction) {
+    content.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('button[data-action-kind]') : null;
+      if (!btn) return;
+      const raw = btn.dataset.actionSeconds;
+      onAction({
+        kind: btn.dataset.actionKind,
+        seconds: raw != null && raw !== '' ? Number(raw) : null
+      });
     });
   }
 

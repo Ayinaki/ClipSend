@@ -315,7 +315,18 @@ function parseFilterCapabilities(stdout) {
   const hasAtempo = lines.some(line =>
     /^\s*[TSC.][ASV.]\s+atempo\b/.test(line)
   );
-  return { atempo: hasAtempo };
+  // overlay (image watermark) ships in the slim build since the watermark
+  // feature; probe it the same way so an old binary gets a clear error.
+  const hasOverlay = lines.some(line =>
+    /^\s*[TSC.][ASV.]\s+overlay\b/.test(line)
+  );
+  // volume (export audio gain from the transport slider) — same story as
+  // atempo/overlay: probed at runtime so a build without it fails with a clear
+  // message instead of "No such filter: 'volume'".
+  const hasVolume = lines.some(line =>
+    /^\s*[TSC.][ASV.]\s+volume\b/.test(line)
+  );
+  return { atempo: hasAtempo, overlay: hasOverlay, volume: hasVolume };
 }
 
 /**
@@ -330,11 +341,17 @@ function detectAvailableEncoders(ffmpegPath) {
       const caps = parseEncoderCapabilities(stdout);
       execFile(ffmpegPath, ['-hide_banner', '-filters'], { maxBuffer: 4 * 1024 * 1024 }, (filterError, filterOut) => {
         if (!filterError) {
-          caps.atempo = parseFilterCapabilities(filterOut).atempo;
+          const filterCaps = parseFilterCapabilities(filterOut);
+          caps.atempo = filterCaps.atempo;
+          caps.overlay = filterCaps.overlay;
+          caps.volume = filterCaps.volume;
         } else {
-          // A failed filter probe must not fail the whole detection: atempo
-          // simply stays false and audio+speed exports get the clear error.
+          // A failed filter probe must not fail the whole detection: atempo,
+          // overlay and volume simply stay false and their exports get the
+          // clear error instead of a cryptic "No such filter".
           caps.atempo = false;
+          caps.overlay = false;
+          caps.volume = false;
         }
         resolve(caps);
       });
