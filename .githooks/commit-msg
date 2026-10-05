@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# Repo policy: nothing here ever credits Codebuff with a commit.
+#
+# The coding-agent harness appends a Codebuff co-author trailer (and sometimes a
+# "generated with" line). GitHub resolves the noreply@codebuff.com address to
+# the `codebuff-team` account, so any commit carrying it silently adds
+# codebuff-team to the repository contributor list, and getting rid of it again
+# needs a history rewrite. Stripping the attribution here means it can never
+# land, whatever wrote the commit.
+#
+# Only attribution lines are removed, not every mention of the name: a commit
+# message is allowed to talk about Codebuff (this change's own message does).
+#
+# Git passes the path to the pending commit message as $1.
+# Wired up by `node scripts/setup-hooks.js` (core.hooksPath = .githooks), which
+# npm's `prepare` lifecycle runs on `npm install`.
+
+msg_file="$1"
+[ -n "$msg_file" ] && [ -f "$msg_file" ] || exit 0
+
+# A co-author trailer naming Codebuff (or its address), or the harness's
+# "generated with" filler line.
+attribution='Co-authored-by:.*(Codebuff|noreply@codebuff)|Generated with Codebuff'
+
+if grep -qiE "$attribution" "$msg_file"; then
+  # A command substitution drops trailing newlines, so the cleaned text needs
+  # only one printf. Every other line (including the blank ones) is kept as-is.
+  cleaned=$(grep -viE "$attribution" "$msg_file")
+  printf '%s\n' "$cleaned" > "$msg_file"
+  echo "commit-msg: removed a Codebuff attribution line." >&2
+  echo "commit-msg: commits in this repo are never co-authored by Codebuff (GitHub counts it as a contributor)." >&2
+fi
+
+exit 0
