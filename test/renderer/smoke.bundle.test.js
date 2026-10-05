@@ -326,7 +326,9 @@ describe('built renderer bundle (smoke)', () => {
   });
 
   test('crop preset pills exist and track the active preset', () => {
-    const pills = document.querySelectorAll('.crop-preset-pill');
+    // Scoped to the crop group: the watermark position pills deliberately
+    // reuse the same pill class so the two controls look identical.
+    const pills = document.querySelectorAll('#crop-preset-pills .crop-preset-pill');
     expect(pills.length).toBe(5);
     expect(document.getElementById('crop-recenter-btn')).toBeTruthy();
     // Free is active by default
@@ -335,6 +337,61 @@ describe('built renderer bundle (smoke)', () => {
     document.querySelector('.crop-preset-pill[data-preset="9:16"]').click();
     expect(document.querySelector('.crop-preset-pill[data-preset="9:16"]').getAttribute('aria-pressed')).toBe('true');
     expect(document.querySelector('.crop-preset-pill[data-preset="none"]').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  test('the watermark panel and Open Recent are wired into the sidebar', () => {
+    const panel = document.getElementById('watermark-panel');
+    expect(panel).toBeTruthy();
+    // It joins the same accordion as Audio Settings and Cropping.
+    expect(panel.classList.contains('collapsible')).toBe(true);
+    expect(panel.classList.contains('collapsed')).toBe(true);
+    expect(document.getElementById('watermark-choose-btn')).toBeTruthy();
+    expect(document.getElementById('watermark-remove-btn')).toBeTruthy();
+    expect(document.getElementById('watermark-size').value).toBe('15');
+    expect(document.getElementById('watermark-opacity').value).toBe('85');
+
+    // Four corner pills, bottom right on by default. They deliberately reuse
+    // the crop pill class so both controls look identical.
+    expect(document.querySelectorAll('#watermark-position-pills .crop-preset-pill').length).toBe(4);
+    expect(document.querySelector('#watermark-position-pills [data-position="br"]').getAttribute('aria-pressed')).toBe('true');
+    // With no watermark set, clicking a corner is a no-op rather than a crash.
+    document.querySelector('#watermark-position-pills [data-position="tl"]').click();
+    expect(document.querySelector('#watermark-position-pills [data-position="br"]').getAttribute('aria-pressed')).toBe('true');
+
+    expect(document.getElementById('watermark-preview')).toBeTruthy();
+    expect(document.getElementById('watermark-preview-merge')).toBeTruthy();
+
+    const recentBtn = document.getElementById('recent-files-btn');
+    expect(recentBtn).toBeTruthy();
+    expect(recentBtn.getAttribute('aria-haspopup')).toBe('menu');
+
+    // Layout lock-in. The panel used to put four two-word labels in one
+    // wrapping row (~54px each), which wrapped every label mid-phrase, and it
+    // borrowed the transport bar's 60px .volume-slider for a settings column.
+    // These assertions pin the structure the visual harness was used to check.
+    const positions = document.getElementById('watermark-position-pills');
+    expect(positions.classList.contains('watermark-positions')).toBe(true);
+    expect(positions.parentElement.classList.contains('watermark-field')).toBe(true);
+    // The sliders own their class so the transport-bar sizing cannot leak in.
+    [document.getElementById('watermark-size'), document.getElementById('watermark-opacity')].forEach(slider => {
+      expect(slider.classList.contains('watermark-slider')).toBe(true);
+      expect(slider.classList.contains('volume-slider')).toBe(false);
+      expect(slider.parentElement.classList.contains('watermark-field')).toBe(true);
+      expect(slider.previousElementSibling.classList.contains('watermark-slider-head')).toBe(true);
+    });
+    // The picked image is one contained chip, and its icons are inline SVG:
+    // the MDL2 codepoints originally used here were unverified and rendered as
+    // tofu boxes in the visual check.
+    const chip = document.querySelector('.watermark-file-row');
+    expect(chip).toBeTruthy();
+    expect(chip.querySelector('svg.watermark-file-icon')).toBeTruthy();
+    expect(chip.contains(document.getElementById('watermark-file-name'))).toBe(true);
+    const removeBtn = document.getElementById('watermark-remove-btn');
+    expect(removeBtn.classList.contains('watermark-remove')).toBe(true);
+    expect(removeBtn.querySelector('svg')).toBeTruthy();
+
+    // Both transports carry a speed control (Trim and Merge).
+    expect(document.querySelectorAll('select.speed-select').length).toBe(2);
   });
 
   test('sidebar collapsible panels act as an accordion (Cropping closes Audio Settings)', () => {
@@ -461,11 +518,14 @@ describe('built renderer bundle (smoke)', () => {
     return ev;
   }
 
-  /** Load two clips through the mocked bridge so merge blocks render. */
-  async function loadMergeClips() {
+  /**
+   * Load clips through the mocked bridge so merge blocks render. Defaults to
+   * two 1080p clips; pass a clips array to exercise other source sizes.
+   */
+  async function loadMergeClips(clips) {
     window.clipSend.openMultipleFiles.mockResolvedValue({
       success: true,
-      clips: [
+      clips: clips || [
         { filePath: 'C:\\replay-a.mp4', thumbnailPath: '', mediaInfo: { duration: 60, width: 1920, height: 1080 } },
         { filePath: 'C:\\replay-b.mp4', thumbnailPath: '', mediaInfo: { duration: 30, width: 1920, height: 1080 } }
       ]
@@ -531,5 +591,152 @@ describe('built renderer bundle (smoke)', () => {
       expect(b.classList.contains('drag-over-left')).toBe(false);
       expect(b.classList.contains('drag-over-right')).toBe(false);
     });
+  });
+
+  // --- Resolution list follows the clips being merged -----------------------
+  // Reported: merging 1440p clips offered only 720p/480p. The shared dropdown
+  // was never rebuilt for merge clips, so it kept whatever Trim mode last
+  // loaded, and a 1080p source's tier list is exactly 720p/480p (tiers key off
+  // the short edge and skip anything at or above it).
+  // Tiers track the source aspect: 480p of a 16:9 1440p (or 1080p) source is
+  // 854x480, the nearest even pixel to the exact 853.33 fit.
+  const mergeClip = (name, duration, width, height) => ({
+    filePath: name + '.mp4',
+    thumbnailPath: '',
+    mediaInfo: { duration, width, height }
+  });
+
+  const optionValues = () =>
+    [...document.getElementById('resolution-select').options].map(o => o.value);
+
+  /** What loadTrimFileFromResult leaves behind for a 1920x1080 source. */
+  function staleListFrom1080p() {
+    const select = document.getElementById('resolution-select');
+    select.innerHTML = '';
+    const add = (value, label) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    };
+    add('native', 'Native (1920x1080)');
+    add('1280x720', '720p (1280x720)');
+    add('854x480', '480p (854x480)');
+    select.value = 'native';
+    return select;
+  }
+
+  test('merge mode rebuilds the resolution list from the first clip', async () => {
+    const select = staleListFrom1080p();
+    expect(optionValues()).toEqual(['native', '1280x720', '854x480']);
+
+    await loadMergeClips([mergeClip('a', 60, 2560, 1440), mergeClip('b', 30, 2560, 1440)]);
+
+    expect(optionValues()).toEqual(['native', '1920x1080', '1280x720', '854x480']);
+    expect([...select.options].map(o => o.textContent)[0]).toBe('Native (2560x1440)');
+    expect(select.value).toBe('native');
+  });
+
+  test('a deliberate resolution pick survives an unrelated clip update', async () => {
+    await loadMergeClips([mergeClip('a', 60, 2560, 1440)]);
+    const select = document.getElementById('resolution-select');
+    select.value = '1280x720';
+    select.dispatchEvent(new window.Event('change', { bubbles: true }));
+    expect(select.value).toBe('1280x720');
+
+    // The new clip rebuilds an identical list, so the choice has to still be
+    // there rather than snapping back to Native.
+    window.clipSend.openMultipleFiles.mockResolvedValue({
+      success: true,
+      clips: [mergeClip('b', 30, 2560, 1440)]
+    });
+    document.getElementById('add-clips-btn').click();
+    await flushAsync();
+
+    expect(select.value).toBe('1280x720');
+    expect(optionValues()).toEqual(['native', '1920x1080', '1280x720', '854x480']);
+  });
+
+  test('the first clip sets the native size, so reordering rebuilds the tiers', async () => {
+    // 1440p first, 1080p second: the merge normalizes both clips to 1440p.
+    await loadMergeClips([mergeClip('a', 60, 2560, 1440), mergeClip('b', 30, 1920, 1080)]);
+    const select = document.getElementById('resolution-select');
+    expect(optionValues()).toEqual(['native', '1920x1080', '1280x720', '854x480']);
+
+    select.value = '1920x1080';
+    select.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    // Drag the 1080p clip to the front. It becomes the merge's native size, so
+    // a 1080p tier would only restate Native and the option goes away.
+    const strip = document.getElementById('merge-timeline-strip');
+    const blocks = strip.querySelectorAll('.merge-timeline-block');
+    blocks[0].dispatchEvent(pointerEvent('pointerdown', 12 + 100));
+    window.dispatchEvent(pointerEvent('pointermove', 12 + 100 + 40));
+    window.dispatchEvent(pointerEvent('pointerup', 430));
+    await flushAsync();
+
+    expect(optionValues()).toEqual(['native', '1280x720', '854x480']);
+    expect(select.value).toBe('native');
+  });
+
+  test('a tier rounds the long edge to the nearest even pixel, keeping the aspect', async () => {
+    await loadMergeClips([mergeClip('a', 60, 2560, 1440)]);
+    const select = document.getElementById('resolution-select');
+    const p480 = [...select.options].find(o => o.value === '854x480');
+    expect(p480).toBeTruthy();
+    expect(p480.textContent).toBe('480p (854x480)');
+    // 2560 * 480 / 1440 is 853.33, so 854 is the closest even pixel. The old
+    // round-then-step-down-to-even gave 852, which is wider than 16:9.
+    const [w] = p480.value.split('x').map(Number);
+    expect(w % 2).toBe(0);
+    expect(Math.abs(w - (2560 * 480) / 1440)).toBeLessThan(1);
+  });
+
+  test('portrait sources get portrait tiers on the same rule', async () => {
+    await loadMergeClips([mergeClip('a', 60, 1080, 1920)]);
+    const select = document.getElementById('resolution-select');
+    expect(select.options[0].textContent).toBe('Native (1080x1920)');
+    expect(optionValues()).toEqual(['native', '720x1280', '480x854']);
+    const [, h] = select.options[2].value.split('x').map(Number);
+    expect(h % 2).toBe(0);
+    expect(Math.abs(h - (1920 * 480) / 1080)).toBeLessThan(1);
+  });
+
+  test('Trim mode builds the same aspect-preserving tiers from the loaded file', async () => {
+    // The tier math is shared, so this covers the other half of the rule: a
+    // loaded file repopulates the list on its own aspect ratio, and a new file
+    // resets the pick to Native.
+    window.clipSend.openFile = jest.fn(async () => ({
+      success: true,
+      mediaInfo: {
+        filePath: 'trim-source.mp4',
+        width: 2560,
+        height: 1440,
+        duration: 120,
+        frameRate: 30,
+        videoDuration: 120,
+        audioTracks: []
+      }
+    }));
+    const select = document.getElementById('resolution-select');
+    select.value = '1280x720';
+
+    document.getElementById('open-file-btn').click();
+    await flushAsync();
+
+    expect(select.options[0].textContent).toBe('Native (2560x1440)');
+    expect(optionValues()).toEqual(['native', '1920x1080', '1280x720', '854x480']);
+    expect(select.value).toBe('native');
+  });
+
+  test('switching modes without a trim file leaves the merge list intact', async () => {
+    await loadMergeClips([mergeClip('a', 60, 2560, 1440)]);
+    expect(optionValues()).toEqual(['native', '1920x1080', '1280x720', '854x480']);
+
+    document.getElementById('mode-trim-btn').click();
+    expect(optionValues()).toEqual(['native', '1920x1080', '1280x720', '854x480']);
+
+    document.getElementById('mode-merge-btn').click();
+    expect(optionValues()).toEqual(['native', '1920x1080', '1280x720', '854x480']);
   });
 });

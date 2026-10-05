@@ -120,6 +120,16 @@ jobs:
           }
           Write-Host "OK: bin\ffmpeg.exe has libdav1d (software AV1 decode)"
 
+          # The export audio gain (transport volume slider) needs the built-in
+          # volume filter. Same stale-artifact hazard as libdav1d: the fetch can
+          # land on a slim build that predates it, and then every export with a
+          # volume below 100% fails at runtime. Fail the build instead.
+          $filters = & .\bin\ffmpeg.exe -hide_banner -filters 2>&1 | Out-String
+          if ($filters -notmatch '\svolume\s') {
+            throw "Fetched bin\ffmpeg.exe has no volume filter - exports with a reduced volume would fail. Re-run the 'Build Minimal FFmpeg' workflow so the build picks up a volume-capable artifact."
+          }
+          Write-Host "OK: bin\ffmpeg.exe has the volume filter (export audio gain)"
+
       - name: Run Unit Tests
         run: npm test
 

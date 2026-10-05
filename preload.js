@@ -3,6 +3,16 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('clipSend', {
   getPathForFile: (file) => webUtils.getPathForFile(file),
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
+  openImage: () => ipcRenderer.invoke('dialog:openImage'),
+  getRecentFiles: () => ipcRenderer.invoke('recent:list'),
+  recordRecentFile: (filePath) => ipcRenderer.invoke('recent:record', filePath),
+  removeRecentFile: (filePath) => ipcRenderer.invoke('recent:remove', filePath),
+  // Remembers trim/preset/format/speed for a recent file so reopening it
+  // resumes where you left off. Only updates an entry already in the list.
+  saveRecentState: (filePath, state) => ipcRenderer.invoke('recent:saveState', { filePath, state }),
+  clearRecentFiles: () => ipcRenderer.invoke('recent:clear'),
+  writeTempImage: (base64Png) => ipcRenderer.invoke('util:writeTempImage', base64Png),
+  readImage: (filePath) => ipcRenderer.invoke('util:readImage', filePath),
   openSpecificFile: (filePath) => ipcRenderer.invoke('dialog:openSpecificFile', filePath),
   openMultipleFiles: () => ipcRenderer.invoke('dialog:openMultipleFiles'),
   openSpecificMultipleFiles: (filePaths) => ipcRenderer.invoke('dialog:openSpecificMultipleFiles', filePaths),
@@ -50,6 +60,14 @@ contextBridge.exposeInMainWorld('clipSend', {
 
   // Waveform
   getWaveformData: (filePath, audioIndex) => ipcRenderer.invoke('waveform:get', { filePath, audioIndex }),
+
+  // Tighten: find the leading/trailing silence so the renderer can trim it in
+  // one click. Resolves { success, bounds } where bounds is null when there is
+  // nothing worth cutting.
+  detectSilence: (filePath, audioIndex, clipDuration) => ipcRenderer.invoke('trim:detectSilence', { filePath, audioIndex, clipDuration }),
+
+  // Support bundle: writes a plain-text diagnostics report and returns its path.
+  exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
 
   // Feedback
   submitFeedback: (payload) => ipcRenderer.invoke('submit-feedback', payload),

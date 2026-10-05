@@ -263,6 +263,117 @@ describe('Merger.runMerge with trims', () => {
     ).rejects.toThrow(/invalid trim range/);
     expect(mockSpawn).not.toHaveBeenCalled();
   });
+
+
+  test('playback speed forces the re-encode path and retimes the join', async () => {
+    const runPromise = merger.runMerge(
+      ['C:\\x.mp4', 'C:\\y.mp4'],
+      'C:\\out-speed.mp4',
+      onProgress,
+      { speed: 2 }
+    );
+
+    await flush();
+    // One spawn only: nothing is trimmed, so there is no per-clip pre-encode.
+    expect(processes.length).toBe(1);
+    const args = mockSpawn.mock.calls[0][1];
+    expect(args).toContain('-filter_complex');
+    const fc = args[args.indexOf('-filter_complex') + 1];
+    // The joined video is retimed and the stretched audio follows with atempo.
+    expect(fc).toContain('setpts=PTS/2');
+    expect(fc).toContain('atempo=2');
+
+    completeProcess(processes[0]);
+    await flush();
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
+    expect(result.strategy).toBe('concat_filter (playback speed 2x)');
+  });
+
+  test('speed 1 keeps the lossless concat_demuxer fast path', async () => {
+    const runPromise = merger.runMerge(
+      ['C:\\x.mp4', 'C:\\y.mp4'],
+      'C:\\out-normal.mp4',
+      onProgress,
+      { speed: 1 }
+    );
+
+    await flush();
+    const args = mockSpawn.mock.calls[0][1];
+    expect(args[args.indexOf('-f') + 1]).toBe('concat'); // the demuxer, not a filter graph
+    expect(args).not.toContain('-filter_complex');
+
+    completeProcess(processes[0]);
+    await flush();
+
+    const result = await runPromise;
+    expect(result.strategy).toBe('concat_demuxer');
+  });
+
+  test('a watermark forces the re-encode path and overlays the logo', async () => {
+    const runPromise = merger.runMerge(
+      ['C:\\x.mp4', 'C:\\y.mp4'],
+      'C:\\out-wm.mp4',
+      onProgress,
+      { watermark: { path: 'C:\\logo.png', position: 'br', sizePct: 15, opacity: 0.5 } }
+    );
+
+    await flush();
+    expect(processes.length).toBe(1);
+    const args = mockSpawn.mock.calls[0][1];
+    // The logo rides along as input index n (two clips -> index 2).
+    expect(args).toContain('C:\\logo.png');
+    const fc = args[args.indexOf('-filter_complex') + 1];
+    expect(fc).toContain('[2:v:0]scale=');
+    expect(fc).toContain('[wm]overlay=');
+    expect(fc).toContain('[outvw]');
+
+    completeProcess(processes[0]);
+    await flush();
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
+    expect(result.strategy).toBe('concat_filter (watermark)');
+  });
+
+  test('speed plus a watermark names both reasons in the strategy', async () => {
+    const runPromise = merger.runMerge(
+      ['C:\\x.mp4', 'C:\\y.mp4'],
+      'C:\\out-both.mp4',
+      onProgress,
+      { speed: 1.5, watermark: { path: 'C:\\logo.png' } }
+    );
+
+    await flush();
+    const fc = mockSpawn.mock.calls[0][1][mockSpawn.mock.calls[0][1].indexOf('-filter_complex') + 1];
+    // Overlay is chained before the retime so the still logo stays pinned.
+    expect(fc.indexOf('overlay=')).toBeLessThan(fc.indexOf('setpts=PTS/1.5'));
+
+    completeProcess(processes[0]);
+    await flush();
+
+    const result = await runPromise;
+    expect(result.strategy).toBe('concat_filter (playback speed 1.5x + watermark)');
+  });
+
+  test('an out-of-range speed falls back to 1x and keeps the fast path', async () => {
+    const runPromise = merger.runMerge(
+      ['C:\\x.mp4', 'C:\\y.mp4'],
+      'C:\\out-bogus.mp4',
+      onProgress,
+      { speed: 'banana' }
+    );
+
+    await flush();
+    expect(mockSpawn.mock.calls[0][1]).not.toContain('-filter_complex');
+
+    completeProcess(processes[0]);
+    await flush();
+
+    const result = await runPromise;
+    expect(result.strategy).toBe('concat_demuxer');
+  });
 });
 
 // --- postConvertMerged size targeting (the 10.33 MB vs 10 MB fix) ---
@@ -399,6 +510,33 @@ describe('Merger.postConvertMerged size targeting', () => {
     expect(args[args.indexOf('-movflags') + 1]).toBe('+faststart');
 
     completeProcess(processes[0]);
+    await runPromise;
+  });
+
+  // A long merge into a small target cannot afford the FULL audio rate. The
+  // conversion used to encode 192k audio regardless of the budget the video
+  // bitrate was derived from, so the finished file blew past the size cap it
+  // was supposed to hit.
+  test('a merge that cannot afford the default audio rate squeezes it instead', async () => {
+    const runPromise = merger.postConvertMerged('C:\\merged.mp4', {
+      format: 'mp4',
+      targetSizeMB: 10,
+      totalDurationSec: 1800,
+      codec: 'h264',
+      encoder: 'libx264'
+    });
+
+    await flush();
+    completeProcess(processes[0]);
+    await flush();
+
+    const pass2Args = mockSpawn.mock.calls[1][1];
+    expect(pass2Args[pass2Args.indexOf('-b:a') + 1]).toBe('32k');
+    // The video side is pinned by the merge path's own floor rather than the
+    // planner's, so it does not go lower than this.
+    expect(pass2Args[pass2Args.indexOf('-b:v') + 1]).toBe('64k');
+
+    completeProcess(processes[1]);
     await runPromise;
   });
 

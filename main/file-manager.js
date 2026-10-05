@@ -58,4 +58,25 @@ async function pickDirectoryDialog() {
   return filePaths[0];
 }
 
-module.exports = { openFileDialog, openMultipleFilesDialog, showSaveDialog, pickDirectoryDialog };
+/**
+ * Pick a watermark image. Kept to the formats the slim FFmpeg decodes (PNG
+ * with alpha is the intended case; JPEG works too, without transparency).
+ */
+async function openImageDialog() {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Select Watermark Image',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Image Files', extensions: ['png', 'jpg', 'jpeg'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (canceled || filePaths.length === 0) {
+    return null;
+  }
+
+  return filePaths[0];
+}
+
+module.exports = { openFileDialog, openMultipleFilesDialog, showSaveDialog, pickDirectoryDialog, openImageDialog };

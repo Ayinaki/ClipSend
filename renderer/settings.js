@@ -19,7 +19,11 @@ import {
   shouldIgnoreCaptureEvent
 } from './utils/keymap.js';
 
-const DEFAULT_VOLUME = 0.6;
+// The transport volume slider now doubles as the EXPORT audio gain (see
+// export-planner's normalizeAudio): what you hear in the preview is what the
+// exported file sounds like. That only stays sane with unity as the default —
+// a 0.6 default would silently attenuate every export by ~4.4 dB.
+const DEFAULT_VOLUME = 1;
 
 // Vendor option metadata for the Hardware Acceleration select. A vendor is
 // usable when the detected FFmpeg ships its H.264 encoder (every hardware

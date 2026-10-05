@@ -472,9 +472,21 @@ body {
   gap: 8px;
 }
 
-/* The shared Export Settings panel follows the Export Merged Video button in
-   Merge mode (which has no panel-style margin), so give it its own top gap to
-   keep the 10px spacing rhythm consistent with the rest of the sidebar. */
+/* The sidebar's vertical rhythm comes from each .panel's own bottom margin,
+   not from a flex gap, so whatever a sidebar ends on decides the space before
+   the shared panels below it. Trim mode ends on a .panel: that 10px bottom
+   margin collapses out of the wrapper div and spaces the Watermark panel.
+   Merge mode ends on the Export Merged Video button (and the estimate row),
+   neither of which has a bottom margin, so the Watermark panel used to sit
+   flush against the button. Give the merge sidebar the 10px it never got. */
+#merge-sidebar {
+  margin-bottom: 10px;
+}
+
+/* Guard for the last shared panel: when it follows a bare button (as Export
+   Settings did before the Watermark panel moved in above it) its own top gap
+   keeps the rhythm. Adjacent .panel margins collapse, so this cannot add up
+   to a double gap. */
 #export-settings-panel {
   margin-top: 10px;
 }
@@ -793,6 +805,22 @@ select option:disabled {
 }
 .cs-dropdown-option.disabled:hover {
   background-color: transparent;
+}
+/* Recent files: each row is a dropdown option plus a remove button that only
+   appears on hover, so the list reads as a clean file picker at rest. */
+.recent-file-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.recent-file-option .recent-file-remove {
+  opacity: 0;
+  flex: none;
+}
+.recent-file-option:hover .recent-file-remove,
+.recent-file-option:focus-within .recent-file-remove {
+  opacity: 1;
 }
 #custom-size-input {
   -moz-appearance: textfield;
@@ -1490,6 +1518,135 @@ select option:disabled {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+/* Watermark preview overlay: the picked logo drawn (non-interactively) in the
+   corner the export will burn it into. Positioned from JS so it can follow
+   the letterboxed frame and the crop rect. */
+.watermark-preview {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Watermark panel.
+   The controls stack as a flex column, and app.js clears the inline display
+   (rather than forcing display:block) so this rule owns the spacing rhythm. */
+#watermark-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* One labelled control: the label sits directly above its input, tighter than
+   the panel rhythm so the two read as a single unit. */
+.watermark-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.watermark-label,
+.watermark-slider-head label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* The picked image as one chip: glyph, ellipsized name, remove. */
+.watermark-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--hover-bg-soft);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+.watermark-file-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+.watermark-file-name {
+  /* min-width:0 is what actually lets the ellipsis kick in inside a flex row. */
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.watermark-remove {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.watermark-remove:hover {
+  background: var(--hover-bg);
+  color: var(--error-color); /* destructive: the error tone reads instantly */
+}
+
+/* Position picker: 2x2, mirroring where the corners actually sit on screen.
+   Four of these labels cannot fit one row in a 220px column, which is what
+   made the previous single-row version wrap mid-phrase. */
+.watermark-positions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.watermark-positions .crop-preset-pill {
+  padding: 6px 4px; /* taller than the crop pills: these labels are two words */
+}
+
+/* Slider label row: name left, live value right. */
+.watermark-slider-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.watermark-slider-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; /* no label jitter while dragging */
+}
+
+/* The transport bar's 60px slider is the wrong size for a settings column, so
+   this is a full-width variant carrying the same tokens (4px track, round
+   accent thumb) instead of reusing .volume-slider. */
+.watermark-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  background: var(--hover-bg);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.watermark-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  cursor: pointer;
+}
+.watermark-slider:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-color);
 }
 
 .loading-overlay {

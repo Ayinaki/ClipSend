@@ -3,7 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { buildVideoCodecArgs, audioCodecFor, isHardwareEncoder } = require('./encoder-profiles');
-const { _internals: { computeSizeLimitBitrate } } = require('./export-planner');
+const {
+  _internals: { planSizeLimitBudget, atempoFilter, normalizeSpeed },
+  normalizeWatermark,
+  watermarkFilterParts
+} = require('./export-planner');
 
 let ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg.exe');
 if (ffmpegPath.includes('app.asar')) {
@@ -173,6 +177,8 @@ class Merger {
    * @param {string}   outputPath   Output file path
    * @param {Function} onProgress   (percent, statusString) => void
    * @param {Object}   [options]
+   * @param {number}   [options.speed] — playback speed; retimed via setpts/atempo after the join (forces the re-encode path).
+   * @param {Object}   [options.watermark] — image overlay burned into the final frame (forces the re-encode path).
    * @param {Array<{trimIn?:number, trimOut?:number}|null>} [options.trims] — per-clip trim ranges aligned with filePaths.
    *   When any clip has a meaningful trim, that clip is first re-encoded to a
    *   uniform temporary file (frame-consistent trim) before the concat step.
@@ -182,6 +188,21 @@ class Merger {
     this.cancelled = false;
     const encoder = options.encoder || 'libx264';
     const trims = options.trims || [];
+    // Playback speed (setpts/atempo) and a watermark both need a re-encode:
+    // the lossless -c copy concat can neither retime streams nor burn in an
+    // overlay, so the concat-filter path is forced when either is set.
+    const speed = normalizeSpeed(options.speed);
+    const watermark = normalizeWatermark(options.watermark);
+    // Export audio from the transport controls. The lossless -c copy concat can
+    // no more apply gain or drop a stream than it can retime, so either setting
+    // forces the re-encode path (same rule as speed and watermark).
+    const audioMuted = options.muted === true || Number(options.volume) === 0;
+    const audioGain = (() => {
+      const n = Number(options.volume);
+      if (options.volume == null || !isFinite(n)) return 1;
+      return Math.min(1, Math.max(0, n));
+    })();
+    const audioFiltered = audioMuted || audioGain < 1;
 
     const compat = await this.checkCompatibility(filePaths);
     const trimPlan = normalizeTrimPlan(filePaths, trims, compat.clips.map(c => c.duration));
@@ -241,16 +262,28 @@ class Merger {
       const effTotalDuration = effCompat.clips.reduce((sum, c) => sum + c.duration, 0);
       const concatBase = trimWeight * 100;
 
-      if (effCompat.compatible) {
+      if (effCompat.compatible && speed === 1 && !watermark && !audioFiltered) {
         strategy = 'concat_demuxer';
         await this._runConcatDemuxer(effectivePaths, outputPath, effTotalDuration, (pct) => {
           if (onProgress) onProgress(concatBase + pct * (1 - trimWeight), 'Merging (lossless concat)...');
         });
       } else {
-        strategy = 'concat_filter';
-        await this._runConcatFilter(effectivePaths, effCompat.clips, outputPath, effTotalDuration, (pct) => {
+        // The suffix names WHY a compatible merge still re-encodes (speed and
+        // watermark can't ride a -c copy concat); the export modal shows it.
+        const forced = effCompat.compatible
+          ? ' (' + [
+              speed !== 1 ? 'playback speed ' + speed + 'x' : null,
+              watermark ? 'watermark' : null,
+              audioMuted ? 'muted audio' : null,
+              (!audioMuted && audioGain < 1) ? 'volume ' + Math.round(audioGain * 100) + '%' : null
+            ].filter(Boolean).join(' + ') + ')'
+          : '';
+        strategy = 'concat_filter' + forced;
+        // The concat encode already outputs at the sped-up duration, so the
+        // progress denominator follows the output clock, not the source one.
+        await this._runConcatFilter(effectivePaths, effCompat.clips, outputPath, effTotalDuration / speed, (pct) => {
           if (onProgress) onProgress(concatBase + pct * (1 - trimWeight), 'Merging (re-encoding)...');
-        }, encoder, options.codec);
+        }, encoder, options.codec, speed, watermark, { muted: audioMuted, volume: audioGain });
       }
 
       if (this.cancelled) {
@@ -473,7 +506,14 @@ class Merger {
   // Private: FALLBACK PATH — concat filter (re-encode)
   // =========================================================================
 
-  async _runConcatFilter(filePaths, clips, outputPath, totalDuration, onProgress, encoder = 'libx264', codec = 'h264') {
+  async _runConcatFilter(filePaths, clips, outputPath, totalDuration, onProgress, encoder = 'libx264', codec = 'h264', speed = 1, watermark = null, audio = null) {
+    // Export audio ({ muted, volume }) from the transport controls. Muting drops
+    // the audio branch from the graph entirely (concat n:v=1:a=0) rather than
+    // encoding a silent track, so a muted merge really has no audio stream.
+    const audioMuted = !!(audio && audio.muted);
+    const audioGain = (audio && typeof audio.volume === 'number' && isFinite(audio.volume))
+      ? Math.min(1, Math.max(0, audio.volume))
+      : 1;
     const targetW = clips[0].width;
     const targetH = clips[0].height;
     const targetFps = clips[0].fps;
@@ -483,12 +523,15 @@ class Merger {
     for (const fp of filePaths) {
       inputArgs.push('-i', fp);
     }
+    // The watermark still rides along as one more input (index n).
+    const wm = normalizeWatermark(watermark);
+    if (wm) inputArgs.push('-i', wm.path);
 
     const filterParts = [];
     const concatInputs = [];
 
     for (let i = 0; i < n; i++) {
-      const hasAudio = clips[i].audioCodec !== null;
+      const hasAudio = !audioMuted && clips[i].audioCodec !== null;
 
       filterParts.push(
         `[${i}:v:0]` +
@@ -507,18 +550,46 @@ class Merger {
           `aformat=sample_fmts=fltp:channel_layouts=stereo` +
           `[a${i}]`
         );
-      } else {
+      } else if (!audioMuted) {
         filterParts.push(
           `anullsrc=r=44100:cl=stereo:d=${clips[i].duration}[a${i}]`
         );
       }
 
-      concatInputs.push(`[v${i}][a${i}]`);
+      concatInputs.push(audioMuted ? `[v${i}]` : `[v${i}][a${i}]`);
     }
 
     filterParts.push(
-      `${concatInputs.join('')}concat=n=${n}:v=1:a=1[outv][outa]`
+      audioMuted
+        ? `${concatInputs.join('')}concat=n=${n}:v=1:a=0[outv0]`
+        : `${concatInputs.join('')}concat=n=${n}:v=1:a=1[outv0][outa0]`
     );
+
+    // Retime and/or watermark the joined streams, in the same order as the
+    // trim planner's watermark path: the overlay lands in the corner of the
+    // final frame, then setpts compresses or stretches the result (overlay
+    // matches frames by timestamp, so retiming first would drift the logo).
+    let vLabel = 'outv0';
+    let aLabel = 'outa0';
+    if (wm) {
+      const parts = watermarkFilterParts(wm, targetW, targetH, n);
+      filterParts.push(parts.prepare);
+      filterParts.push(`[${vLabel}][wm]${parts.overlay}[outvw]`);
+      vLabel = 'outvw';
+    }
+    if (speed !== 1) {
+      filterParts.push(`[${vLabel}]setpts=PTS/${speed}[outvs]`);
+      vLabel = 'outvs';
+    }
+    // Audio retime (atempo preserves pitch) and/or export gain, as one chain.
+    // Skipped entirely when muted: there is no audio label to filter.
+    if (!audioMuted && (speed !== 1 || audioGain < 1)) {
+      const audioChain = [];
+      if (speed !== 1) audioChain.push(atempoFilter(speed));
+      if (audioGain < 1) audioChain.push(`volume=${audioGain}`);
+      filterParts.push(`[${aLabel}]${audioChain.join(',')}[outa]`);
+      aLabel = 'outa';
+    }
 
     const filterComplex = filterParts.join('; ');
 
@@ -543,14 +614,20 @@ class Merger {
       '-y',
       ...inputArgs,
       '-filter_complex', filterComplex,
-      '-map', '[outv]',
-      '-map', '[outa]',
+      '-map', '[' + vLabel + ']',
+      // A muted merge maps video only; -an makes the intent explicit and
+      // switches off ffmpeg's automatic audio stream selection.
+      ...(audioMuted ? ['-an'] : ['-map', '[' + aLabel + ']']),
       ...videoCodecArgs,
-      '-c:a', audioCodecFor(container),
-      '-b:a', '192k',
+      ...(audioMuted
+        ? []
+        : [
+            '-c:a', audioCodecFor(container),
+            '-b:a', '192k'
+          ]),
       // Native opus (WebM audio) is marked experimental; -strict -2 is
       // required or the encoder refuses to open.
-      ...(container === 'webm' ? ['-strict', '-2'] : []),
+      ...(!audioMuted && container === 'webm' ? ['-strict', '-2'] : []),
       ...(container === 'mp4' ? ['-movflags', '+faststart'] : []),
       outputPath
     ];
@@ -709,15 +786,20 @@ class Merger {
       // branch hardcoded libx264, silently dropping hardware acceleration.
       const enc = encoder || (isAv1 ? 'libaom-av1' : isVp9 ? 'libvpx-vp9' : 'libx264');
       let videoBitrateKbps = null;
+      let audioBitrateKbps = 192;
       if (targetSizeMB && totalDurationSec > 0) {
-        // Same safety-margin + muxing-overhead math as the trim planner
-        // (computeSizeLimitBitrate), so the merged file lands *under* the cap
-        // instead of right on it. The naive targetSizeMB-based bitrate has no
-        // headroom, and single-pass rate control reliably overshoots it.
-        videoBitrateKbps = Math.max(
-          64,
-          Math.round(computeSizeLimitBitrate(targetSizeMB, totalDurationSec, 192))
-        );
+        // Same safety-margin + muxing-overhead math as the trim planner, so the
+        // merged file lands *under* the cap instead of right on it. The naive
+        // targetSizeMB-based bitrate has no headroom, and single-pass rate
+        // control reliably overshoots it.
+        //
+        // The audio rate comes back out of the same split rather than being a
+        // hardcoded 192k: on a long merge into a small target 192k of audio
+        // plus a 64k video floor blows straight through the size cap, because
+        // the budget only ever accounted for the audio on paper.
+        const budget = planSizeLimitBudget(targetSizeMB, totalDurationSec, 192);
+        videoBitrateKbps = Math.max(64, Math.round(budget.videoBitrateKbps));
+        audioBitrateKbps = Math.max(32, Math.round(budget.audioBitrateKbps));
       }
 
       if (videoBitrateKbps) {
@@ -747,7 +829,7 @@ class Merger {
             pass2Args.push(
               ...buildVideoCodecArgs({ encoder: enc, videoBitrateKbps, maxQuality: false, pass: 2 }),
               '-pix_fmt', 'yuv420p',
-              '-c:a', audioCodecFor(ext), '-b:a', '192k'
+              '-c:a', audioCodecFor(ext), '-b:a', `${audioBitrateKbps}k`
             );
             // Native opus (WebM audio) is marked experimental; -strict -2 is
             // required or the encoder refuses to open.
@@ -763,7 +845,7 @@ class Merger {
           args.push(...buildVideoCodecArgs({ encoder: enc, videoBitrateKbps, maxQuality: false, pass: 0 }));
           args.push(
             '-pix_fmt', 'yuv420p',
-            '-c:a', audioCodecFor(ext), '-b:a', '192k'
+            '-c:a', audioCodecFor(ext), '-b:a', `${audioBitrateKbps}k`
           );
           // Native opus (WebM audio) is marked experimental; -strict -2 is
           // required or the encoder refuses to open.
@@ -783,7 +865,7 @@ class Merger {
         }));
         args.push(
           '-pix_fmt', 'yuv420p',
-          '-c:a', audioCodecFor(ext), '-b:a', '192k'
+          '-c:a', audioCodecFor(ext), '-b:a', `${audioBitrateKbps}k`
         );
         // Native opus (WebM audio) is marked experimental; -strict -2 is
         // required or the encoder refuses to open.

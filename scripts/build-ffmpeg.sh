@@ -26,9 +26,9 @@
 #   decoders : h264/hevc/vp8/vp9/mpeg4/mpeg2video/mjpeg/png/wmv3/msmpeg4,
 #              aac/mp3/ac3/eac3/opus/vorbis/flac/alac/truehd/pcm_*,
 #              libdav1d (software AV1 decode) + av1 (HW-only, see below)
-#   filters  : trim, setpts, atempo, scale, crop, fps, format, split, concat,
-#              overlay, pad, null, anull, aresample, aformat, anullsrc,
-#              palettegen, paletteuse, setsar
+#   filters  : trim, setpts, atempo, volume, scale, crop, fps, format, split,
+#              concat, overlay, pad, null, anull, aresample, aformat,
+#              anullsrc, palettegen, paletteuse, setsar
 #   protocols: file, pipe, concat
 #
 #   AV1 DECODE: current FFmpeg master's native 'av1' decoder refuses software
@@ -364,7 +364,7 @@ log "Configuring FFmpeg (minimal)"
     --enable-decoder="$DECODERS" \
     --enable-encoder="$ENCODERS" \
     --enable-parser=h264,hevc,av1,vp8,vp9,mpeg4video,mpegvideo,mjpeg,aac,mp3,ac3,opus,vorbis,flac,truehd \
-    --enable-filter=trim,setpts,atempo,scale,crop,fps,format,split,concat,overlay,pad,null,anull,aresample,aformat,anullsrc,palettegen,paletteuse,setsar \
+    --enable-filter=trim,setpts,atempo,volume,scale,crop,fps,format,split,concat,overlay,pad,null,anull,aresample,aformat,anullsrc,palettegen,paletteuse,setsar \
     --extra-cflags="-I$PREFIX/include -static-libgcc" \
     --extra-ldflags="-L$PREFIX/lib" \
     --extra-libs="$EXTRA_LIBS" \
@@ -453,7 +453,7 @@ if [ -n "$RUN_FF" ]; then
   for d in mov matroska avi flv mpegts mpeg m4v concat; do
     require_demuxer "$d"
   done
-  for f in trim setpts atempo scale crop fps format split concat overlay pad null anull aresample aformat anullsrc palettegen paletteuse setsar; do
+  for f in trim setpts atempo volume scale crop fps format split concat overlay pad null anull aresample aformat anullsrc palettegen paletteuse setsar; do
     require_filter "$f"
   done
 
