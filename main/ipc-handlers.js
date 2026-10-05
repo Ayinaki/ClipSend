@@ -1,13 +1,22 @@
 const { ipcMain, BrowserWindow, app, shell } = require('electron');
 const { spawn } = require('child_process');
-const { openFileDialog, openMultipleFilesDialog, showSaveDialog, pickDirectoryDialog } = require('./file-manager');
+const { openFileDialog, openMultipleFilesDialog, showSaveDialog, pickDirectoryDialog, openImageDialog } = require('./file-manager');
 const { probeFile, extractThumbnail, getCreatedThumbnails } = require('./probe-service');
-const { calculatePlan, MAX_SIZE_RETRIES, SIZE_RETRY_FACTOR, sizeRetryTargets } = require('./export-planner');
+const {
+  calculatePlan,
+  MAX_SIZE_RETRIES,
+  SIZE_RETRY_FACTOR,
+  sizeRetryTargets,
+  estimateRequiredBytes,
+  _internals: { normalizeSpeed }
+} = require('./export-planner');
 const { updateTaskbarProgress, clearTaskbarProgress, setTaskbarError, notifyExportComplete } = require('./taskbar');
 const { Encoder } = require('./encoder');
 const { Merger } = require('./merger');
 const { pickEncoder, isHardwareEncoder, resolveCpuEncoder, detectAvailableEncoders, codecForFormat } = require('./encoder-profiles');
-const { extractWaveform } = require('./waveform-service');
+const { extractWaveform, configureDiskCache } = require('./waveform-service');
+const { detectSilence } = require('./silence-service');
+const { collectDiagnostics } = require('./diagnostics');
 const gifExporter = require('./gif-exporter');
 const { renderFilenameTemplate, buildTemplateVars } = require('./filename-template');
 const Store = require('electron-store');
@@ -31,6 +40,15 @@ if (ffmpegPath.includes('app.asar')) {
   ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
 }
 const activePreviews = new Set();
+
+// Last FFmpeg/gifski failure tail, captured for the diagnostics report. Raw
+// stderr is the single most useful thing in a support bundle, and it is gone
+// the moment the error modal closes.
+let lastExportStderr = '';
+function rememberExportStderr(error) {
+  const text = error && (error.ffmpegStderr || error.details);
+  if (text) lastExportStderr = String(text);
+}
 
 // Stderr fragments that indicate a hardware encoder failed to initialize
 // (missing drivers, unsupported GPU, no VRAM, etc.). Any vendor's encoder
@@ -124,6 +142,79 @@ async function getUniqueFilePath(basePath) {
   }
 }
 
+// --- Recent files ---
+// Last opened files (trim loads and merge clip adds), newest first. Paths
+// only: nothing about the media is stored, and entries disappear the moment
+// their file does (readRecentFiles prunes missing paths on every read).
+const RECENT_FILES_MAX = 10;
+
+function recordRecentFile(filePath) {
+  if (typeof filePath !== 'string' || !filePath) return;
+  const current = store.get('recentFiles') || [];
+  // Re-recording a known file must not wipe the resume state attached to it:
+  // reopening the same clip has to keep the trim you left on it.
+  const existing = current.find(e => e && e.path === filePath);
+  const list = current.filter(e => e && e.path !== filePath);
+  list.unshift({
+    path: filePath,
+    name: path.basename(filePath),
+    openedAt: Date.now(),
+    state: (existing && existing.state) || null
+  });
+  store.set('recentFiles', list.slice(0, RECENT_FILES_MAX));
+}
+
+/**
+ * Attach "resume where you left off" state (trim points, preset, format,
+ * resolution, speed) to an existing recent entry. Only ever updates an entry
+ * that is already in the list, so this cannot grow the store.
+ */
+function saveRecentState(filePath, state) {
+  if (typeof filePath !== 'string' || !filePath) return false;
+  if (!state || typeof state !== 'object') return false;
+  const list = store.get('recentFiles') || [];
+  const entry = list.find(e => e && e.path === filePath);
+  if (!entry) return false;
+  entry.state = state;
+  store.set('recentFiles', list);
+  return true;
+}
+
+function readRecentFiles() {
+  const list = (store.get('recentFiles') || []).filter(e => e && typeof e.path === 'string');
+  const kept = list.filter(e => fs.existsSync(e.path));
+  if (kept.length !== list.length) store.set('recentFiles', kept);
+  return kept;
+}
+
+// --- Disk-space preflight ---
+// An export can need several times its final size on the target drive (GIF
+// extraction writes raw frames, 2-pass writes stats logs, a merge keeps its
+// intermediate beside the final file). Check up front so the export fails
+// with one clear message instead of dying mid-write on a full drive.
+function formatMB(bytes) {
+  return Math.round(bytes / (1024 * 1024)).toLocaleString('en-US');
+}
+
+async function assertDiskSpaceFor(targetDir, estimateBytes) {
+  if (typeof fs.promises.statfs !== 'function') return; // too old: skip the check
+  let freeBytes;
+  try {
+    const stats = await fs.promises.statfs(targetDir);
+    freeBytes = Number(stats.bavail) * Number(stats.bsize);
+  } catch (e) {
+    return; // unreadable drive info must not block the export
+  }
+  if (!isFinite(freeBytes)) return;
+  if (freeBytes < estimateBytes) {
+    throw new Error(
+      'Not enough free space in ' + targetDir + '. ' +
+      'This export needs about ' + formatMB(estimateBytes) + ' MB free, ' +
+      formatMB(freeBytes) + ' MB available. Free up some space or pick a different export folder.'
+    );
+  }
+}
+
 const encoder = new Encoder();
 const merger = new Merger();
 
@@ -183,12 +274,20 @@ async function limitConcurrentSettled(items, concurrencyLimit, fn) {
 function registerIpcHandlers() {
   sweepOrphanedTempFiles();
 
+  // Waveform peaks persist across sessions under userData, so reopening a clip
+  // is instant instead of re-running an FFmpeg decode. Kept out of %TEMP% (the
+  // startup sweep owns that dir and would eat it).
+  try {
+    configureDiskCache(path.join(app.getPath('userData'), 'waveform-cache'));
+  } catch (e) { /* a missing userData path must not stop startup */ }
+
   ipcMain.handle('dialog:openFile', async () => {
     const filePath = await openFileDialog();
     if (!filePath) return null;
     
     try {
       const mediaInfo = await probeFile(filePath);
+      recordRecentFile(filePath);
       return { success: true, filePath, mediaInfo };
     } catch (error) {
       return { success: false, error: error.message };
@@ -199,6 +298,7 @@ function registerIpcHandlers() {
     if (!filePath) return null;
     try {
       const mediaInfo = await probeFile(filePath);
+      recordRecentFile(filePath);
       return { success: true, filePath, mediaInfo };
     } catch (error) {
       return { success: false, error: error.message };
@@ -232,6 +332,7 @@ function registerIpcHandlers() {
         return { success: false, error: firstErr };
       }
 
+      clips.forEach(c => recordRecentFile(c.filePath));
       return { success: true, clips };
     } catch (error) {
       return { success: false, error: error.message };
@@ -266,6 +367,7 @@ function registerIpcHandlers() {
         return { success: false, error: firstErr };
       }
 
+      clips.forEach(c => recordRecentFile(c.filePath));
       return { success: true, clips };
     } catch (error) {
       return { success: false, error: error.message };
@@ -340,12 +442,29 @@ function registerIpcHandlers() {
     }
   });
 
+  // --- Tighten (silence auto-trim) ---
+  // Reuses the waveform extraction's PCM analysis, so finding the first and
+  // last audible moment costs no extra FFmpeg pass and shares the peaks cache.
+  // `bounds` is null when there is nothing worth trimming.
+  ipcMain.handle('trim:detectSilence', async (event, { filePath, audioIndex, clipDuration }) => {
+    try {
+      const bounds = await detectSilence(filePath, audioIndex, clipDuration, {});
+      if (!bounds || !bounds.hasSilence) return { success: true, bounds: null };
+      return { success: true, bounds };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('export:calculatePlan', (event, { mediaInfo, trimIn, trimOut, settings }) => {
     try {
       const plan = calculatePlan(mediaInfo, trimIn, trimOut, settings);
       return { success: true, plan };
     } catch (error) {
-      return { success: false, error: error.message };
+      // planFix carries the structured "what would work" numbers (longest clip
+      // that fits, smallest target that fits) so the renderer can offer a
+      // one-click trim instead of making the user read prose and guess.
+      return { success: false, error: error.message, planFix: error.planFix || null };
     }
   });
 
@@ -382,6 +501,19 @@ function registerIpcHandlers() {
     }
 
     try {
+      // Disk-space preflight: refuse before FFmpeg spawns rather than filling
+      // the drive mid-encode (GIF extraction and 2-pass logs can dwarf the
+      // final file). The catch below surfaces the message unchanged.
+      await assertDiskSpaceFor(path.dirname(outputPath), estimateRequiredBytes({
+        estimatedSizeMB: plan.estimatedSizeMB,
+        targetSizeMB: plan.targetSizeMB,
+        twoPass: !plan.isSinglePass,
+        outputFormat: plan.outputFormat,
+        width: plan.width,
+        height: plan.height,
+        clipDuration: plan.clipDuration
+      }));
+
       const win = BrowserWindow.fromWebContents(event.sender);
       const throttledSend = createProgressThrottler((percent, status) => {
         if (!event.sender.isDestroyed()) {
@@ -422,6 +554,7 @@ function registerIpcHandlers() {
         return { success: false, cancelled: true };
       }
       setTaskbarError(win);
+      rememberExportStderr(error);
       return { success: false, error: error.message, details: error.details };
     }
   });
@@ -491,6 +624,22 @@ function registerIpcHandlers() {
     const wantsAv1 = postCodec === 'av1' && !options.skipConvert;
     const postResolution = options.resolution && options.resolution !== 'native' ? options.resolution : null;
     const postTargetSizeMB = options.targetSizeMB && options.targetSizeMB > 0 ? options.targetSizeMB : null;
+
+    // Playback speed: the merge retimes the joined output (setpts/atempo) and
+    // every duration below moves to the OUTPUT clock once speed is not 1. The
+    // multi-segment trim flow (skipConvert) applied speed and any watermark
+    // per segment already, so both stay off here.
+    const mergeSpeed = normalizeSpeed(options.skipConvert ? 1 : options.speed);
+    const mergeWatermark = options.skipConvert ? null : (options.watermark || null);
+    // Export audio (transport volume slider / mute). The multi-segment trim
+    // flow (skipConvert) already applied both per segment, so the merge step
+    // must not apply them a second time.
+    const mergeAudio = options.skipConvert
+      ? { muted: false, volume: 1 }
+      : {
+          muted: options.muted === true,
+          volume: typeof options.volume === 'number' ? options.volume : 1
+        };
 
     // Resolve the concrete encoders for the merge re-encode paths. The
     // intermediate merged MP4 always uses the H.264 family (fast, container-
@@ -566,7 +715,7 @@ function registerIpcHandlers() {
             format: postFormat,
             resolution: postResolution,
             targetSizeMB: targets[i],
-            totalDurationSec: options.totalDurationSec || 0,
+            totalDurationSec: (options.totalDurationSec || 0) / mergeSpeed,
             codec: postCodec,
             encoder: enc,
             finalPath: attemptFinal,
@@ -639,6 +788,25 @@ function registerIpcHandlers() {
     // codec/container already, so no post-conversion is scheduled there.
     const needsPostConvert = !options.skipConvert &&
       (wantsAv1 || postFormat !== 'mp4' || postResolution || postTargetSizeMB);
+
+    // Disk-space preflight (merge): the intermediate merge output and the
+    // final converted file coexist while post-converting (WebM retries keep a
+    // fresh copy of the intermediate per attempt), so budget for the worst
+    // combination on the destination drive.
+    let sourceBytes = 0;
+    for (const fp of filePaths) {
+      try { sourceBytes += (await fs.promises.stat(fp)).size; } catch (e) { /* ignore */ }
+    }
+    const sourceMB = sourceBytes / (1024 * 1024);
+    try {
+      await assertDiskSpaceFor(path.dirname(outputPath), estimateRequiredBytes({
+        estimatedSizeMB: postTargetSizeMB || sourceMB,
+        mergeIntermediateMB: (needsPostConvert ? sourceMB : 0) + (isWebmRetry ? sourceMB : 0)
+      }));
+    } catch (e) {
+      setTaskbarError(win);
+      return { success: false, error: e.message };
+    }
     let mergeOutputPath = outputPath;
     let mergeTempFile = null;
     if (needsPostConvert && postFormat !== 'mp4') {
@@ -678,7 +846,7 @@ function registerIpcHandlers() {
     const mergeCodec = options.skipConvert ? postCodec : 'h264';
 
     try {
-      const result = await merger.runMerge(filePaths, mergeOutputPath, sendMergeProgress, { encoder: mergeEncoderFor, trims, codec: mergeCodec });
+      const result = await merger.runMerge(filePaths, mergeOutputPath, sendMergeProgress, { encoder: mergeEncoderFor, trims, codec: mergeCodec, speed: mergeSpeed, watermark: mergeWatermark, muted: mergeAudio.muted, volume: mergeAudio.volume });
       const final = await cleanupMergeTemp(await applyPostConvert(result));
       finishExport(win, final, 'Merged video');
       return final;
@@ -686,18 +854,20 @@ function registerIpcHandlers() {
       // If a hardware encoder failed during merge re-encode, retry with CPU
       if (isHardwareEncoderFailure(mergeEncoderFor, error && error.ffmpegStderr)) {
         try {
-          const retryResult = await merger.runMerge(filePaths, mergeOutputPath, sendMergeProgress, { encoder: options.skipConvert ? resolveCpuEncoder(postCodec, caps) : 'libx264', trims, codec: mergeCodec });
+          const retryResult = await merger.runMerge(filePaths, mergeOutputPath, sendMergeProgress, { encoder: options.skipConvert ? resolveCpuEncoder(postCodec, caps) : 'libx264', trims, codec: mergeCodec, speed: mergeSpeed, watermark: mergeWatermark, muted: mergeAudio.muted, volume: mergeAudio.volume });
           const retryFinal = await cleanupMergeTemp(await applyPostConvert(retryResult));
           finishExport(win, retryFinal, 'Merged video');
           return retryFinal;
         } catch (retryError) {
           await cleanupMergeTemp(null);
           setTaskbarError(win);
+          rememberExportStderr(retryError);
           return { success: false, error: retryError.message, details: retryError.details };
         }
       }
       await cleanupMergeTemp(null);
       setTaskbarError(win);
+      rememberExportStderr(error);
       return { success: false, error: error.message, details: error.details };
     }
   });
@@ -713,7 +883,74 @@ function registerIpcHandlers() {
   });
   
   ipcMain.handle('settings:getAll', () => store.store);
+
+  // --- Recent files ---
+  ipcMain.handle('recent:list', () => readRecentFiles());
+
+  ipcMain.handle('recent:record', (event, filePath) => {
+    recordRecentFile(filePath);
+    return true;
+  });
+
+  ipcMain.handle('recent:remove', (event, filePath) => {
+    store.set('recentFiles', (store.get('recentFiles') || []).filter(e => e && e.path !== filePath));
+    return true;
+  });
+
+  ipcMain.handle('recent:saveState', (event, { filePath, state } = {}) => {
+    return saveRecentState(filePath, state);
+  });
+
+  ipcMain.handle('recent:clear', () => {
+    store.set('recentFiles', []);
+    return true;
+  });
+
+  // Watermark image picker (PNG/JPG; the slim FFmpeg decodes both).
+  ipcMain.handle('dialog:openImage', async () => {
+    return await openImageDialog();
+  });
+
+  // Writes the renderer's baked watermark PNG (opacity pre-applied on a canvas)
+  // to a clipsend-* temp file so FFmpeg can read it by path. The startup sweep
+  // owns the lifecycle: baked files are disposable by design.
+  ipcMain.handle('util:writeTempImage', async (event, base64Png) => {
+    try {
+      const data = Buffer.from(String(base64Png || ''), 'base64');
+      if (data.length === 0) return { success: false, error: 'No image data' };
+      const filePath = path.join(
+        app.getPath('temp'),
+        'clipsend-wm-' + Date.now() + '-' + Math.floor(Math.random() * 10000) + '.png'
+      );
+      await fs.promises.writeFile(filePath, data);
+      return { success: true, filePath };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
   
+  // Reads a picked image back to the renderer as a data URL. The renderer
+  // needs the pixels (not just the path): the preview overlay and the opacity
+  // bake both run on a canvas, and a file:// <img> would taint that canvas.
+  ipcMain.handle('util:readImage', async (event, filePath) => {
+    try {
+      if (typeof filePath !== 'string' || !filePath) return { success: false, error: 'No file path' };
+      const stats = await fs.promises.stat(filePath);
+      // A watermark is a logo, not a photo library: refuse anything huge
+      // rather than pushing a 200 MB buffer through IPC.
+      const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+      if (stats.size > MAX_IMAGE_BYTES) {
+        return { success: false, error: 'Image is too large (max 25 MB)' };
+      }
+      const data = await fs.promises.readFile(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png';
+      return { success: true, dataUrl: 'data:' + mime + ';base64,' + data.toString('base64') };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('dialog:pickDirectory', async () => {
     return await pickDirectoryDialog();
   });
@@ -730,7 +967,9 @@ function registerIpcHandlers() {
       libaom: false,
       libx264: false,
       vpx9: false,
-      atempo: false
+      atempo: false,
+      overlay: false,
+      volume: false
     };
   });
 
@@ -812,6 +1051,24 @@ function registerIpcHandlers() {
       console.error('Feedback submission failed:', error);
       return { success: false, error: error.message };
     }
+  });
+
+  // --- Diagnostics ---
+  // One readable text report (no new dependency, no archive) covering what a
+  // support round-trip needs: versions, detected encoders, settings, the
+  // updater log, and the last export's stderr. The updater log lives in
+  // userData (see updater.js), not %TEMP%.
+  ipcMain.handle('diagnostics:export', async () => {
+    const logPath = path.join(app.getPath('userData'), 'updater.log');
+    const caps = await getEncoderCapabilities().catch(() => null);
+    return await collectDiagnostics({
+      ffmpegPath,
+      store,
+      app,
+      logPath,
+      encoderCaps: caps,
+      lastExportStderr
+    });
   });
 
   ipcMain.handle('window:minimize', (event) => {

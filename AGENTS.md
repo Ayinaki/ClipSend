@@ -87,7 +87,13 @@ pattern in any new module that spawns FFmpeg.
 2. Renderer calls `export:calculatePlan` → `export-planner.calculatePlan(mediaInfo, trimIn,
    trimOut, settings)` returns a plan: bitrate budget (size-limit mode with dynamic safety
    margin + 1.5% muxing overhead), quality-floor resolution table, warnings, and exact
-   FFmpeg arg arrays (`pass1Args`/`pass2Args` or `singlePassArgs`).
+   FFmpeg arg arrays (`pass1Args`/`pass2Args` or `singlePassArgs`). In size-limit mode the
+   budget is split by `planSizeLimitBudget`, which caps audio at a quarter of a tight budget
+   (`AUDIO_BUDGET_SHARE`, floor `MIN_AUDIO_BITRATE_KBPS`) so a long clip keeps a usable video
+   bitrate instead of the subtraction going negative; the audio rate that comes back out of
+   that split is the one the plan encodes at, and the same helper drives `merger.postConvertMerged`.
+   Plans that still cannot reach `ABSOLUTE_MIN_VIDEO_BITRATE_KBPS` are refused with the target
+   size and trim length that would work (`minimumTargetSizeMB` / `maximumClipDurationSec`).
 3. Renderer calls `export:start` → `Encoder.runEncode` spawns FFmpeg (2-pass CPU or
    single-pass hardware/GIF/MP3), parses stderr `time=` progress, cleans up pass logs and
    partial output. Multi-segment trim-mode exports pre-encode each segment to
@@ -110,6 +116,13 @@ output directory — absolute Windows backslash paths break x264's pass 2. Prese
 - Pure/computable logic is deliberately isolated (e.g. `export-planner._internals`,
   `merger.normalizeTrimPlan`, `window-state.isOnAnyDisplay`) so it can be tested without
   spawning FFmpeg. Keep new testable logic pure and export internals when useful.
+- `test/ffmpeg-render-graphs.test.js` is the one suite that runs the REAL bundled binaries: it
+  renders a watermark and a sped-up merge, then reads the output pixels back. It is the only
+  check that catches a filter graph which encodes fine but puts the logo in the wrong corner,
+  drops the alpha channel, or never retimes. It skips loudly (never fails) when
+  `bin/ffmpeg.exe` / `bin/ffprobe.exe` are absent, so a fresh clone stays green; CI installs
+  the binaries before `npm test`, so there it always runs. Keep it that way, and do not move
+  the binary install steps after the test step.
 - Tests must not rely on Electron APIs at runtime (modules guard for that, e.g. `updater.js`
   requires electron-updater lazily, `taskbar.js` no-ops without Electron).
 - jsdom's `document.documentElement.innerHTML = html` does not run `<script src>` tags, so

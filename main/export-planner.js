@@ -79,6 +79,34 @@ const ABSOLUTE_MIN_VIDEO_BITRATE_KBPS = 50;
 const DEFAULT_AUDIO_BITRATE_KBPS = 128;
 
 /**
+ * How much of a size-limit budget audio may claim before it starts eating
+ * into video.
+ *
+ * The size-limit math used to subtract the requested audio bitrate from the
+ * total budget unconditionally, so the moment the audio rate alone exceeded
+ * the budget the plan came out with a negative video bitrate and the export
+ * died with "Computed video bitrate is invalid". That is not a corner case:
+ * a 21-minute clip in a 20 MB target affords ~123 kbps in total, less than
+ * the 128 kbps audio default, so *every* long-clip/small-target export was
+ * refused with a nonsense error (the message blamed the clip duration, which
+ * was fine).
+ *
+ * Audio is the negotiable side of a tight budget — nobody needs 128 kbps
+ * stereo to follow speech in a size-capped clip, and a quarter of the budget
+ * is plenty for AAC — so the split caps audio here and hands the rest to the
+ * video, which is what the viewer actually looks at.
+ */
+const AUDIO_BUDGET_SHARE = 0.25;
+
+/**
+ * Floor for a negotiated audio bitrate. AAC-LC stays intelligible down to
+ * ~32 kbps; squeezing further to protect the video bitrate produces artifacts
+ * that are not worth the bytes, and the video floor below refuses those plans
+ * anyway.
+ */
+const MIN_AUDIO_BITRATE_KBPS = 32;
+
+/**
  * How many seconds before the in-point we place the fast (input) seek.
  * The remaining gap is covered by accurate (output) seeking.
  */
@@ -130,9 +158,24 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
   // size estimates, and encoder progress all work on the OUTPUT duration.
   const speed = normalizeSpeed(settings.playbackSpeed);
   const clipDuration = sourceDuration / speed;
+  // Export-audio request from the transport controls. Muted (or zero volume)
+  // means no audio stream is written at all, so a size-capped plan must not
+  // reserve audio bitrate for a track it will never encode.
+  const audioRequest = normalizeAudio(settings.audio);
+  const audioMuted = audioRequest.muted || audioRequest.volume === 0;
+  const audioGain = audioRequest.volume;
+  // Watermark request normalized once so every pass sees identical values.
+  const watermark = normalizeWatermark(settings.watermark);
 
   let audioBitrateKbps = settings.audioBitrateKbps ?? DEFAULT_AUDIO_BITRATE_KBPS;
   let videoBitrateKbps = 0;
+
+  // Whether the source carries audio at all. A silent source must not pay the
+  // audio bitrate out of a size-limit budget — subtracting it anyway used to
+  // hand such clips 128 kbps less video than the target could afford. The full
+  // track validation (ordinal existence) still runs below, after the budget is
+  // settled; this only decides how the budget is split.
+  const sourceHasAudio = Array.isArray(mediaInfo.audioTracks) && mediaInfo.audioTracks.length > 0;
   
   const isCropped = settings.crop && settings.crop.enable;
   const sourceWidth = isCropped ? settings.crop.w : mediaInfo.width;
@@ -143,10 +186,11 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
   let isSinglePass = false;
   let crfValue = undefined;
   let warnings = [];
-  // Codec-remap warnings (e.g. WebM -> VP9) are recorded early but merged
-  // into `warnings` AFTER the resolution decision — resolveResolution
-  // replaces the array wholesale, so pushing early would lose them.
-  let codecWarnings = [];
+  // Warnings produced before the resolution decision (codec remaps, a
+  // squeezed audio bitrate) are collected here and merged into `warnings`
+  // AFTER it — resolveResolution replaces the array wholesale, so pushing
+  // early would drop them.
+  const deferredWarnings = [];
 
   // Resolve the concrete encoder from the user's HW preference + codec choice
   // + what this machine's FFmpeg actually ships. WebM remaps an H.264 request
@@ -169,7 +213,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
         'Update ClipSend to a build with the latest bundled FFmpeg, or pick MP4 or AV1 instead.'
       );
     }
-    codecWarnings.push({
+    deferredWarnings.push({
       id: 'webm-vp9',
       title: 'WebM uses VP9 instead of H.264',
       body: 'WebM cannot contain H.264, so the video will be encoded with VP9 on the CPU. Hardware acceleration does not apply to VP9 exports.'
@@ -188,6 +232,15 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
   if (isHardwareEncoder(encoder)) {
     isSinglePass = true;
   }
+
+  // Size-limit bookkeeping, declared at function scope because both the floor
+  // check inside the branch below AND the SVT discount check further down need
+  // the real budget and the audio bitrate the caller actually asked for
+  // (audioBitrateKbps has already been replaced by the squeezed value at that
+  // point, so it cannot stand in for the request).
+  let sizeLimitTargetMB = 0;
+  let sizeLimitTotalKbps = 0;
+  let requestedAudioKbps = 0;
 
   if (settings.outputFormat === 'gif') {
     isSinglePass = true;
@@ -212,28 +265,57 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     audioBitrateKbps = 192; // High quality AAC for auto
   } else {
     if (settings.mode === 'size-limit') {
-      videoBitrateKbps = computeSizeLimitBitrate(
-        settings.targetSizeMB ?? 10,
+      sizeLimitTargetMB = settings.targetSizeMB ?? 10;
+      requestedAudioKbps = (sourceHasAudio && !audioMuted) ? audioBitrateKbps : 0;
+      // The budget decides the split, so the audio bitrate the plan encodes at
+      // must come back out of it — encoding at the requested rate while
+      // budgeting for a smaller one is how a size-capped export overshoots.
+      const budget = planSizeLimitBudget(
+        sizeLimitTargetMB,
         clipDuration,
-        audioBitrateKbps
+        requestedAudioKbps
       );
+      videoBitrateKbps = budget.videoBitrateKbps;
+      sizeLimitTotalKbps = budget.totalBitrateKbps;
+      if (sourceHasAudio && budget.audioBitrateKbps < audioBitrateKbps) {
+        deferredWarnings.push({
+          id: 'audio-squeezed',
+          title: 'Audio bitrate reduced',
+          body: `Audio dropped to ${budget.audioBitrateKbps} kbps from ` +
+            `${Math.round(audioBitrateKbps)} kbps so the video keeps enough of the ` +
+            `${Math.round(budget.totalBitrateKbps)} kbps that ${sizeLimitTargetMB} MB allows. ` +
+            'Encode to a larger target for full-quality audio.'
+        });
+      }
+      audioBitrateKbps = budget.audioBitrateKbps;
     } else {
       // custom mode — user supplies video bitrate directly
       videoBitrateKbps = settings.customBitrateKbps;
     }
 
-    if (isNaN(videoBitrateKbps) || !isFinite(videoBitrateKbps) || videoBitrateKbps <= 0) {
+    if (isNaN(videoBitrateKbps) || !isFinite(videoBitrateKbps)) {
       throw new Error(
         `Computed video bitrate is invalid (${videoBitrateKbps}). ` +
-        `Ensure the clip duration is greater than 0.`
+        `Ensure the clip duration and the target size are greater than 0.`
       );
     }
 
     if (videoBitrateKbps < ABSOLUTE_MIN_VIDEO_BITRATE_KBPS) {
+      // Two very different situations land here, and they need different
+      // advice: a custom-mode user who asked for a bitrate that is too low,
+      // and a size-limit user whose clip simply cannot fit the target. The old
+      // single message told both of them to check the clip duration, which was
+      // useless when the duration was fine and the target was the problem.
+      // Thrown (not wrapped): sizeLimitFloorError already carries the message
+      // AND the structured fix numbers, and `new Error(anError)` would flatten
+      // it to a string and drop `.planFix`.
+      if (settings.mode === 'size-limit') {
+        throw sizeLimitFloorError(clipDuration, sizeLimitTargetMB, requestedAudioKbps, sizeLimitTotalKbps);
+      }
       throw new Error(
         `Computed video bitrate (${Math.round(videoBitrateKbps)} kbps) is below the ` +
         `minimum threshold of ${ABSOLUTE_MIN_VIDEO_BITRATE_KBPS} kbps. ` +
-        `The clip is too long for the selected target size.`
+        `Raise the custom bitrate to at least ${ABSOLUTE_MIN_VIDEO_BITRATE_KBPS} kbps.`
       );
     }
 
@@ -296,16 +378,21 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     // buildVideoCodecArgs actually encodes (Math.round), so a 49.5 kbps
     // budget that lands on the valid 50 kbps minimum is not rejected.
     if (Math.round(videoBitrateKbps) < ABSOLUTE_MIN_VIDEO_BITRATE_KBPS) {
-      throw new Error(
+      // Same structured fix as the generic floor above: SVT's discount pushed a
+      // passing plan below the floor, and the clip really is too long for this
+      // target, so trimming is the actionable fix.
+      const err = new Error(
         `Computed video bitrate (${Math.round(videoBitrateKbps)} kbps) is below the ` +
         `minimum threshold of ${ABSOLUTE_MIN_VIDEO_BITRATE_KBPS} kbps. ` +
         `The clip is too long for the selected target size.`
       );
+      err.planFix = buildPlanFix(clipDuration, sizeLimitTargetMB, requestedAudioKbps);
+      throw err;
     }
   }
 
-  // Merge any codec-remap warnings back in now that resolution is decided.
-  warnings = warnings.concat(codecWarnings);
+  // Merge the deferred warnings back in now that resolution is decided.
+  warnings = warnings.concat(deferredWarnings);
 
   // ------ Audio Track Validation ------
   let hasAudio = false;
@@ -328,6 +415,11 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     hasAudio = true;
   }
 
+  // Audio actually written to the file. The source may have tracks and still
+  // export silently (the transport was muted), and every downstream consumer
+  // — stream mapping, the audio filters, and the size estimate — must agree.
+  const encodeAudio = hasAudio && !audioMuted;
+
   // Speed with audio needs the atempo filter. The bundled slim FFmpeg build
   // did not ship it until atempo was added to scripts/build-ffmpeg.sh, so the
   // runtime capability map (encoder:detect -> settings.encoders.atempo) gates
@@ -343,7 +435,42 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     }
   }
 
+  // Volume below unity needs FFmpeg's volume filter. Probe it like atempo and
+  // overlay (encoder:detect -> settings.encoders.volume) so a build that lacks
+  // it fails with a clear message instead of a cryptic "No such filter".
+  // Muting needs no filter at all (it drops the stream), so it is never gated.
+  if (!audioMuted && audioGain < 1 && settings.outputFormat !== 'mp3') {
+    const capsKnown = !!(settings.encoders &&
+      typeof settings.encoders === 'object' &&
+      Object.keys(settings.encoders).length !== 0);
+    if (capsKnown && !settings.encoders.volume) {
+      throw new Error(
+        'Adjusting the export volume needs the volume filter, which this FFmpeg build does not ship. ' +
+        'Update ClipSend to a build with the latest bundled FFmpeg, or set the volume back to 100%.'
+      );
+    }
+  }
+
+  // A watermark burns an image over the video via the overlay filter. Gate on
+  // the runtime filter probe (encoder:detect -> settings.encoders.overlay) like
+  // the atempo check above, so an old FFmpeg build fails with a clear message
+  // instead of a cryptic "No such filter: 'overlay'".
+  if (watermark) {
+    const capsKnown = !!(settings.encoders &&
+      typeof settings.encoders === 'object' &&
+      Object.keys(settings.encoders).length !== 0);
+    if (capsKnown && !settings.encoders.overlay) {
+      throw new Error(
+        'A watermark needs the overlay filter, which this FFmpeg build does not ship. ' +
+        'Update ClipSend to a build with the latest bundled FFmpeg, or remove the watermark.'
+      );
+    }
+  }
+
   // ------ MP3 audio-only export ------
+  // The mute button is deliberately ignored here: an MP3's whole purpose is
+  // its audio, so a muted transport must not produce an empty file. (A silent
+  // video export is the case mute exists for.)
   if (settings.outputFormat === 'mp3') {
     if (!hasAudio) {
       throw new Error('Cannot export MP3: the source file has no audio tracks.');
@@ -408,7 +535,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       seekTimes,
       crfValue,
       audioBitrateKbps,
-      hasAudio,
+      hasAudio: encodeAudio,
       selectedAudioTrackIndex,
       width,
       height,
@@ -420,7 +547,10 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       maxQuality: settings.maxQuality,
       outputFormat: settings.outputFormat,
       codec: videoCodec,
-      speed
+      speed,
+      watermark,
+      volume: audioGain,
+      muted: audioMuted
     });
 
     return {
@@ -439,10 +569,10 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
       container: containerForFormat(settings.outputFormat),
       playbackSpeed: speed,
       targetSizeMB: settings.targetSizeMB,
-      estimatedSizeMB: parseFloat((((videoBitrateKbps + audioBitrateKbps) * 1000 * clipDuration / 8) / (1024 * 1024)).toFixed(2)),
+      estimatedSizeMB: parseFloat((((videoBitrateKbps + (encodeAudio ? audioBitrateKbps : 0)) * 1000 * clipDuration / 8) / (1024 * 1024)).toFixed(2)),
       videoBitrateKbps: Math.round(videoBitrateKbps),
-      totalBitrateKbps: Math.round(videoBitrateKbps + audioBitrateKbps),
-      audioBitrateKbps,
+      totalBitrateKbps: Math.round(videoBitrateKbps + (encodeAudio ? audioBitrateKbps : 0)),
+      audioBitrateKbps: encodeAudio ? audioBitrateKbps : 0,
       outputFormat: settings.outputFormat
     };
   }
@@ -453,7 +583,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     seekTimes,
     videoBitrateKbps,
     audioBitrateKbps,
-    hasAudio,
+    hasAudio: encodeAudio,
     selectedAudioTrackIndex,
     width,
     height,
@@ -467,7 +597,10 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     // format, but wrong for WebM (opus audio + no faststart).
     outputFormat: settings.outputFormat,
     codec: videoCodec,
-    speed
+    speed,
+    watermark,
+    volume: audioGain,
+    muted: audioMuted
   });
 
   const pass2Args = buildPassArgs({
@@ -476,7 +609,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     seekTimes,
     videoBitrateKbps,
     audioBitrateKbps,
-    hasAudio,
+    hasAudio: encodeAudio,
     selectedAudioTrackIndex,
     width,
     height,
@@ -487,11 +620,14 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     maxQuality: settings.maxQuality,
     outputFormat: settings.outputFormat,
     codec: videoCodec,
-    speed
+    speed,
+    watermark,
+    volume: audioGain,
+    muted: audioMuted
   });
 
   // ------ Estimated output size ------
-  const totalBitrateKbps = videoBitrateKbps + (hasAudio ? audioBitrateKbps : 0);
+  const totalBitrateKbps = videoBitrateKbps + (encodeAudio ? audioBitrateKbps : 0);
   const estimatedSizeMB = (totalBitrateKbps * 1000 * clipDuration / 8) / (1024 * 1024);
 
   return {
@@ -499,7 +635,7 @@ function calculatePlan(mediaInfo, trimIn, trimOut, settings) {
     targetSizeMB: settings.targetSizeMB,
     estimatedSizeMB: parseFloat(estimatedSizeMB.toFixed(2)),
     videoBitrateKbps: Math.round(videoBitrateKbps),
-    audioBitrateKbps,
+    audioBitrateKbps: encodeAudio ? audioBitrateKbps : 0,
     totalBitrateKbps: Math.round(totalBitrateKbps),
     width,
     height,
@@ -551,11 +687,20 @@ function validateInputs(mediaInfo, trimIn, trimOut, settings) {
 }
 
 /**
- * Compute the video bitrate from target file size.
+ * Split a size-limit budget between audio and video.
+ *
  * Applies a dynamic safety margin for short clips where I-frame overhead
- * represents a higher percentage of the total file size.
+ * represents a higher percentage of the total file size, then divides what is
+ * left between the two streams. Audio is capped at its share of a tight budget
+ * (see AUDIO_BUDGET_SHARE) so a long clip still gets a usable video bitrate
+ * instead of the plan coming out negative.
+ *
+ * @param {number} targetSizeMB
+ * @param {number} clipDurationSec - OUTPUT duration (after playback speed)
+ * @param {number} requestedAudioKbps - 0 when the source has no audio at all
+ * @returns {{ totalBitrateKbps: number, audioBitrateKbps: number, videoBitrateKbps: number }}
  */
-function computeSizeLimitBitrate(targetSizeMB, clipDurationSec, audioBitrateKbps) {
+function planSizeLimitBudget(targetSizeMB, clipDurationSec, requestedAudioKbps) {
   const targetBytes = targetSizeMB * 1024 * 1024;
   
   // Dynamic safety margin based on clip duration
@@ -574,13 +719,184 @@ function computeSizeLimitBitrate(targetSizeMB, clipDurationSec, audioBitrateKbps
   const usableBytes = safeBytes * (1 - MUXING_OVERHEAD);
   const totalBitrateBps = (usableBytes * 8) / clipDurationSec;
   const totalBitrateKbps = totalBitrateBps / 1000;
+
+  let audioBitrateKbps = 0;
+  if (requestedAudioKbps > 0) {
+    // Never more than the request, never more than its share of the budget.
+    audioBitrateKbps = Math.min(
+      requestedAudioKbps,
+      Math.max(MIN_AUDIO_BITRATE_KBPS, totalBitrateKbps * AUDIO_BUDGET_SHARE)
+    );
+    // Squeeze below the audio floor only when the video floor would otherwise
+    // be starved, and then stop: below MIN_AUDIO_BITRATE_KBPS the encode is not
+    // worth making, and the caller refuses the plan with an explanation.
+    audioBitrateKbps = Math.max(
+      Math.min(audioBitrateKbps, totalBitrateKbps - ABSOLUTE_MIN_VIDEO_BITRATE_KBPS),
+      MIN_AUDIO_BITRATE_KBPS
+    );
+    // Whole kbps only: this value ends up in the `-b:a` argument and in the
+    // plan summary the UI renders. Rounding happens here (rather than at the
+    // argument) so the bitrate the plan displays is the bitrate it encodes.
+    audioBitrateKbps = Math.round(audioBitrateKbps);
+  }
+
   let videoBitrateKbps = totalBitrateKbps - audioBitrateKbps;
 
   // Cap maximum video bitrate to 25 Mbps to prevent rate-control overshoot
   if (videoBitrateKbps > 25000) {
     videoBitrateKbps = 25000;
   }
-  return videoBitrateKbps;
+  // Never report a negative video bitrate. When the budget cannot cover even
+  // the audio floor there is nothing left for video, and the caller's floor
+  // check refuses the plan with an explanation instead of a negative number.
+  if (videoBitrateKbps < 0) videoBitrateKbps = 0;
+
+  return { totalBitrateKbps, audioBitrateKbps, videoBitrateKbps };
+}
+
+/**
+ * Video-share-only view of planSizeLimitBudget, kept for callers that just
+ * want the video bitrate (merger.js and the arithmetic unit tests).
+ */
+function computeSizeLimitBitrate(targetSizeMB, clipDurationSec, audioBitrateKbps) {
+  return planSizeLimitBudget(targetSizeMB, clipDurationSec, audioBitrateKbps).videoBitrateKbps;
+}
+
+/**
+ * Human "m:ss" / "h:mm:ss" duration for error copy, local to the planner so
+ * the message reads the same wherever it is surfaced.
+ */
+function formatClipDuration(seconds) {
+  const total = Math.max(0, Math.round(seconds));
+  const pad = (n) => String(n).padStart(2, '0');
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/** Upper bound for the target-size search below, so a nonsense input cannot
+ *  spin the doubling loop forever. */
+const MAX_TARGET_SEARCH_MB = 1000000;
+
+/**
+ * Smallest target size (MB) whose budget still clears the video floor.
+ * Bisected rather than solved in closed form: the audio split has a min/max
+ * kink (and the safety margin steps down by duration), so an algebraic answer
+ * is easy to get wrong by a few megabytes — which is exactly the number the
+ * user is being told to pick.
+ *
+ * @returns {number|null} null when no reasonable target fits
+ */
+function minimumTargetSizeMB(clipDurationSec, requestedAudioKbps) {
+  const fits = (mb) =>
+    planSizeLimitBudget(mb, clipDurationSec, requestedAudioKbps).videoBitrateKbps >=
+    ABSOLUTE_MIN_VIDEO_BITRATE_KBPS;
+
+  let lo = 0; // a 0 MB target can never fit, so this is a valid lower bound
+  let hi = 1;
+  while (hi <= MAX_TARGET_SEARCH_MB && !fits(hi)) {
+    lo = hi;
+    hi *= 2;
+  }
+  if (hi > MAX_TARGET_SEARCH_MB) return null;
+
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
+
+/**
+ * Longest clip (seconds) that still clears the video floor at this target.
+ * The budget shrinks monotonically as the duration grows, so this is a
+ * well-behaved bisection too.
+ *
+ * @returns {number} 0 when even a very short clip cannot fit
+ */
+function maximumClipDurationSec(targetSizeMB, requestedAudioKbps) {
+  const fits = (sec) =>
+    planSizeLimitBudget(targetSizeMB, sec, requestedAudioKbps).videoBitrateKbps >=
+    ABSOLUTE_MIN_VIDEO_BITRATE_KBPS;
+
+  let lo = 0.1; // guards the divide-by-duration in the budget math
+  if (!fits(lo)) return 0;
+  let hi = lo * 2;
+  while (hi < 360000 && fits(hi)) {
+    lo = hi;
+    hi *= 2;
+  }
+  if (fits(hi)) return hi;
+
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Explain a size-limit plan that cannot reach the video floor, in the numbers
+ * the user can act on: what target would work, and how long a clip this target
+ * can hold. Reports the total budget rather than the leftover video bitrate,
+ * because on the tightest budgets the leftover is 0 and says nothing about
+ * what is actually wrong.
+ */
+function sizeLimitFloorMessage(clipDuration, targetSizeMB, requestedAudioKbps, totalBitrateKbps) {
+  let message =
+    `A ${formatClipDuration(clipDuration)} clip does not fit in ${targetSizeMB} MB: the size ` +
+    `budget is only ${Math.round(totalBitrateKbps)} kbps, below the minimum threshold of ` +
+    `${ABSOLUTE_MIN_VIDEO_BITRATE_KBPS} kbps for video.`;
+
+  const minimumMB = minimumTargetSizeMB(clipDuration, requestedAudioKbps);
+  message += minimumMB
+    ? ` Raise the target size to at least ${minimumMB.toFixed(1)} MB`
+    : ' Raise the target size';
+
+  const maximumSec = maximumClipDurationSec(targetSizeMB, requestedAudioKbps);
+  if (maximumSec > 0) {
+    message += `, or trim the clip to ${formatClipDuration(maximumSec)} or less`;
+  }
+  return `${message}.`;
+}
+
+/**
+ * Structured "what would actually work" numbers for a refused or tight plan.
+ *
+ * The refusal message quotes these as prose, which is enough to read but not
+ * enough to act on: the renderer needs the raw numbers to offer a one-click
+ * fix ("Trim to 42s to fit 20 MB") instead of making the user re-read the
+ * sentence and drag the Out handle by hand. Attached to the refusal error as
+ * `err.planFix` and forwarded to the renderer by ipc-handlers.
+ *
+ * @param {number} clipDurationSec - current (speed-adjusted) clip length
+ * @param {number} targetSizeMB
+ * @param {number} requestedAudioKbps - 0 when the export has no audio
+ * @returns {{ maximumClipDurationSec: number|null, minimumTargetSizeMB: number|null }}
+ */
+function buildPlanFix(clipDurationSec, targetSizeMB, requestedAudioKbps) {
+  const maximumSec = maximumClipDurationSec(targetSizeMB, requestedAudioKbps);
+  const minimumMB = minimumTargetSizeMB(clipDurationSec, requestedAudioKbps);
+  return {
+    maximumClipDurationSec: maximumSec > 0 ? parseFloat(maximumSec.toFixed(2)) : null,
+    minimumTargetSizeMB: minimumMB != null ? parseFloat(minimumMB.toFixed(1)) : null
+  };
+}
+
+/**
+ * The size-limit refusal as an Error that also carries the fix numbers above.
+ * Callers keep catching a normal Error (message unchanged); only the export
+ * IPC layer reads `.planFix`.
+ */
+function sizeLimitFloorError(clipDuration, targetSizeMB, requestedAudioKbps, totalBitrateKbps) {
+  const err = new Error(
+    sizeLimitFloorMessage(clipDuration, targetSizeMB, requestedAudioKbps, totalBitrateKbps)
+  );
+  err.planFix = buildPlanFix(clipDuration, targetSizeMB, requestedAudioKbps);
+  return err;
 }
 
 /**
@@ -648,6 +964,25 @@ function normalizeSpeed(speed) {
 }
 
 /**
+ * Normalize the export-audio request (the transport's volume slider and mute
+ * button) into a safe shape.
+ *
+ * The export used to ignore both: the slider and mute only drove the preview
+ * <video>, so a clip you muted still exported with full audio, and the preview
+ * was not honest about what the file would sound like. `volume` is now the
+ * export's audio gain (1 = full volume) and `muted` drops the audio stream.
+ * Missing/non-numeric input means unity gain, so callers that never pass an
+ * `audio` block (older saved plans, the merge path, tests) are unaffected.
+ */
+function normalizeAudio(audio) {
+  const muted = !!(audio && audio.muted);
+  const raw = audio ? audio.volume : undefined;
+  const n = Number(raw);
+  const volume = (raw == null || !isFinite(n)) ? 1 : Math.min(1, Math.max(0, n));
+  return { muted, volume };
+}
+
+/**
  * Build an atempo filter chain for a target speed. Older FFmpeg's atempo is
  * limited to 0.5–2.0 per instance, so speeds outside that range are factored
  * into chained instances whose product equals the target (e.g. 3x = 1.5x × 2x).
@@ -669,6 +1004,138 @@ function atempoFilter(speed) {
 }
 
 /**
+ * Watermark (image overlay) helpers.
+ *
+ * A watermark is a still image (PNG with alpha is the intended case) overlaid
+ * on the exported video. The slim FFmpeg build already ships the overlay
+ * filter and PNG decode, so no build change is needed. These fragments are
+ * shared by the trim planner (buildPassArgs) and the merge re-encode path
+ * (merger._runConcatFilter) so both produce identical overlays.
+ */
+const WATERMARK_POSITIONS = ['tl', 'tr', 'bl', 'br'];
+
+/**
+ * Clamp a raw watermark request into a safe shape. Returns null when no
+ * watermark is requested (or no image path), so callers can branch on truthy.
+ */
+function normalizeWatermark(wm) {
+  if (!wm || typeof wm.path !== 'string' || !wm.path) return null;
+  const clamp = (v, lo, hi, dflt) => {
+    const n = Number(v);
+    if (!isFinite(n)) return dflt;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  return {
+    path: wm.path,
+    position: WATERMARK_POSITIONS.includes(wm.position) ? wm.position : 'br',
+    // Logo width as a share of the OUTPUT frame width. Opacity 0.1-1 is
+    // baked into the image by the renderer before export (the slim FFmpeg
+    // has no alpha-scaling filter); the export graph positions and sizes it.
+    sizePct: clamp(wm.sizePct, 5, 50, 15),
+    opacity: clamp(wm.opacity, 0.1, 1, 0.85)
+  };
+}
+
+/**
+ * Filter-graph fragments for one watermark, placed in the corner position of
+ * an outW x outH output frame. inputIndex is the watermark's input ordinal
+ * (1 for the trim path, N for the merge path).
+ *
+ * prepare renders the logo at the requested size with its alpha scaled by
+ * the requested opacity; overlay is appended to the main video chain. The
+ * coordinates use overlay's own w/h/W/H variables, so nothing here depends on
+ * decoding the image's natural size.
+ */
+function watermarkFilterParts(wm, outW, outH, inputIndex) {
+  const wmWidthPx = Math.max(16, Math.round((outW || 0) * (wm.sizePct / 100)) || 64);
+  // 2% margin from the frame edge, matching the preview overlay in the UI.
+  const margin = Math.max(8, Math.round((outW || 0) * 0.02));
+  const x = wm.position === 'tl' || wm.position === 'bl'
+    ? String(margin)
+    : `${outW}-w-${margin}`;
+  const y = wm.position === 'tl' || wm.position === 'tr'
+    ? String(margin)
+    : `${outH}-h-${margin}`;
+  return {
+    // Opacity is baked into the image upstream (the slim FFmpeg ships no
+    // alpha-scaling filter), so this chain only sizes the logo; format=rgba
+    // guarantees an alpha plane for the overlay even for JPEG sources.
+    prepare: `[${inputIndex}:v:0]scale=${wmWidthPx}:-1,format=rgba[wm]`,
+    // eof_action=repeat holds the still image for the whole clip (and lets a
+    // one-frame PNG input work without any -loop hackery).
+    overlay: `overlay=x=${x}:y=${y}:eof_action=repeat`
+  };
+}
+
+/**
+ * Apply the video filter chain to one pass's args: the plain -vf path, or the
+ * watermark's -filter_complex path (a still overlay needs two inputs).
+ *   - The overlay runs LAST (after crop and scale) so the logo lands in a
+ *     corner of the actual output frame and can never be cropped away.
+ *   - setpts runs after the overlay (overlay matches frames by timestamp;
+ *     retiming the combined stream keeps the still logo pinned).
+ */
+function applyVideoFilters(args, filters, { wm, width, height, speed }) {
+  const wmParts = wm ? watermarkFilterParts(wm, width, height, 1) : null;
+  if (wmParts) {
+    const baseChain = filters.join(',');
+    const tail = [wmParts.overlay];
+    if (speed !== 1) tail.push('setpts=PTS/' + speed);
+    const overlayChain = tail.join(',');
+    args.push('-filter_complex', baseChain
+      ? wmParts.prepare + ';[0:v:0]' + baseChain + '[base];[base][wm]' + overlayChain + '[vout]'
+      : wmParts.prepare + ';[0:v:0][wm]' + overlayChain + '[vout]');
+    return;
+  }
+  // Playback speed: compress (or stretch) the video timeline. setpts is
+  // shipped by every build; the audio side (atempo) is gated on the runtime
+  // capability map in calculatePlan. Placed last so it operates on the
+  // already-cropped/scaled frames.
+  if (speed !== 1) {
+    filters.push('setpts=PTS/' + speed);
+  }
+  if (filters.length !== 0) {
+    args.push('-vf', filters.join(','));
+  }
+}
+
+/**
+ * Worst-case free disk space (bytes) an export needs on the target drive
+ * before FFmpeg spawns. Deliberately conservative: overestimating only warns
+ * early, while underestimating lets the encode die mid-write on a full drive.
+ */
+const DISK_OVERHEAD_SLACK = 0.05;                  // container/retry-temp slack
+const PASS_LOG_ALLOWANCE_BYTES = 64 * 1024 * 1024; // 2-pass x264 stats + mbtree
+const GIF_EXTRACT_FPS = 30;                        // y4m extraction caps at 30
+
+function estimateRequiredBytes(opts = {}) {
+  const MB = 1024 * 1024;
+  const num = (v) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+  // A size-capped export may legally land anywhere up to the cap, so the
+  // larger of the estimate and the target is the honest output allowance.
+  const outputBytes = Math.max(num(opts.estimatedSizeMB), num(opts.targetSizeMB)) * MB;
+
+  // GIF extraction writes raw yuv4mpegpipe frames to a temp file first
+  // (3 bytes per pixel at up to 30fps) - usually larger than the GIF itself.
+  let gifTempBytes = 0;
+  if (opts.outputFormat === 'gif') {
+    gifTempBytes = num(opts.width) * num(opts.height) * 3 * num(opts.clipDuration) * GIF_EXTRACT_FPS;
+  }
+
+  const tempSegmentsBytes = num(opts.tempSegmentsMB) * MB;
+  const mergeIntermediateBytes = num(opts.mergeIntermediateMB) * MB;
+
+  return Math.ceil(
+    outputBytes +
+    gifTempBytes +
+    tempSegmentsBytes +
+    mergeIntermediateBytes +
+    (opts.twoPass ? PASS_LOG_ALLOWANCE_BYTES : 0) +
+    outputBytes * DISK_OVERHEAD_SLACK
+  );
+}
+
+/**
  * Build the FFmpeg argument array for one pass.
  */
 function buildPassArgs(opts) {
@@ -678,7 +1145,10 @@ function buildPassArgs(opts) {
     hasAudio, selectedAudioTrackIndex,
     width, height, needsScale, frameRate,
     encoder, crop, maxQuality, outputFormat,
-    speed = 1
+    speed = 1,
+    watermark = null,
+    volume = 1,
+    muted = false
   } = opts;
 
   const args = [
@@ -686,6 +1156,16 @@ function buildPassArgs(opts) {
     '-ss', String(seekTimes.inputSeek),
     '-i', inputPath
   ];
+
+  // Watermark source: a still image as a second input. It must sit right
+  // after the first -i so the codec args below stay OUTPUT options (a flag
+  // between the two -i's would be read as a decoder option for the logo).
+  // A single-frame input is held for the whole clip by overlay's
+  // eof_action=repeat, so no -loop is needed.
+  const wm = normalizeWatermark(watermark);
+  if (wm) {
+    args.push('-i', wm.path);
+  }
 
   // Video codec
   if (outputFormat === 'gif') {
@@ -708,8 +1188,9 @@ function buildPassArgs(opts) {
   // follow the sped-up clock, not the source clock.
   args.push('-t', (seekTimes.duration / speed).toFixed(3));
 
-  // Video stream mapping
-  args.push('-map', '0:v:0');
+  // Video stream mapping (a watermark runs through -filter_complex and is
+  // mapped by its output label instead of the raw input stream).
+  args.push('-map', wm ? '[vout]' : '0:v:0');
 
   if ((pass === 2 || pass === 0) && hasAudio && outputFormat !== 'gif') {
     // Audio stream mapping (pass 2 or single pass)
@@ -741,17 +1222,7 @@ function buildPassArgs(opts) {
     filters.push(`scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`);
   }
 
-  // Playback speed: compress (or stretch) the video timeline. setpts is
-  // shipped by every build; the audio side (atempo) is gated on the runtime
-  // capability map in calculatePlan. Placed last so it operates on the
-  // already-cropped/scaled frames.
-  if (speed !== 1) {
-    filters.push(`setpts=PTS/${speed}`);
-  }
-
-  if (filters.length > 0) {
-    args.push('-vf', filters.join(','));
-  }
+  applyVideoFilters(args, filters, { wm, width, height, speed });
 
   if (pass === 1) {
     // Pass 1: no audio, output to null
@@ -771,12 +1242,28 @@ function buildPassArgs(opts) {
       if (container === 'webm') {
         args.push('-strict', '-2');
       }
-      // Tempo-change the audio to match setpts (atempo preserves pitch).
-      // GIF extraction maps no audio stream, so the filter chain must stay
-      // video-only there.
+      // Audio filters, in order: tempo-change to match setpts (atempo
+      // preserves pitch), then the export gain from the transport volume
+      // slider. GIF extraction maps no audio stream, so the chain stays
+      // video-only there. volume=1 is never emitted (it would be a no-op
+      // filter that still costs a full audio re-encode).
+      const audioFilters = [];
       if (speed !== 1 && outputFormat !== 'gif') {
-        args.push('-af', atempoFilter(speed));
+        audioFilters.push(atempoFilter(speed));
       }
+      if (volume < 1) {
+        audioFilters.push(`volume=${volume}`);
+      }
+      if (audioFilters.length > 0) {
+        args.push('-af', audioFilters.join(','));
+      }
+    } else {
+      // Muted (or a silent source): write no audio stream at all. The explicit
+      // -an also switches off ffmpeg's automatic audio stream selection, so a
+      // source with audio can never sneak a full-volume track into a muted
+      // export (the -map above disables auto-selection, -an makes it belt-and-
+      // braces and self-documenting in the arg dump).
+      args.push('-an');
     }
     // MP4 (H.264/AV1) benefits from the faststart relocation so video starts
     // playing before the whole file downloads; WebM/Matroska doesn't need it
@@ -892,16 +1379,33 @@ module.exports = {
   SIZE_RETRY_FACTOR,
   buildDiscountedPlan,
   sizeRetryTargets,
+  // Runtime consumers (merger.js) share the watermark fragments and the disk
+  // estimate, so they live at top level alongside calculatePlan.
+  normalizeWatermark,
+  watermarkFilterParts,
+  estimateRequiredBytes,
   // Exported for testing internals
   _internals: {
+    planSizeLimitBudget,
     computeSizeLimitBitrate,
+    minimumTargetSizeMB,
+    maximumClipDurationSec,
+    buildPlanFix,
+    formatClipDuration,
+    AUDIO_BUDGET_SHARE,
+    MIN_AUDIO_BITRATE_KBPS,
     buildDiscountedPlan,
     sizeRetryTargets,
     resolveResolution,
     computeSeekTimes,
     buildPassArgs,
     normalizeSpeed,
+    normalizeAudio,
     atempoFilter,
+    applyVideoFilters,
+    normalizeWatermark,
+    watermarkFilterParts,
+    estimateRequiredBytes,
     QUALITY_FLOORS,
     SAFETY_MARGIN,
     MUXING_OVERHEAD,

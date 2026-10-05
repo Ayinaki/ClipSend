@@ -7,6 +7,7 @@ import { formatTimecode } from './utils/timecode.js';
 import { createEstimateBar, createProgressUI, createWarningsUI, initWindowControls, initTitlebarActions, initTitlebarTooltips } from './titlebar.js';
 import { createSettingsController } from './settings.js';
 import { buildPlanWarnings, isTrimPastVideoEnd } from './export-flow.js';
+import { createPlanScheduler } from './plan-controller.js';
 import { openModal, closeModal, closeAllModals } from './utils/modals.js';
 import { toast, clearToasts } from './utils/toast.js';
 import { createOnboardingController } from './onboarding.js';
@@ -63,13 +64,20 @@ document.addEventListener('DOMContentLoaded', () => {
   let cropManager = new CropManager();
   // Crop edits: snapshot for undo before each mutation, invalidate the plan
   // after it (the plan embeds crop coordinates, so it must be recalculated).
-  cropManager.on('change-start', () => recordUndo('Edit crop')).on('change', clearExportPlan);
+  cropManager.on('change-start', () => recordUndo('Edit crop'))
+    // Cropping changes where the output frame is, so the watermark preview
+    // has to follow it (the logo sits inside the cropped area).
+    .on('change', () => { invalidateExportPlan(); updateWatermarkPreview(); });
   let fps = 30;
   
   // App state to pass to export planner later
   const exportState = {
     selectedAudioTrackIndex: 0,
-    playbackSpeed: 1 // 0.5x-3x playback/export speed (1 = normal)
+    playbackSpeed: 1, // 0.5x-3x playback/export speed (1 = normal)
+    // Watermark overlay applied to Trim AND Merge exports: the live state
+    // object (see the watermark section below) or null. Kept on exportState
+    // so every existing planner call already carries it.
+    watermark: null
   };
 
   // --- Undo/redo history (trim trims, multi-trim segments, crop, merge ops) ---
@@ -104,7 +112,8 @@ document.addEventListener('DOMContentLoaded', () => {
       segments: timeline ? timeline.getSegments() : [],
       activeSegmentId: timeline ? timeline.activeSegmentId : null,
       multiTrim: timeline ? timeline.isMultiTrim : false,
-      crop: cropManager ? cropManager.getCropSettings() : { enable: false }
+      crop: cropManager ? cropManager.getCropSettings() : { enable: false },
+      watermark: snapshotWatermark()
     };
   }
 
@@ -113,7 +122,8 @@ document.addEventListener('DOMContentLoaded', () => {
       mode: 'merge',
       label: 'Edit clips',
       clips: cloneMergeClips(mergeClips),
-      currentClipIndex: mergePlayer ? mergePlayer.currentClipIndex : 0
+      currentClipIndex: mergePlayer ? mergePlayer.currentClipIndex : 0,
+      watermark: snapshotWatermark()
     };
   }
 
@@ -126,6 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
   /** Restore a snapshot captured by captureTrimState/captureMergeState. */
   function applySnapshot(snap) {
     if (!snap) return;
+    // The watermark is mode-independent state, so it restores in both modes.
+    if ('watermark' in snap) applyWatermarkState(snap.watermark || null);
     if (snap.mode === 'trim') {
       if (timeline) timeline.restoreState(snap);
       if (cropManager) cropManager.applyCropState(snap.crop);
@@ -277,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   audioTrackSelect.addEventListener('change', (e) => {
     exportState.selectedAudioTrackIndex = parseInt(e.target.value, 10);
-    clearExportPlan();
+    invalidateExportPlan();
     if (currentMediaInfo && currentMediaInfo.filePath) {
       loadPreviewRemux(currentMediaInfo.filePath, exportState.selectedAudioTrackIndex);
       loadWaveform(currentMediaInfo.filePath, exportState.selectedAudioTrackIndex);
@@ -312,7 +324,32 @@ document.addEventListener('DOMContentLoaded', () => {
     closeBtn: document.getElementById('close-warnings-btn'),
     content: document.getElementById('warnings-modal-content'),
     countEl: document.getElementById('titlebar-warning-count')
-  });
+  }, { onAction: handleWarningAction });
+
+  /**
+   * Run a warning card's action button. Today the only action is "Trim to fit":
+   * the planner refused a size-capped plan and reported the longest clip the
+   * target can hold, so pull the Out point to that length (undoable) instead of
+   * making the user read the sentence and drag the handle themselves.
+   */
+  function handleWarningAction(action) {
+    if (!action || action.kind !== 'trimToFit' || !action.seconds || !timeline || !currentMediaInfo) return;
+    const inPoint = timeline.getTrimIn();
+    const maxOut = typeof currentMediaInfo.duration === 'number' && currentMediaInfo.duration > 0
+      ? currentMediaInfo.duration
+      : inPoint + action.seconds;
+    const outPoint = Math.min(inPoint + action.seconds, maxOut);
+    if (!(outPoint > inPoint)) return;
+
+    recordUndo('Trim to fit');
+    timeline.setTrimIn(inPoint);
+    timeline.setTrimOut(outPoint);
+    updateTrimDisplay();
+    const warningsModal = document.getElementById('warnings-modal');
+    if (warningsModal) closeModal(warningsModal);
+    toast(`Trimmed to ${formatTrimDur(outPoint - inPoint)} so the clip fits the target size.`);
+    invalidateExportPlan();
+  }
 
   let currentPlan = null;
   let lastPlanOptions = null; // options used for the last shown plan (re-shown after a mode switch back to Trim)
@@ -329,6 +366,10 @@ document.addEventListener('DOMContentLoaded', () => {
     { id: 'discord-free', label: '20 MB - Discord (Free)', sizeMB: 20, mode: 'size-limit' },
     { id: 'discord-nitro-basic', label: '50 MB - Discord (Nitro Basic)', sizeMB: 50, mode: 'size-limit' },
     { id: 'discord-nitro', label: '500 MB - Discord (Nitro)', sizeMB: 500, mode: 'size-limit' },
+    { id: 'x', label: '512 MB - X', sizeMB: 512, mode: 'size-limit' },
+    { id: 'slack', label: '1 GB - Slack', sizeMB: 1024, mode: 'size-limit' },
+    { id: 'telegram', label: '2 GB - Telegram', sizeMB: 2048, mode: 'size-limit' },
+    { id: 'whatsapp', label: '2 GB - WhatsApp', sizeMB: 2048, mode: 'size-limit' },
     { id: 'custom-size', label: 'Custom Target Size', mode: 'size-limit', isCustom: true },
     { id: 'auto-crf', label: 'Auto (Best Quality)', mode: 'auto', crfValue: 19 }
   ];
@@ -344,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
   presetSelect.value = 'discord-free';
 
   presetSelect.addEventListener('change', () => {
-    clearExportPlan();
+    invalidateExportPlan();
     const selectedPreset = presets.find(p => p.id === presetSelect.value);
     if (selectedPreset && selectedPreset.isCustom) {
       if (customSizeInputContainer) customSizeInputContainer.style.display = 'block';
@@ -355,7 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   customSizeInput?.addEventListener('input', () => {
-    clearExportPlan();
+    invalidateExportPlan();
     updateMergeEstimate();
   });
 
@@ -365,7 +406,23 @@ document.addEventListener('DOMContentLoaded', () => {
     showWarnings([]);
   }
 
-  function populateResolutions(mediaInfo) {
+  /**
+   * Fill the Resolution dropdown for a source with these dimensions.
+   *
+   * Tiers key off the SHORT edge so portrait and landscape sources get the
+   * same list, and a tier equal to the source's own short edge is skipped —
+   * it would only restate Native. The long edge follows the source's aspect
+   * ratio, rounded to the nearest even pixel.
+   *
+   * @param {Object} mediaInfo - probed source (width/height)
+   * @param {Object} [opts]
+   * @param {boolean} [opts.preserveSelection] - keep the current pick when the
+   *        rebuilt list still offers it. Merge mode rebuilds this list whenever
+   *        the clip set changes, and a deliberate choice has to survive an
+   *        unrelated update; without the option the list resets to Native.
+   */
+  function populateResolutions(mediaInfo, { preserveSelection = false } = {}) {
+    const previousValue = resolutionSelect.value;
     resolutionSelect.innerHTML = '';
     const nativeOpt = document.createElement('option');
     nativeOpt.value = 'native';
@@ -386,9 +443,14 @@ document.addEventListener('DOMContentLoaded', () => {
     STANDARD_HEIGHTS.forEach(preset => {
       if (preset.size < shortEdge) {
         const scale = preset.size / shortEdge;
-        let newLong = Math.round(longEdge * scale);
-        // Ensure even dimensions
-        if (newLong % 2 !== 0) newLong -= 1;
+        // Round the long edge to the nearest EVEN pixel. H.264 and AV1 need
+        // even dimensions, and rounding first and stepping down to even after
+        // always lands on the value below the exact fit: 480p of a 2560x1440
+        // source came out 852x480, a hair wider than 16:9, when 854x480 is the
+        // exact fit and is the size the planner's own 480p quality floor uses.
+        // Halving before rounding keeps whichever even value is actually
+        // closest to the source's aspect ratio.
+        const newLong = Math.round((longEdge * scale) / 2) * 2;
         
         const w = isPortrait ? preset.size : newLong;
         const h = isPortrait ? newLong : preset.size;
@@ -400,10 +462,36 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    resolutionSelect.value = 'native';
+    const stillOffered = preserveSelection && previousValue &&
+      !!resolutionSelect.querySelector(`option[value="${previousValue}"]`);
+    resolutionSelect.value = stillOffered ? previousValue : 'native';
   }
 
-  resolutionSelect.addEventListener('change', clearExportPlan);
+  /**
+   * Rebuild the Resolution list for whichever source the active mode exports.
+   *
+   * The dropdown is shared by both modes, so it has to follow the mode you are
+   * in. Merge mode used to leave it on whatever Trim mode last loaded, which
+   * offered resolutions unrelated to the clips being merged — a 1080p file's
+   * list is only 720p/480p (tiers are capped below the source's short edge) —
+   * and could even offer a size above the clips.
+   *
+   * Merge mode uses the FIRST clip, because that is what the merge natively
+   * produces: merger._runConcatFilter scales and pads every clip to
+   * clips[0].width/height/fps, so a smaller first clip really does pull the
+   * whole merge down to its size.
+   */
+  function syncResolutionOptions() {
+    const reference = currentMergeMode
+      ? (mergeClips[0] && mergeClips[0].mediaInfo)
+      : currentMediaInfo;
+    // Nothing measurable is loaded: leave the list alone rather than blanking
+    // options the other mode may still be using.
+    if (!reference || !reference.width || !reference.height) return;
+    populateResolutions(reference, { preserveSelection: true });
+  }
+
+  resolutionSelect.addEventListener('change', invalidateExportPlan);
 
   function showWarnings(warnings) {
     lastWarnings = warnings || [];
@@ -457,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const formatSelect = document.getElementById('format-select');
   if (formatSelect) {
     formatSelect.addEventListener('change', () => {
-      clearExportPlan();
+      invalidateExportPlan();
       updateMergeEstimate();
       const format = formatSelect.value;
       const isGif = format === 'gif';
@@ -488,36 +576,67 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  presetSelect.addEventListener('change', clearExportPlan);
+  presetSelect.addEventListener('change', invalidateExportPlan);
 
-  calculateBtn.addEventListener('click', async () => {
-    if (!currentMediaInfo || !timeline) return;
-    
-    calculateBtn.disabled = true;
-    calculateBtn.textContent = 'Calculating...';
-    clearExportPlan();
-    
+  // --- Live export estimates ---
+  // Planning is pure arithmetic in the main process, so the estimate updates
+  // itself on every relevant change instead of waiting for the button. The
+  // scheduler coalesces bursts (a trim drag fires many change events); the
+  // token guards against an out-of-order IPC reply painting a stale plan.
+  let planRunToken = 0;
+  const planScheduler = createPlanScheduler({ run: () => computePlanNow() });
+
+  /**
+   * Drop the current plan and queue a fresh one. Used everywhere a setting
+   * change makes the existing estimate wrong (trim, preset, format, speed,
+   * crop, watermark, audio track).
+   */
+  function invalidateExportPlan() {
+    currentPlan = null;
+    estimateBar.hide();
+    showWarnings([]);
+    planScheduler.schedule();
+    // Every path that changes the plan also changes what reopening this clip
+    // should restore, so this is the natural hook for the debounced save.
+    scheduleResumeSave();
+  }
+
+  /** Current export audio gain (the preview volume slider). */
+  function playbackVolume() {
+    const state = settings && settings.getPlaybackState ? settings.getPlaybackState() : null;
+    return state && typeof state.volume === 'number' ? state.volume : 1;
+  }
+
+  /** Whether the transport is muted (drops the audio stream on export). */
+  function playbackMuted() {
+    const state = settings && settings.getPlaybackState ? settings.getPlaybackState() : null;
+    return !!(state && state.muted);
+  }
+
+  /**
+   * Assemble the plan request from current UI state, or null when it cannot be
+   * answered yet (nothing loaded). An invalid custom size comes back as
+   * `{ invalid }` so the caller can warn without an IPC round trip.
+   */
+  async function buildTrimPlanRequest() {
+    if (!currentMediaInfo || !timeline) return null;
+
     const selectedFormat = formatSelect ? formatSelect.value : 'mp4';
     const isMp3 = selectedFormat === 'mp3';
+    const preset = presets.find(p => p.id === presetSelect.value);
 
-    const presetId = presetSelect.value;
-    const preset = presets.find(p => p.id === presetId);
-    
     let targetSizeMB = preset ? preset.sizeMB : 20;
     let mode = preset ? (preset.mode || 'size-limit') : 'size-limit';
 
     if (preset && preset.isCustom && !isMp3) {
       const customVal = parseFloat(customSizeInput ? customSizeInput.value : '');
       if (isNaN(customVal) || customVal <= 0) {
-        showErrorDialog('Please enter a valid target size in MB (greater than 0).', { title: 'Invalid target size' });
-        calculateBtn.disabled = false;
-        calculateBtn.textContent = 'Calculate Plan';
-        return;
+        return { invalid: 'Please enter a valid target size in MB (greater than 0).' };
       }
       targetSizeMB = customVal;
       mode = 'size-limit';
     }
-    
+
     let manualResolution = null;
     if (resolutionSelect.value !== 'native') {
       const parts = resolutionSelect.value.split('x');
@@ -526,7 +645,7 @@ document.addEventListener('DOMContentLoaded', () => {
         height: parseInt(parts[1], 10)
       };
     }
-    
+
     const settings = {
       mode: mode,
       targetSizeMB: targetSizeMB,
@@ -538,30 +657,65 @@ document.addEventListener('DOMContentLoaded', () => {
       manualResolution,
       disableAutoDownscale: document.getElementById('setting-disable-downscale').checked,
       crop: cropManager ? cropManager.getCropSettings() : { enable: false },
-      outputFormat: document.getElementById('format-select') ? document.getElementById('format-select').value : 'mp4',
+      outputFormat: selectedFormat,
       maxQuality: await window.clipSend.getSetting('maxQuality'),
-      playbackSpeed: exportState.playbackSpeed
+      playbackSpeed: exportState.playbackSpeed,
+      watermark: await watermarkForExport(),
+      // Export audio: the preview volume slider and mute button now reach the
+      // file, so what you hear in the app is what the export sounds like.
+      audio: { volume: playbackVolume(), muted: playbackMuted() }
     };
 
-    try {
-      const exportModeSelect = document.getElementById('export-mode-select');
-      const exportMode = exportModeSelect ? exportModeSelect.value : 'separate';
-      const segments = timeline.getSegments();
-      
-      let calcTrimIn = timeline.getTrimIn();
-      let calcTrimOut = timeline.getTrimOut();
-      
-      if (segments.length > 1 && exportMode === 'merged') {
-        calcTrimIn = 0;
-        calcTrimOut = timeline.getTrimDuration();
-      }
+    const exportModeSelect = document.getElementById('export-mode-select');
+    const exportMode = exportModeSelect ? exportModeSelect.value : 'separate';
+    const segments = timeline.getSegments();
 
+    let calcTrimIn = timeline.getTrimIn();
+    let calcTrimOut = timeline.getTrimOut();
+
+    if (segments.length > 1 && exportMode === 'merged') {
+      calcTrimIn = 0;
+      calcTrimOut = timeline.getTrimDuration();
+    }
+
+    return { settings, isMp3, calcTrimIn, calcTrimOut };
+  }
+
+  /**
+   * Turn a refused plan into a warning card, attaching the one-click fix when
+   * the planner reported what would work (export-planner's buildPlanFix).
+   */
+  function planFailureWarning(result) {
+    const warning = { id: 'error', title: 'Plan generation failed', body: result.error };
+    const fix = result.planFix;
+    if (fix && fix.maximumClipDurationSec > 0) {
+      warning.action = {
+        kind: 'trimToFit',
+        seconds: fix.maximumClipDurationSec,
+        label: `Trim to ${formatTrimDur(fix.maximumClipDurationSec)} to fit`
+      };
+    }
+    return warning;
+  }
+
+  /** Recompute the plan and paint the estimate bar plus warnings. */
+  async function computePlanNow() {
+    const request = await buildTrimPlanRequest();
+    if (!request) return;
+    if (request.invalid) {
+      showWarnings([{ id: 'error', title: 'Invalid target size', body: request.invalid }]);
+      return;
+    }
+    const { settings, isMp3, calcTrimIn, calcTrimOut } = request;
+    const token = ++planRunToken;
+    try {
       const result = await window.clipSend.calculatePlan({
         mediaInfo: currentMediaInfo,
         trimIn: calcTrimIn,
         trimOut: calcTrimOut,
         settings
       });
+      if (token !== planRunToken) return; // a newer request already won
 
       if (result.success) {
         currentPlan = result.plan;
@@ -578,14 +732,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         showWarnings(allWarnings);
       } else {
-        showWarnings([{ id: 'error', title: 'Plan generation failed', body: result.error }]);
+        showWarnings([planFailureWarning(result)]);
       }
     } catch (err) {
+      if (token !== planRunToken) return;
       showWarnings([{ id: 'error', title: 'Plan generation error', body: err.message }]);
-    } finally {
-      calculateBtn.disabled = false;
-      calculateBtn.textContent = 'Calculate Plan';
     }
+  }
+
+  /** The explicit Recalculate button: run now instead of waiting the debounce. */
+  calculateBtn.addEventListener('click', () => {
+    if (!currentMediaInfo || !timeline) return;
+    calculateBtn.disabled = true;
+    calculateBtn.textContent = 'Calculating...';
+    Promise.resolve(planScheduler.flush()).finally(() => {
+      calculateBtn.disabled = false;
+      calculateBtn.textContent = 'Recalculate';
+    });
   });
 
   async function executeExportWithRetry(basePlan, fallback = false) {
@@ -688,7 +851,9 @@ document.addEventListener('DOMContentLoaded', () => {
             manualResolution: manualResolution,
             outputFormat: document.getElementById('format-select') ? document.getElementById('format-select').value : 'mp4',
             maxQuality: await window.clipSend.getSetting('maxQuality'),
-            playbackSpeed: exportState.playbackSpeed
+            playbackSpeed: exportState.playbackSpeed,
+            watermark: await watermarkForExport(),
+            audio: { volume: playbackVolume(), muted: playbackMuted() }
           };
           
           if (fallback) {
@@ -1056,7 +1221,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     
-    clearExportPlan(); // Plan is invalid if trim changes
+    invalidateExportPlan(); // plan follows the trim
   }
 
   const multiTrimEnable = document.getElementById('multi-trim-enable');
@@ -1084,10 +1249,14 @@ document.addEventListener('DOMContentLoaded', () => {
     toast('Trims reset to the full clip', 'success');
   });
 
-  async function loadTrimFileFromResult(result) {
+  async function loadTrimFileFromResult(result, resumeState = null) {
     if (!result) return;
     if (result.success) {
       currentMediaInfo = result.mediaInfo;
+      // Held until loadedmetadata, when the timeline knows the real duration:
+      // applying trim points before that would be clamped against a stale end.
+      pendingResumeState = resumeState;
+      restoredResumeState = false;
       fps = result.mediaInfo.frameRate || 30;
 
       // A new source file starts a fresh edit session — no history to undo
@@ -1106,7 +1275,7 @@ document.addEventListener('DOMContentLoaded', () => {
         multiTrimEnable.disabled = false;
       }
       
-      clearExportPlan();
+      invalidateExportPlan(); // a freshly loaded clip plans itself
       progressUI.hide();
       
       showState(readyState);
@@ -1205,8 +1374,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       videoElement.addEventListener('loadedmetadata', () => {
         timeline.setDuration(videoElement.duration);
+        if (pendingResumeState) {
+          restoredResumeState = applyResumeState(pendingResumeState);
+          pendingResumeState = null;
+          // The toast lives here, not at the call site: loadedmetadata fires
+          // after the load promise settles, so the caller cannot know yet.
+          if (restoredResumeState) toast('Restored your last edit on this clip.');
+        }
         updateTrimDisplay();
         if (cropManager) cropManager.onVideoLoaded();
+        updateWatermarkPreview(); // a new frame means a new watermark rect
       }, { once: true });
 
       controlBar.updateTimecode(0);
@@ -1234,6 +1411,144 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // The empty-state "Browse" card button is an alias for the sidebar button.
   document.getElementById('empty-open-btn')?.addEventListener('click', () => openFileBtn.click());
+
+  // --- Recent files ---
+  // A popup built from the custom dropdown's own classes, so it inherits the
+  // exact surface/border/hover/theme tokens as every other app menu instead of
+  // looking like a stock Windows context menu. Paths come from the main
+  // process (electron-store), which also prunes entries whose file is gone.
+  const recentFilesBtn = document.getElementById('recent-files-btn');
+  let recentMenuEl = null;
+  let recentMenuCleanup = null;
+
+  function closeRecentMenu() {
+    if (recentMenuEl) { recentMenuEl.remove(); recentMenuEl = null; }
+    if (recentMenuCleanup) { recentMenuCleanup(); recentMenuCleanup = null; }
+    recentFilesBtn?.setAttribute('aria-expanded', 'false');
+  }
+
+  /** Open one recent file in whichever mode is active, restoring its last edit. */
+  async function openRecentFile(filePath, resumeState = null) {
+    closeRecentMenu();
+    if (currentMergeMode) {
+      try {
+        const result = await window.clipSend.openSpecificMultipleFiles([filePath]);
+        if (!result || !result.success) {
+          showErrorDialog((result && result.error) || 'Could not open that file.', { title: 'Could not open file' });
+          return;
+        }
+        recordUndo('Add clips');
+        mergeClips.push(...result.clips);
+        showMergeWarnings([]); // new clips can change compatibility
+        updateMergeUI();
+        const n = result.clips.length;
+        toast('Added ' + n + ' clip' + (n === 1 ? '' : 's'), 'success');
+      } catch (err) {
+        showErrorDialog('Failed to add clips: ' + err.message, { title: 'Failed to add clips' });
+      }
+      return;
+    }
+    openFileBtn.disabled = true;
+    openFileBtn.textContent = 'Probing...';
+    try {
+      const result = await window.clipSend.openSpecificFile(filePath);
+      await loadTrimFileFromResult(result, resumeState);
+    } catch (err) {
+      errorMessageDisplay.textContent = err.message;
+      showState(errorState);
+    } finally {
+      openFileBtn.disabled = false;
+      openFileBtn.textContent = 'Open File...';
+    }
+  }
+
+  function recentMenuRow(label, title) {
+    const row = document.createElement('div');
+    row.className = 'cs-dropdown-option recent-file-option';
+    row.setAttribute('role', 'menuitem');
+    row.title = title || label;
+    const textEl = document.createElement('span');
+    textEl.className = 'cs-dropdown-option-text';
+    textEl.textContent = label; // textContent only: filenames are data, not markup
+    row.appendChild(textEl);
+    return row;
+  }
+
+  async function openRecentMenu() {
+    if (!recentFilesBtn) return;
+    let files = [];
+    try {
+      files = (await window.clipSend.getRecentFiles()) || [];
+    } catch (e) {
+      files = []; // a settings read failure must not wedge the button
+    }
+    const menu = document.createElement('div');
+    menu.className = 'cs-dropdown-menu';
+    menu.setAttribute('role', 'menu');
+
+    if (files.length === 0) {
+      const empty = recentMenuRow('No recent files');
+      empty.classList.add('disabled'); // message row, not a choice
+      menu.appendChild(empty);
+    } else {
+      files.forEach(entry => {
+        const row = recentMenuRow(entry.name || entry.path, entry.path);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'transport-btn recent-file-remove';
+        remove.title = 'Remove from this list';
+        remove.innerHTML = '&#xE74D;'; // Segoe MDL2 delete, matching the other icon buttons
+        remove.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await window.clipSend.removeRecentFile(entry.path);
+          closeRecentMenu();
+          openRecentMenu(); // re-render without the removed row
+        });
+        row.appendChild(remove);
+        row.addEventListener('click', () => openRecentFile(entry.path, entry.state || null));
+        menu.appendChild(row);
+      });
+      const clearRow = recentMenuRow('Clear list');
+      clearRow.addEventListener('click', async () => {
+        await window.clipSend.clearRecentFiles();
+        closeRecentMenu();
+        toast('Recent files cleared');
+      });
+      menu.appendChild(clearRow);
+    }
+
+    document.body.appendChild(menu);
+    recentMenuEl = menu;
+    // Anchor under the button, flipping above it when there is no room below
+    // and clamping to the viewport (the same placement rules the dropdown
+    // component applies to its menus).
+    const rect = recentFilesBtn.getBoundingClientRect();
+    const menuWidth = Math.max(menu.offsetWidth || 0, rect.width);
+    menu.style.minWidth = menuWidth + 'px';
+    menu.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)) + 'px';
+    const below = rect.bottom + 4;
+    const above = rect.top - menu.offsetHeight - 4;
+    menu.style.top = (below + menu.offsetHeight > window.innerHeight && above > 0 ? above : below) + 'px';
+    recentFilesBtn.setAttribute('aria-expanded', 'true');
+
+    const onPointerDown = (e) => {
+      if (!menu.contains(e.target) && !recentFilesBtn.contains(e.target)) closeRecentMenu();
+    };
+    const onScroll = () => closeRecentMenu();
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    recentMenuCleanup = () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }
+
+  recentFilesBtn?.addEventListener('click', () => {
+    if (recentMenuEl) closeRecentMenu();
+    else openRecentMenu();
+  });
 
   // --- Trim Drag and Drop ---
   const dropTrimStage = document.getElementById('trim-stage');
@@ -1512,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', () => {
     timeline,
     onShortcutsApplied: applyShortcutOverrides,
     onEncodersDetected: (caps) => { encoderCaps = caps || {}; },
-    onPlanInvalidated: clearExportPlan,
+    onPlanInvalidated: invalidateExportPlan,
     onShowWaveformChange: (checked) => {
       if (timeline) {
         timeline.setShowWaveform(checked);
@@ -2061,6 +2376,11 @@ document.addEventListener('DOMContentLoaded', () => {
         mec.style.display = (!isMp3 && hasMultiSegments) ? 'block' : 'none';
       }
     }
+    // The watermark preview belongs to the stage that just became visible.
+    updateWatermarkPreview();
+    // The shared Resolution list follows the source this mode exports: the
+    // first merge clip in Merge mode, the loaded file in Trim mode.
+    syncResolutionOptions();
   }
 
   function updateMergeUI() {
@@ -2072,6 +2392,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // The output-size estimate must follow clip add/remove/reorder too; it
     // starts hidden and is only refreshed by preset/trim/format hooks.
     updateMergeEstimate();
+    // Resolution tiers follow the first clip (the merge normalizes to it), so
+    // adding, removing, or reordering clips rebuilds the list.
+    syncResolutionOptions();
 
     // 0. Toggle empty state vs video visibility
     if (mergeEmptyStage && mergeVideoEl) {
@@ -2442,22 +2765,446 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   trimLoopBtn?.addEventListener('click', () => setTrimLoop(!loopEnabled));
 
+  // --- Watermark overlay (shared by Trim and Merge exports) ---
+  // The picked image is drawn in a corner of the OUTPUT frame. The slim
+  // bundled FFmpeg ships `overlay` but no alpha-scaling filter, so opacity is
+  // baked into the image's pixels on a canvas at export time. The on-screen
+  // preview uses CSS opacity instead: visually identical, and no temp file is
+  // written until you actually export.
+  const wmChooseBtn = document.getElementById('watermark-choose-btn');
+  const wmRemoveBtn = document.getElementById('watermark-remove-btn');
+  const wmControls = document.getElementById('watermark-controls');
+  const wmFileName = document.getElementById('watermark-file-name');
+  const wmSizeInput = document.getElementById('watermark-size');
+  const wmOpacityInput = document.getElementById('watermark-opacity');
+  const wmSizeValue = document.getElementById('watermark-size-value');
+  const wmOpacityValue = document.getElementById('watermark-opacity-value');
+  const wmPositionPills = document.getElementById('watermark-position-pills');
+  const wmPreviewTrim = document.getElementById('watermark-preview');
+  const wmPreviewMerge = document.getElementById('watermark-preview-merge');
+
+  // Single source of truth: { path, name, dataUrl, naturalWidth, naturalHeight,
+  // position, sizePct, opacity, bakedPath }. `bakedPath` caches the
+  // opacity-baked temp PNG so re-planning or a hardware retry reuses the file
+  // instead of re-baking and re-writing it.
+  let watermarkState = null;
+
+  /** Load a data URL into an <img> so its natural size is known. */
+  function loadWatermarkImage(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Could not decode the watermark image.'));
+      img.src = dataUrl;
+    });
+  }
+
+  /** Flat copy for the undo history (null when no watermark is set). */
+  function snapshotWatermark() {
+    return watermarkState ? { ...watermarkState } : null;
+  }
+
+  /** Restore a snapshot (undo/redo); null clears the watermark. */
+  function applyWatermarkState(wm) {
+    watermarkState = wm ? { ...wm } : null;
+    if (watermarkState) {
+      // The sliders are the UI's view of the state, so put them back in step —
+      // the next drag then starts from the restored value, not the pre-undo one.
+      if (wmSizeInput) wmSizeInput.value = String(watermarkState.sizePct);
+      if (wmOpacityInput) wmOpacityInput.value = String(Math.round(watermarkState.opacity * 100));
+    }
+    updateWatermarkUI();
+  }
+
+  /** Push watermarkState into the panel (name, sliders, pills, previews). */
+  function updateWatermarkUI() {
+    const has = !!watermarkState;
+    if (wmControls) wmControls.style.display = has ? '' : 'none';
+    if (wmChooseBtn) wmChooseBtn.textContent = has ? 'Change Image...' : 'Choose Image...';
+    if (wmFileName) wmFileName.textContent = has ? watermarkState.name : '';
+    if (wmSizeValue && has) wmSizeValue.textContent = watermarkState.sizePct + '%';
+    if (wmOpacityValue && has) wmOpacityValue.textContent = Math.round(watermarkState.opacity * 100) + '%';
+    if (wmPositionPills && has) {
+      wmPositionPills.querySelectorAll('[data-position]').forEach(btn => {
+        const on = btn.dataset.position === watermarkState.position;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    updateWatermarkPreview();
+  }
+
+  /**
+   * The rendered video rect inside its letterboxed container, in CSS pixels
+   * relative to that container. Same object-fit: contain math CropManager
+   * uses, so the two overlays always agree on where the frame is.
+   */
+  function renderedVideoRect(videoEl) {
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    const cw = videoEl.clientWidth;
+    const ch = videoEl.clientHeight;
+    if (!vw || !vh || !cw || !ch) return null;
+    const scale = Math.min(cw / vw, ch / vh);
+    const width = vw * scale;
+    const height = vh * scale;
+    return { left: (cw - width) / 2, top: (ch - height) / 2, width, height, scale };
+  }
+
+  /**
+   * Where the watermark may sit: the exported frame. With cropping on that is
+   * the crop rect (the export is cropped to it), otherwise the whole frame.
+   */
+  function watermarkFrameRect(videoEl) {
+    const rect = renderedVideoRect(videoEl);
+    if (!rect) return null;
+    const crop = cropManager ? cropManager.getCropSettings() : null;
+    if (crop && crop.enable && crop.w > 0 && crop.h > 0) {
+      return {
+        left: rect.left + crop.x * rect.scale,
+        top: rect.top + crop.y * rect.scale,
+        width: crop.w * rect.scale,
+        height: crop.h * rect.scale
+      };
+    }
+    return rect;
+  }
+
+  /**
+   * Position one preview overlay. Mirrors watermarkFilterParts in
+   * export-planner.js — 2% edge margin, width as a share of the frame width —
+   * so what the preview shows is what gets burned into the file.
+   */
+  function positionWatermarkOverlay(imgEl, videoEl) {
+    if (!imgEl) return;
+    const frame = watermarkFrameRect(videoEl);
+    if (!frame || !watermarkState || !watermarkState.naturalWidth) {
+      imgEl.style.display = 'none';
+      return;
+    }
+    const margin = Math.max(8, Math.round(frame.width * 0.02));
+    const width = Math.max(16, Math.round(frame.width * (watermarkState.sizePct / 100)));
+    const height = Math.max(1, Math.round(width * (watermarkState.naturalHeight / watermarkState.naturalWidth)));
+    const left = watermarkState.position === 'tl' || watermarkState.position === 'bl'
+      ? frame.left + margin
+      : frame.left + frame.width - width - margin;
+    const top = watermarkState.position === 'tl' || watermarkState.position === 'tr'
+      ? frame.top + margin
+      : frame.top + frame.height - height - margin;
+    imgEl.style.display = 'block';
+    imgEl.style.left = Math.round(left) + 'px';
+    imgEl.style.top = Math.round(top) + 'px';
+    imgEl.style.width = width + 'px';
+    imgEl.style.height = height + 'px';
+    imgEl.style.opacity = String(watermarkState.opacity);
+  }
+
+  /** Show the overlay on the visible stage and hide the other one. */
+  function updateWatermarkPreview() {
+    if (wmPreviewTrim) {
+      if (!currentMergeMode && watermarkState) {
+        if (wmPreviewTrim.getAttribute('src') !== watermarkState.dataUrl) wmPreviewTrim.src = watermarkState.dataUrl;
+        positionWatermarkOverlay(wmPreviewTrim, videoElement);
+      } else {
+        wmPreviewTrim.style.display = 'none';
+      }
+    }
+    if (wmPreviewMerge) {
+      if (currentMergeMode && watermarkState) {
+        if (wmPreviewMerge.getAttribute('src') !== watermarkState.dataUrl) wmPreviewMerge.src = watermarkState.dataUrl;
+        positionWatermarkOverlay(wmPreviewMerge, mergeVideoEl);
+      } else {
+        wmPreviewMerge.style.display = 'none';
+      }
+    }
+  }
+
+  /**
+   * The payload the planner and merger consume. At opacity 1 the original file
+   * is already correct; below that the first call bakes the opacity into a temp
+   * PNG and every later segment, retry, and re-plan reuses it. Resolves to null
+   * when there is no watermark or the bake failed.
+   */
+  async function watermarkForExport() {
+    const wm = watermarkState;
+    if (!wm) return null;
+    let wmPath = wm.path;
+    if (wm.opacity < 1) {
+      if (!wm.bakedPath) {
+        try {
+          const img = await loadWatermarkImage(wm.dataUrl);
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 1;
+          canvas.height = img.naturalHeight || 1;
+          const ctx = canvas.getContext('2d');
+          ctx.globalAlpha = wm.opacity;
+          ctx.drawImage(img, 0, 0);
+          const base64 = canvas.toDataURL('image/png').split(',')[1];
+          const res = await window.clipSend.writeTempImage(base64);
+          if (!res || !res.success) throw new Error((res && res.error) || 'Could not prepare the watermark image.');
+          wm.bakedPath = res.filePath;
+        } catch (err) {
+          showErrorDialog(err.message, { title: 'Watermark failed' });
+          return null;
+        }
+      }
+      wmPath = wm.bakedPath;
+    }
+    return { path: wmPath, position: wm.position, sizePct: wm.sizePct, opacity: wm.opacity };
+  }
+
+  /** Forget the watermark and re-enable the panel's defaults. */
+  function clearWatermark() {
+    watermarkState = null;
+    if (wmSizeInput) wmSizeInput.value = '15';
+    if (wmOpacityInput) wmOpacityInput.value = '85';
+    updateWatermarkUI();
+    invalidateExportPlan();
+  }
+
+  wmChooseBtn?.addEventListener('click', async () => {
+    // encoderCaps.overlay is the runtime probe of the bundled FFmpeg. Blocking
+    // here means the user hears about a missing overlay filter before an
+    // export starts, not from a cryptic "No such filter" mid-encode.
+    if (encoderCaps && encoderCaps.overlay === false) {
+      showErrorDialog(
+        'This FFmpeg build does not ship the overlay filter, so watermarks are unavailable.',
+        { title: 'Watermark unavailable' }
+      );
+      return;
+    }
+    try {
+      const filePath = await window.clipSend.openImage();
+      if (!filePath) return; // dialog cancelled
+      const read = await window.clipSend.readImage(filePath);
+      if (!read || !read.success) throw new Error((read && read.error) || 'Could not read the image.');
+      const img = await loadWatermarkImage(read.dataUrl);
+      recordUndo(watermarkState ? 'Change watermark' : 'Add watermark');
+      // Replacing the image keeps the current look; the first one takes the
+      // panel defaults (the sliders' markup values, parsed as numbers).
+      watermarkState = {
+        path: filePath,
+        name: filePath.split('\\').pop().split('/').pop(),
+        dataUrl: read.dataUrl,
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        position: watermarkState ? watermarkState.position : 'br',
+        sizePct: watermarkState ? watermarkState.sizePct : (Number(wmSizeInput && wmSizeInput.value) || 15),
+        opacity: watermarkState ? watermarkState.opacity : (Number(wmOpacityInput && wmOpacityInput.value) || 85) / 100,
+        bakedPath: null // a different image invalidates any baked copy
+      };
+      updateWatermarkUI();
+      invalidateExportPlan();
+      toast('Watermark added', 'success');
+    } catch (err) {
+      showErrorDialog(err.message, { title: 'Watermark failed' });
+    }
+  });
+
+  wmRemoveBtn?.addEventListener('click', () => {
+    if (!watermarkState) return;
+    recordUndo('Remove watermark');
+    clearWatermark();
+    toast('Watermark removed');
+  });
+
+  wmPositionPills?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-position]');
+    if (!btn || !watermarkState || !wmPositionPills.contains(btn)) return;
+    recordUndo('Move watermark');
+    watermarkState.position = btn.dataset.position;
+    updateWatermarkUI();
+    invalidateExportPlan();
+  });
+
+  // Sliders: dragging fires 'input' continuously, so the undo snapshot is
+  // taken once on pointerdown instead of once per frame.
+  [[wmSizeInput, 'size'], [wmOpacityInput, 'opacity']].forEach(([input, kind]) => {
+    if (!input) return;
+    input.addEventListener('pointerdown', () => {
+      if (watermarkState) recordUndo(kind === 'size' ? 'Resize watermark' : 'Watermark opacity');
+    });
+    input.addEventListener('input', () => {
+      if (!watermarkState) return;
+      if (kind === 'size') {
+        watermarkState.sizePct = Number(input.value) || 15;
+        if (wmSizeValue) wmSizeValue.textContent = watermarkState.sizePct + '%';
+      } else {
+        watermarkState.opacity = (Number(input.value) || 85) / 100;
+        watermarkState.bakedPath = null; // new pixels, new bake
+        if (wmOpacityValue) wmOpacityValue.textContent = Math.round(watermarkState.opacity * 100) + '%';
+      }
+      updateWatermarkPreview();
+    });
+    // Committing a drag invalidates a plan computed at the old value.
+    input.addEventListener('change', () => { if (watermarkState) invalidateExportPlan(); });
+  });
+
+  mergeVideoEl?.addEventListener('loadedmetadata', updateWatermarkPreview);
+  window.addEventListener('resize', updateWatermarkPreview);
+
   // --- Playback speed (applies to preview AND the export plan) ---
   const speedSelect = document.getElementById('speed-select');
   function setPlaybackSpeed(speed) {
     exportState.playbackSpeed = Number(speed) || 1;
     if (videoPreview) videoPreview.setPlaybackRate(exportState.playbackSpeed);
-    // Share the knob with the merge preview so speeds match across modes
-    // (merge EXPORTS stay at normal speed — the knob lives in the trim bar).
+    // One speed for the whole app: the trim preview, the merge preview, and
+    // both transport dropdowns stay in step, and the value applies to every
+    // export (the planner retimes trim exports, the merger retimes merges).
     const mvEl = document.getElementById('merge-video');
     const mpEl = document.getElementById('merge-preload-video');
     if (mvEl) mvEl.playbackRate = exportState.playbackSpeed;
     if (mpEl) mpEl.playbackRate = exportState.playbackSpeed;
+    const asText = String(exportState.playbackSpeed);
+    const mergeSpeedSelect = document.getElementById('merge-speed-select');
+    if (mergeSpeedSelect && mergeSpeedSelect.value !== asText) mergeSpeedSelect.value = asText;
+    if (speedSelect && speedSelect.value !== asText) speedSelect.value = asText;
+    updateMergeEstimate(); // the merged size follows the sped-up duration
   }
   speedSelect?.addEventListener('change', (e) => {
     setPlaybackSpeed(e.target.value);
-    clearExportPlan(); // plan bitrates/durations change with speed
+    invalidateExportPlan(); // plan bitrates/durations change with speed
   });
+  // The merge transport's own speed dropdown drives the same knob, so picking
+  // a speed there is enough to retime the merged export.
+  document.getElementById('merge-speed-select')?.addEventListener('change', (e) => {
+    setPlaybackSpeed(e.target.value);
+    invalidateExportPlan();
+  });
+
+  // --- Tighten: trim silent lead-in and tail ---
+  // The audio analysis runs in the main process on the same PCM the waveform
+  // uses, so this costs no extra decode and shares the peaks cache. The result
+  // is applied as ordinary trim points, so it is undoable like any other edit.
+  const tightenBtn = document.getElementById('tighten-btn');
+  tightenBtn?.addEventListener('click', async () => {
+    if (!currentMediaInfo || !timeline || !currentMediaInfo.filePath) return;
+    const duration = currentMediaInfo.duration || 0;
+    if (!(duration > 0)) return;
+
+    tightenBtn.disabled = true;
+    const originalLabel = tightenBtn.textContent;
+    tightenBtn.textContent = 'Tightening...';
+    try {
+      const res = await window.clipSend.detectSilence(
+        currentMediaInfo.filePath,
+        exportState.selectedAudioTrackIndex,
+        duration
+      );
+      if (!res || !res.success) {
+        showErrorDialog((res && res.error) || 'Could not analyse this clip\'s audio.', { title: 'Tighten failed' });
+        return;
+      }
+      const bounds = res.bounds;
+      if (!bounds || !bounds.hasSilence) {
+        toast('No silent lead-in or tail found.');
+        return;
+      }
+      recordUndo('Tighten');
+      timeline.setTrimIn(bounds.startSec);
+      timeline.setTrimOut(bounds.endSec);
+      updateTrimDisplay();
+      toast(`Tightened: removed ${formatTrimDur(bounds.trimmedSec)} of silence.`, 'success');
+      invalidateExportPlan();
+    } catch (err) {
+      showErrorDialog(err.message, { title: 'Tighten failed' });
+    } finally {
+      tightenBtn.disabled = false;
+      tightenBtn.textContent = originalLabel;
+    }
+  });
+
+  // --- Diagnostics report ---
+  // Builds a plain-text support bundle in the main process and reveals it in
+  // Explorer. Nothing is uploaded; the user attaches it themselves.
+  const diagnosticsBtn = document.getElementById('export-diagnostics-btn');
+  diagnosticsBtn?.addEventListener('click', async () => {
+    diagnosticsBtn.disabled = true;
+    const originalLabel = diagnosticsBtn.textContent;
+    diagnosticsBtn.textContent = 'Collecting...';
+    try {
+      const res = await window.clipSend.exportDiagnostics();
+      if (!res || !res.success) {
+        showErrorDialog((res && res.error) || 'Could not build the diagnostics report.', { title: 'Diagnostics failed' });
+        return;
+      }
+      toast('Diagnostics report saved.', 'success');
+      window.clipSend.showItemInFolder(res.filePath);
+    } catch (err) {
+      showErrorDialog(err.message, { title: 'Diagnostics failed' });
+    } finally {
+      diagnosticsBtn.disabled = false;
+      diagnosticsBtn.textContent = originalLabel;
+    }
+  });
+
+  // --- Resume where you left off ---
+  // Each recent entry carries the trim points, preset, format, resolution and
+  // speed that file was last edited with, so reopening it from Open Recent
+  // lands on the same edit instead of a fresh default trim.
+  let resumeSaveTimer = null;
+  // Set by loadTrimFileFromResult, consumed on loadedmetadata (see above).
+  let pendingResumeState = null;
+  let restoredResumeState = false;
+
+  function captureResumeState() {
+    if (!currentMediaInfo || !timeline) return null;
+    return {
+      trimIn: timeline.getTrimIn(),
+      trimOut: timeline.getTrimOut(),
+      presetId: presetSelect ? presetSelect.value : null,
+      format: formatSelect ? formatSelect.value : 'mp4',
+      resolution: resolutionSelect ? resolutionSelect.value : 'native',
+      speed: exportState.playbackSpeed
+    };
+  }
+
+  /** Debounced: trim watchers fire on every drag frame, the store write should not. */
+  function scheduleResumeSave() {
+    if (!currentMediaInfo || !currentMediaInfo.filePath) return;
+    if (resumeSaveTimer) clearTimeout(resumeSaveTimer);
+    resumeSaveTimer = setTimeout(() => {
+      resumeSaveTimer = null;
+      const state = captureResumeState();
+      if (state) window.clipSend.saveRecentState(currentMediaInfo.filePath, state);
+    }, 600);
+  }
+
+  /**
+   * Re-apply a saved state after a file loads. Values are validated against the
+   * freshly probed media, so a re-encoded source (shorter now) cannot produce a
+   * trim range past its end. Returns true when anything was restored.
+   */
+  function applyResumeState(state) {
+    if (!state || typeof state !== 'object' || !timeline || !currentMediaInfo) return false;
+    let restored = false;
+    const duration = currentMediaInfo.duration || 0;
+
+    if (typeof state.trimIn === 'number' && typeof state.trimOut === 'number' &&
+        state.trimOut > state.trimIn && state.trimIn >= 0 &&
+        (!(duration > 0) || state.trimOut <= duration + 0.05)) {
+      timeline.setTrimIn(state.trimIn);
+      timeline.setTrimOut(state.trimOut);
+      restored = true;
+    }
+    if (state.presetId && presetSelect && presetSelect.querySelector(`option[value="${state.presetId}"]`)) {
+      presetSelect.value = state.presetId;
+      restored = true;
+    }
+    if (state.format && formatSelect && formatSelect.querySelector(`option[value="${state.format}"]`)) {
+      formatSelect.value = state.format;
+      restored = true;
+    }
+    if (state.resolution && resolutionSelect && resolutionSelect.querySelector(`option[value="${state.resolution}"]`)) {
+      resolutionSelect.value = state.resolution;
+      restored = true;
+    }
+    if (state.speed) {
+      setPlaybackSpeed(state.speed);
+      restored = true;
+    }
+    return restored;
+  }
 
   // --- Timeline zoom controls (Ctrl+wheel on the canvas, +/- buttons, click readout to reset) ---
   const zoomInBtn = document.getElementById('timeline-zoom-in');
@@ -2723,7 +3470,16 @@ document.addEventListener('DOMContentLoaded', () => {
         format: exportFormat,
         resolution: exportResolution,
         targetSizeMB: exportTargetSizeMB,
-        totalDurationSec: mergePlayer.totalDuration || 0
+        totalDurationSec: mergePlayer.totalDuration || 0,
+        // The transport speed applies to the merged export too: the merge
+        // retimes the joined output (setpts/atempo) instead of taking the
+        // lossless copy path.
+        speed: exportState.playbackSpeed,
+        watermark: await watermarkForExport(),
+        // Same export audio as the trim path: the merged file matches the
+        // transport's volume and mute state.
+        muted: playbackMuted(),
+        volume: playbackVolume()
       });
       
       if (!result) {

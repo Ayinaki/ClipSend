@@ -1,5 +1,35 @@
 window.changelogData = [
   {
+    "version": "v2.4.0: Live Estimates, Honest Audio & Tighten",
+    "date": "October 2026",
+    "changes": [
+      "Feature: The export estimate updates itself. Change the trim, preset, format, resolution, crop, watermark or speed and the size, bitrate and resolution readout refresh on their own. The Calculate Plan button is now a Recalculate button for when you want to force it.",
+      "Feature: Trim to fit. When a clip is too long for the target size, the error now offers a button that trims it to the longest length that does fit, in one click. You can still undo it like any other edit.",
+      "Feature: The volume slider and mute button now apply to the exported file. Muting drops the audio track from the export entirely, and lowering the volume encodes the export at that level, so the preview sounds like the file. The default is now 100 percent, since the slider doubles as the export level.",
+      "Feature: Tighten. One button in the transport bar trims the silent lead-in and tail of a clip, so a recording that opens on dead air starts where the action does. It uses the same audio analysis as the waveform, so it is instant, and it is undoable.",
+      "Feature: Reopening a file from Open Recent restores the trim, preset, format, resolution and speed you last used on it, instead of starting over.",
+      "Feature: Export Diagnostics Report in Settings. It writes a plain-text file with your versions, detected encoders, settings, the update log and the last export error, which you can attach to a bug report. Nothing is sent anywhere.",
+      "Enhancement: Waveforms are cached between sessions, so reopening a clip you worked on before draws its waveform straight away instead of decoding the audio again.",
+      "Fix: A muted clip no longer exports with full audio. The mute button only ever affected playback before, so a file you muted still shared with sound.",
+      "Fix: A size-capped export on a muted or silent clip no longer sets aside audio bitrate it will never use, which gives the video a little more room."
+    ]
+  },
+  {
+    "version": "v2.3.0: Watermarks, Playback Speed & Free Space Checks",
+    "date": "October 2026",
+    "changes": [
+      "Feature: Watermarks. Pick a PNG or JPG logo and burn it into Trim and Merge exports, with a corner, size and opacity you control. The preview shows the logo exactly where the export will place it, and it follows your crop. Opacity is baked into the image before encoding, so it works on the bundled FFmpeg.",
+      "Feature: Playback speed now applies to merge exports. The merge transport gained a speed dropdown, and both speed controls drive one shared value, so what you preview is what you export. Merging at a different speed re-encodes instead of taking the lossless copy path.",
+      "Feature: Open Recent. Reopen the files you worked with last from the Choose File panel. A file loads in Trim Mode or joins the clip list in Merge Mode, and you can remove single entries or clear the list. Entries whose file is gone drop out on their own.",
+      "Feature: More size presets. X (512 MB), Slack (1 GB), Telegram (2 GB) and WhatsApp (2 GB) join the Discord tiers.",
+      "Enhancement: Exports check free disk space before they start. A size target that asks for more than the drive has left now stops up front with a message naming both numbers, instead of dying partway through the encode.",
+      "Fix: Long clips no longer refuse to export with a video bitrate error. A tight target size subtracted the full audio bitrate from the budget until nothing was left for video, so a whole 21 minute clip in a 20 MB preset failed with a message blaming the clip duration. Audio now gives up part of the budget when it has to, which is enough to keep those exports running, and a clip that truly cannot fit names the target size or the trim length that would work.",
+      "Fix: Merge Mode's Resolution list now matches the clips being merged. It kept whatever Trim Mode last loaded, so merging 1440p clips offered only 720p and 480p. The list is now rebuilt from the first clip, whose frame size is what a merge natively produces.",
+      "Fix: The Watermark panel in Merge Mode no longer sits flush against the Export Merged Video button. It gets the same 10px gap as every other panel in the sidebar.",
+      "Fix: Downscaled resolutions keep the source aspect ratio. The 480p option of a 1440p or 1080p source read 852x480, a hair wider than 16:9, because the long edge was rounded and then stepped down to an even number. It now rounds to the nearest even pixel, so that option reads 854x480 and matches the resolution the planner itself targets."
+    ]
+  },
+  {
     "version": "v2.2.7: Merge Export Fix",
     "date": "September 2026",
     "changes": [
